@@ -93,7 +93,7 @@ class ObsidianController extends Notifier<ObsidianState> {
 
   /// Выбор папки Vault через File Picker (SAF на Android).
   Future<void> pickVault() async {
-    final path = await FilePicker.platform.getDirectoryPath(
+    final path = await FilePicker.getDirectoryPath(
       dialogTitle: 'Выберите папку Obsidian Vault',
     );
     if (path == null || path.isEmpty) return;
