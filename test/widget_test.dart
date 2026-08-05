@@ -1,0 +1,41 @@
+// Базовый smoke-тест: приложение стартует без ошибок.
+
+import 'dart:io';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_ce/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:system_hermes/app.dart';
+import 'package:system_hermes/core/constants.dart';
+import 'package:system_hermes/data/adapters.dart';
+import 'package:system_hermes/data/models.dart';
+import 'package:system_hermes/services/settings_service.dart';
+
+void main() {
+  setUpAll(() async {
+    // Hive в памяти для теста
+    Hive.init(Directory.systemTemp.createTempSync('hermes_test').path);
+    registerHiveAdapters();
+    await Hive.openBox<Account>(BoxNames.accounts);
+    await Hive.openBox<Transaction>(BoxNames.transactions);
+    await Hive.openBox<MiningFarm>(BoxNames.farm);
+    await Hive.openBox<HabitTracker>(BoxNames.habits);
+    await Hive.openBox<ChatMessage>(BoxNames.chat);
+
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('App запускается', (tester) async {
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const SystemHermesApp(),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.textContaining('SYSTEM'), findsWidgets);
+  });
+}

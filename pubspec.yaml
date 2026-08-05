@@ -1,0 +1,44 @@
+name: system_hermes
+description: "System: Hermes - цифровая ОС жизни для Android"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+# Версии пакетов зафиксированы на известных стабильных API.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Состояние приложения
+  flutter_riverpod: ^2.6.1
+  # Навигация
+  go_router: ^14.2.0
+  # Локальная БД (hive_ce — активный форк Hive, тот же API)
+  hive_ce: ^2.19.3
+  hive_ce_flutter: ^2.3.4
+  # Файловая система и Obsidian
+  path_provider: ^2.1.4
+  file_picker: ^8.0.0
+  watcher: ^1.1.0
+  # Сеть (API Нацбанка РБ, GitHub, Hermes Agent)
+  http: ^1.2.2
+  # Markdown для заметок Obsidian
+  flutter_markdown: ^0.7.4
+  # Настройки
+  shared_preferences: ^2.3.2
+  # Фото-верификация
+  image_picker: ^1.1.2
+  # Анимации (Lottie — для будущих ассетов)
+  lottie: ^3.1.2
+  # Health Connect (проверка тренировок)
+  flutter_health_connect: ^1.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

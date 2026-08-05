@@ -1,0 +1,23 @@
+# Стандартный .gitignore для Flutter-проекта
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Идеи и инструменты
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Android
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# macOS / Windows / Linux
+.DS_Store
+Thumbs.db
