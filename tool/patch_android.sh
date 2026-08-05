@@ -29,6 +29,12 @@ if [ -f "$GRADLE" ]; then
   sed -i 's|minSdk = flutter.minSdkVersion|minSdk = 28|' "$GRADLE" || true
 fi
 
+# 4b. flutter_health_connect 1.2.3 пинит compileSdk 33 — зависимости требуют 34+.
+HCPLUGIN="$HOME/.pub-cache/hosted/pub.dev/flutter_health_connect-1.2.3/android/build.gradle"
+if [ -f "$HCPLUGIN" ]; then
+  sed -i 's|compileSdkVersion 33|compileSdkVersion 36|' "$HCPLUGIN"
+fi
+
 # 5. AGP 9 требует namespace у всех library-модулей; старые плагины
 #    (flutter_health_connect) его не задают — берём package из манифеста.
 ROOT_GRADLE="android/build.gradle.kts"
