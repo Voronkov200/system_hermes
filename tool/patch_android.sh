@@ -44,6 +44,8 @@ subprojects {
                 val pkg = Regex("""package\s*=\s*"([^"]+)"""").find(mf.readText())?.groupValues?.get(1)
                 if (pkg != null) namespace = pkg
             }
+            // Старые плагины пинят низкий compileSdk (33-34); часть зависимостей требует 36.
+            if ((compileSdk ?: 0) < 36) compileSdk = 36
         }
     }
 }
