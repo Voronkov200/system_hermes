@@ -38,6 +38,11 @@ if [ -f "$ROOT_GRADLE" ]; then
 // AGP 9 namespace fallback
 subprojects {
     plugins.withId("com.android.library") {
+        // file_picker 11 не применяет kotlin-android под AGP 9 (рассчитывает на built-in
+        // Kotlin, который Flutter отключает) — применяем сами.
+        if (!plugins.hasPlugin("org.jetbrains.kotlin.android")) {
+            apply(plugin = "org.jetbrains.kotlin.android")
+        }
         extensions.configure<com.android.build.api.dsl.LibraryExtension>("android") {
             if (namespace.isNullOrEmpty()) {
                 val mf = project.projectDir.resolve("src/main/AndroidManifest.xml")
