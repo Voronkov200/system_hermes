@@ -40,5 +40,10 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+# flutter_plugin_android_lifecycle 2.0.35+ требует compileSdk 36,
+# а file_picker 8.x жёстко пинит 34 — пиним старую версию плагина.
+dependency_overrides:
+  flutter_plugin_android_lifecycle: 2.0.17
+
 flutter:
   uses-material-design: true
