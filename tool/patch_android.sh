@@ -29,4 +29,25 @@ if [ -f "$GRADLE" ]; then
   sed -i 's|minSdk = flutter.minSdkVersion|minSdk = 28|' "$GRADLE" || true
 fi
 
+# 5. AGP 9 требует namespace у всех library-модулей; старые плагины
+#    (flutter_health_connect) его не задают — берём package из манифеста.
+ROOT_GRADLE="android/build.gradle.kts"
+if [ -f "$ROOT_GRADLE" ]; then
+  grep -q "AGP 9 namespace fallback" "$ROOT_GRADLE" || cat >> "$ROOT_GRADLE" <<'EOF'
+
+// AGP 9 namespace fallback
+subprojects {
+    plugins.withId("com.android.library") {
+        extensions.configure<com.android.build.api.dsl.LibraryExtension>("android") {
+            if (namespace.isNullOrEmpty()) {
+                val mf = project.projectDir.resolve("src/main/AndroidManifest.xml")
+                val pkg = Regex("""package\s*=\s*"([^"]+)"""").find(mf.readText())?.groupValues?.get(1)
+                if (pkg != null) namespace = pkg
+            }
+        }
+    }
+}
+EOF
+fi
+
 echo "OK: Android-конфигурация пропатчена."
