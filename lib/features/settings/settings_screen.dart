@@ -196,6 +196,37 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
 
           const _SectionTitle('Настя (ИИ-компаньон)'),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Text(
+              'Без ключа чат работает в офлайн-режиме (скрипты). '
+              'Бесплатный ключ Groq: console.groq.com → API Keys.',
+              style: TextStyle(color: AppColors.textDim, fontSize: 11),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                _ProviderPreset(
+                  label: 'Groq',
+                  url: 'https://api.groq.com/openai/v1/chat/completions',
+                  model: 'llama-3.3-70b-versatile',
+                ),
+                _ProviderPreset(
+                  label: 'OpenCode Zen',
+                  url: 'https://opencode.ai/zen/v1/chat/completions',
+                  model: 'deepseek-v4-flash-free',
+                ),
+                _ProviderPreset(
+                  label: 'OpenRouter',
+                  url: 'https://openrouter.ai/api/v1/chat/completions',
+                  model: 'meta-llama/llama-3.3-70b-instruct:free',
+                ),
+              ],
+            ),
+          ),
           ListTile(
             leading: _AvatarPreview(path: ref.watch(companionProvider).avatarPath),
             title: const Text('Фото Насти'),
@@ -215,7 +246,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           _TextFieldSetting(
-            label: 'API URL (OpenCode Zen / OpenAI)',
+            label: 'API URL',
             initial: s.companionApiUrl,
             hint: AppConstants.companionDefaultUrl,
             onSave: (v) =>
@@ -224,7 +255,7 @@ class SettingsScreen extends ConsumerWidget {
           _TextFieldSetting(
             label: 'API ключ',
             initial: s.companionApiKey,
-            hint: 'sk-… из OpenCode Zen (без ключа — офлайн-режим)',
+            hint: 'gsk_… из console.groq.com (без ключа — офлайн-режим)',
             obscure: true,
             onSave: (v) =>
                 ref.read(settingsProvider.notifier).setCompanionApiKey(v),
@@ -376,6 +407,39 @@ class _TextFieldSettingState extends ConsumerState<_TextFieldSetting> {
           toast(context, 'Сохранено');
         },
       ),
+    );
+  }
+}
+
+/// Кнопка-пресет провайдера: подставляет URL и модель в настройках ИИ.
+class _ProviderPreset extends ConsumerWidget {
+  final String label;
+  final String url;
+  final String model;
+
+  const _ProviderPreset({
+    required this.label,
+    required this.url,
+    required this.model,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(settingsProvider);
+    final active = s.companionApiUrl == url && s.companionModel == model;
+    return ActionChip(
+      label: Text(label),
+      backgroundColor:
+          active ? AppColors.accent.withValues(alpha: 0.25) : null,
+      labelStyle: TextStyle(
+        color: active ? AppColors.accent : null,
+        fontWeight: active ? FontWeight.w700 : null,
+      ),
+      onPressed: () {
+        ref.read(settingsProvider.notifier).setCompanionApiUrl(url);
+        ref.read(settingsProvider.notifier).setCompanionModel(model);
+        if (context.mounted) toast(context, '$label: URL и модель подставлены');
+      },
     );
   }
 }
