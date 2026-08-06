@@ -1,11 +1,18 @@
-// Чат-хаб с Hermes Agent: сообщения, tool calling, фото-верификация.
+// Чат-хаб: Hermes Agent (инструменты) и Настя (ИИ-компаньон).
+//
+// Переключатель в AppBar меняет собеседника. У Насти: аватар/фон из фото,
+// уровень отношений, полоса симпатии и блокировка после срывов.
+
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../core/utils.dart';
+import '../../data/companion_catalog.dart';
 import '../../data/models.dart';
+import '../../services/companion_service.dart';
 import '../../services/hermes_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -18,6 +25,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
+  bool _nastya = false;
 
   @override
   void dispose() {
@@ -43,108 +51,305 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (text.isEmpty) return;
     _input.clear();
     _scrollDown();
-    await ref.read(chatProvider.notifier).send(text);
+    if (_nastya) {
+      await ref.read(companionProvider.notifier).send(text);
+    } else {
+      await ref.read(chatProvider.notifier).send(text);
+    }
     _scrollDown();
   }
 
   @override
   Widget build(BuildContext context) {
-    final chat = ref.watch(chatProvider);
-    final pending = chat.pendingPhotoTask;
+    final hermes = ref.watch(chatProvider);
+    final nastya = ref.watch(companionProvider);
+
+    final pending = _nastya ? null : hermes.pendingPhotoTask;
+    final thinking = _nastya ? nastya.thinking : hermes.thinking;
+    final messages = _nastya ? nastya.messages : hermes.messages;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.terminal, color: AppColors.accent, size: 20),
-            SizedBox(width: 8),
-            Text('Hermes Agent'),
-          ],
-        ),
-      ),
-      body: Column(
-        children: [
-          // Запрос фото-верификации
-          if (pending != null)
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.warning),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.camera_alt_outlined,
-                      color: AppColors.warning, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      chat.pendingPhotoDescription ?? 'Требуется фото-подтверждение',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () =>
-                        ref.read(chatProvider.notifier).pickAndSendPhoto(),
-                    child: const Text('Отправить фото'),
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: ListView.builder(
-              controller: _scroll,
-              padding: const EdgeInsets.all(16),
-              itemCount: chat.messages.length,
-              itemBuilder: (context, i) {
-                final m = chat.messages[i];
-                return _MessageBubble(message: m);
+        title: _nastya ? _NastyaTitle(companion: nastya) : _hermesTitle(),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                  value: false,
+                  icon: Icon(Icons.terminal, size: 16),
+                  label: Text('Hermes'),
+                ),
+                ButtonSegment(
+                  value: true,
+                  icon: Icon(Icons.favorite, size: 16),
+                  label: Text('Настя'),
+                ),
+              ],
+              selected: {_nastya},
+              onSelectionChanged: (sel) {
+                setState(() => _nastya = sel.first);
+                _scrollDown();
               },
-            ),
-          ),
-          // Панель ввода
-          SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              decoration: const BoxDecoration(
-                color: AppColors.surface,
-                border: Border(top: BorderSide(color: Color(0xFF1E2836))),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _input,
-                      onSubmitted: (_) => _send(),
-                      minLines: 1,
-                      maxLines: 3,
-                      textInputAction: TextInputAction.send,
-                      style: const TextStyle(color: AppColors.textPrimary),
-                      decoration: const InputDecoration(
-                        hintText: 'Сообщение для Hermes…',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: chat.thinking ? null : _send,
-                    icon: chat.thinking
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
-                    color: AppColors.accent,
-                  ),
-                ],
+              showSelectedIcon: false,
+              style: ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                textStyle: WidgetStateProperty.all(
+                  const TextStyle(fontSize: 12),
+                ),
               ),
             ),
           ),
         ],
+      ),
+      body: Stack(
+        children: [
+          // Фон: фото Насти (если выбрано) в режиме компаньона.
+          if (_nastya && nastya.avatarPath.isNotEmpty)
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.08,
+                child: Image.file(
+                  File(nastya.avatarPath),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          Column(
+            children: [
+              // Запрос фото-верификации (только Hermes)
+              if (pending != null)
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.warning),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.camera_alt_outlined,
+                          color: AppColors.warning, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          hermes.pendingPhotoDescription ??
+                              'Требуется фото-подтверждение',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            ref.read(chatProvider.notifier).pickAndSendPhoto(),
+                        child: const Text('Отправить фото'),
+                      ),
+                    ],
+                  ),
+                ),
+              // Блокировка Насти после срыва
+              if (_nastya && nastya.blocked)
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.danger),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lock_clock, color: AppColors.danger, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Настя обижена после срыва. Чат разблокируется: '
+                          '${fmtDateTime(nastya.blockedUntil ?? DateTime.now())}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: messages.length,
+                  itemBuilder: (context, i) {
+                    final m = messages[i];
+                    return _MessageBubble(
+                        message: m, nastyaMode: _nastya);
+                  },
+                ),
+              ),
+              // Панель ввода
+              SafeArea(
+                top: false,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                  decoration: const BoxDecoration(
+                    color: AppColors.surface,
+                    border: Border(top: BorderSide(color: Color(0xFF1E2836))),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _input,
+                          onSubmitted: (_) => _send(),
+                          minLines: 1,
+                          maxLines: 3,
+                          textInputAction: TextInputAction.send,
+                          style: const TextStyle(color: AppColors.textPrimary),
+                          decoration: InputDecoration(
+                            hintText: _nastya
+                                ? 'Сообщение для Насти…'
+                                : 'Сообщение для Hermes…',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: thinking ? null : _send,
+                        icon: thinking
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.send),
+                        color: AppColors.accent,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _hermesTitle() {
+    return const Row(
+      children: [
+        Icon(Icons.terminal, color: AppColors.accent, size: 20),
+        SizedBox(width: 8),
+        Text('Hermes Agent'),
+      ],
+    );
+  }
+}
+
+/// Заголовок AppBar для Насти: аватар, имя, уровень отношений и симпатия.
+class _NastyaTitle extends StatelessWidget {
+  final CompanionState companion;
+
+  const _NastyaTitle({required this.companion});
+
+  @override
+  Widget build(BuildContext context) {
+    final level = levelForAffinity(companion.affinity);
+    final progress = levelProgress(companion.affinity);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Row(
+      children: [
+        _NastyaAvatar(
+          path: companion.avatarPath,
+          size: 34,
+          affinity: companion.affinity,
+        ),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Text('Настя',
+                    style: TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 6),
+                Text(
+                  level.name,
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.violet),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            SizedBox(
+              width: 110,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 4,
+                  backgroundColor: isDark
+                      ? const Color(0xFF1E2836)
+                      : Colors.black12,
+                  valueColor: const AlwaysStoppedAnimation(AppColors.violet),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Круглый аватар Насти: фото или градиент с инициалом.
+class _NastyaAvatar extends StatelessWidget {
+  final String path;
+  final double size;
+  final double affinity;
+
+  const _NastyaAvatar({
+    required this.path,
+    required this.size,
+    required this.affinity,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (path.isNotEmpty && File(path).existsSync()) {
+      return ClipOval(
+        child: Image.file(
+          File(path),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.violet,
+            AppColors.danger.withValues(alpha: 0.55 + affinity / 200),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Text(
+          'Н',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: size * 0.45,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ),
     );
   }
@@ -152,19 +357,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
+  final bool nastyaMode;
 
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, required this.nastyaMode});
 
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == 'user';
     final isTool = message.role == 'system';
+    final isNastya = message.role == 'nastya';
 
     final Color bg;
     if (isTool) {
       bg = const Color(0xFF10151D);
     } else if (isUser) {
       bg = const Color(0xFF0D2B22);
+    } else if (isNastya) {
+      bg = const Color(0xFF221536);
     } else {
       bg = AppColors.surface;
     }
@@ -174,8 +383,21 @@ class _MessageBubble extends StatelessWidget {
       border = AppColors.cyan.withValues(alpha: 0.4);
     } else if (isUser) {
       border = AppColors.accent.withValues(alpha: 0.4);
+    } else if (isNastya) {
+      border = AppColors.violet.withValues(alpha: 0.5);
     } else {
       border = const Color(0xFF1E2836);
+    }
+
+    final String label;
+    if (isUser) {
+      label = 'ТЫ';
+    } else if (isTool) {
+      label = 'TOOL';
+    } else if (isNastya) {
+      label = 'НАСТЯ';
+    } else {
+      label = 'HERMES';
     }
 
     return Align(
@@ -218,7 +440,7 @@ class _MessageBubble extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '${isUser ? 'ТЫ' : isTool ? 'TOOL' : 'HERMES'} • ${fmtTime(message.date)}',
+              '$label • ${fmtTime(message.date)}',
               style: const TextStyle(color: AppColors.textDim, fontSize: 10),
             ),
           ],

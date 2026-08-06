@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../services/bank_service.dart';
+import '../../services/companion_service.dart';
 import '../../services/habits_service.dart';
 import '../../services/hermes_service.dart';
 import '../../services/mining_service.dart';
@@ -43,6 +45,7 @@ class SettingsScreen extends ConsumerWidget {
     await ref.read(miningProvider.notifier).reset();
     await ref.read(habitsProvider.notifier).reset();
     await ref.read(chatProvider.notifier).reset();
+    await ref.read(companionProvider.notifier).reset();
     if (context.mounted) {
       toast(context, 'Все данные сброшены');
     }
@@ -180,6 +183,47 @@ class SettingsScreen extends ConsumerWidget {
             obscure: true,
             onSave: (v) =>
                 ref.read(settingsProvider.notifier).setHermesApiKey(v),
+          ),
+          const Divider(),
+
+          const _SectionTitle('Настя (ИИ-компаньон)'),
+          ListTile(
+            title: const Text('Фото Насти'),
+            subtitle: const Text('Аватар и фон в чате (из галереи)'),
+            trailing: FilledButton.tonal(
+              onPressed: () async {
+                final path = await ref
+                    .read(companionProvider.notifier)
+                    .pickAvatar();
+                if (context.mounted) {
+                  toast(context,
+                      path == null ? 'Фото не выбрано' : 'Фото Насти обновлено');
+                }
+              },
+              child: const Text('Выбрать'),
+            ),
+          ),
+          _TextFieldSetting(
+            label: 'API URL (Groq / OpenAI)',
+            initial: s.companionApiUrl,
+            hint: AppConstants.companionDefaultUrl,
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setCompanionApiUrl(v),
+          ),
+          _TextFieldSetting(
+            label: 'API ключ',
+            initial: s.companionApiKey,
+            hint: 'ключ Groq (без ключа — офлайн-режим)',
+            obscure: true,
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setCompanionApiKey(v),
+          ),
+          _TextFieldSetting(
+            label: 'Модель',
+            initial: s.companionModel,
+            hint: AppConstants.companionDefaultModel,
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setCompanionModel(v),
           ),
           const Divider(),
 

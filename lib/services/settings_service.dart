@@ -25,6 +25,9 @@ class SettingsState {
   String githubRepo;
   String lastPensionMonth; // '2026-08' — месяц последнего начисления
   String protocolStart; // дата начала протокола (для стрика)
+  String companionApiUrl; // LLM для Насти (Groq-совместимый)
+  String companionApiKey;
+  String companionModel;
 
   SettingsState({
     this.themeMode = ThemeMode.dark,
@@ -39,6 +42,9 @@ class SettingsState {
     this.githubRepo = '',
     this.lastPensionMonth = '',
     this.protocolStart = '',
+    this.companionApiUrl = AppConstants.companionDefaultUrl,
+    this.companionApiKey = '',
+    this.companionModel = AppConstants.companionDefaultModel,
   });
 
   SettingsState copyWith({
@@ -54,6 +60,9 @@ class SettingsState {
     String? githubRepo,
     String? lastPensionMonth,
     String? protocolStart,
+    String? companionApiUrl,
+    String? companionApiKey,
+    String? companionModel,
   }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
@@ -68,6 +77,9 @@ class SettingsState {
       githubRepo: githubRepo ?? this.githubRepo,
       lastPensionMonth: lastPensionMonth ?? this.lastPensionMonth,
       protocolStart: protocolStart ?? this.protocolStart,
+      companionApiUrl: companionApiUrl ?? this.companionApiUrl,
+      companionApiKey: companionApiKey ?? this.companionApiKey,
+      companionModel: companionModel ?? this.companionModel,
     );
   }
 }
@@ -95,6 +107,11 @@ class SettingsController extends Notifier<SettingsState> {
       githubRepo: prefs.getString(PrefKeys.githubRepo) ?? '',
       lastPensionMonth: prefs.getString(PrefKeys.lastPensionMonth) ?? '',
       protocolStart: prefs.getString(PrefKeys.protocolStart) ?? '',
+      companionApiUrl: prefs.getString(PrefKeys.companionApiUrl) ??
+          AppConstants.companionDefaultUrl,
+      companionApiKey: prefs.getString(PrefKeys.companionApiKey) ?? '',
+      companionModel: prefs.getString(PrefKeys.companionModel) ??
+          AppConstants.companionDefaultModel,
     );
   }
 
@@ -115,6 +132,9 @@ class SettingsController extends Notifier<SettingsState> {
       githubRepo: s.githubRepo,
       lastPensionMonth: s.lastPensionMonth,
       protocolStart: s.protocolStart,
+      companionApiUrl: s.companionApiUrl,
+      companionApiKey: s.companionApiKey,
+      companionModel: s.companionModel,
     );
     apply(next);
     state = next;
@@ -130,6 +150,9 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.githubRepo, next.githubRepo);
     await prefs.setString(PrefKeys.lastPensionMonth, next.lastPensionMonth);
     await prefs.setString(PrefKeys.protocolStart, next.protocolStart);
+    await prefs.setString(PrefKeys.companionApiUrl, next.companionApiUrl);
+    await prefs.setString(PrefKeys.companionApiKey, next.companionApiKey);
+    await prefs.setString(PrefKeys.companionModel, next.companionModel);
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
@@ -173,6 +196,18 @@ class SettingsController extends Notifier<SettingsState> {
 
   Future<void> setLastPensionMonth(String month) async {
     await _save((n) => n.lastPensionMonth = month);
+  }
+
+  Future<void> setCompanionApiUrl(String url) async {
+    await _save((n) => n.companionApiUrl = url);
+  }
+
+  Future<void> setCompanionApiKey(String key) async {
+    await _save((n) => n.companionApiKey = key);
+  }
+
+  Future<void> setCompanionModel(String model) async {
+    await _save((n) => n.companionModel = model);
   }
 
   Future<void> ensureProtocolStart() async {

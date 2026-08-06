@@ -268,6 +268,42 @@ class LifeState {
 }
 
 // =====================================================================
+// КОМПАНЬОН "НАСТЯ"
+// =====================================================================
+
+/// Состояние ИИ-компаньона "Настя": симпатия, блокировки, фото.
+@HiveType(typeId: 9)
+class CompanionData {
+  double affinity; // 0-100, кэш формулы от прогресса
+  DateTime? blockedUntil; // чат недоступен до этого момента (после срыва)
+  String? lastGreetingKey; // dateKey последнего приветствия (раз в день)
+  String? lastSeenBreakKey; // последний обработанный срыв протокола
+  int seenAchievementCount; // сколько достижений Жизни обработано
+  int totalRelapses; // всего срывов за всё время
+  int seenStreakMilestone; // последний пройденный рубеж стрика
+  String avatarPath; // фото из галереи (аватар/фон чата)
+  DateTime? createdAt;
+  int messageCount; // всего сообщений от Насти
+
+  CompanionData({
+    this.affinity = 5,
+    this.blockedUntil,
+    this.lastGreetingKey,
+    this.lastSeenBreakKey,
+    this.seenAchievementCount = 0,
+    this.totalRelapses = 0,
+    this.seenStreakMilestone = 0,
+    this.avatarPath = '',
+    this.createdAt,
+    this.messageCount = 0,
+  });
+
+  factory CompanionData.empty() => CompanionData(createdAt: DateTime.now());
+
+  bool get blocked => blockedUntil != null && blockedUntil!.isAfter(DateTime.now());
+}
+
+// =====================================================================
 // ЧАТ С HERMES
 // =====================================================================
 

@@ -293,6 +293,55 @@ class LifeStateAdapter extends TypeAdapter<LifeState> {
   }
 }
 
+class CompanionDataAdapter extends TypeAdapter<CompanionData> {
+  @override
+  final int typeId = 9;
+
+  @override
+  CompanionData read(BinaryReader reader) => CompanionData(
+        affinity: reader.readDouble(),
+        blockedUntil: reader.readBool()
+            ? DateTime.fromMillisecondsSinceEpoch(reader.readInt())
+            : null,
+        lastGreetingKey: reader.readBool() ? reader.readString() : null,
+        lastSeenBreakKey: reader.readBool() ? reader.readString() : null,
+        seenAchievementCount: reader.readInt(),
+        totalRelapses: reader.readInt(),
+        seenStreakMilestone: reader.readInt(),
+        avatarPath: reader.readString(),
+        createdAt: reader.readBool()
+            ? DateTime.fromMillisecondsSinceEpoch(reader.readInt())
+            : null,
+        messageCount: reader.readInt(),
+      );
+
+  @override
+  void write(BinaryWriter writer, CompanionData obj) {
+    writer
+      ..writeDouble(obj.affinity)
+      ..writeBool(obj.blockedUntil != null);
+    if (obj.blockedUntil != null) {
+      writer.writeInt(obj.blockedUntil!.millisecondsSinceEpoch);
+    }
+    writer.writeBool(obj.lastGreetingKey != null);
+    if (obj.lastGreetingKey != null) writer.writeString(obj.lastGreetingKey!);
+    writer.writeBool(obj.lastSeenBreakKey != null);
+    if (obj.lastSeenBreakKey != null) {
+      writer.writeString(obj.lastSeenBreakKey!);
+    }
+    writer
+      ..writeInt(obj.seenAchievementCount)
+      ..writeInt(obj.totalRelapses)
+      ..writeInt(obj.seenStreakMilestone)
+      ..writeString(obj.avatarPath)
+      ..writeBool(obj.createdAt != null);
+    if (obj.createdAt != null) {
+      writer.writeInt(obj.createdAt!.millisecondsSinceEpoch);
+    }
+    writer.writeInt(obj.messageCount);
+  }
+}
+
 /// Регистрация всех адаптеров (вызывается до открытия боксов).
 void registerHiveAdapters() {
   Hive
@@ -304,5 +353,6 @@ void registerHiveAdapters() {
     ..registerAdapter(HabitTrackerAdapter())
     ..registerAdapter(ObsidianNoteAdapter())
     ..registerAdapter(ChatMessageAdapter())
-    ..registerAdapter(LifeStateAdapter());
+    ..registerAdapter(LifeStateAdapter())
+    ..registerAdapter(CompanionDataAdapter());
 }

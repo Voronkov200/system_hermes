@@ -33,6 +33,16 @@ class AppConstants {
 
   /// Максимум секунд начисляемых за один "тик" (защита от читов по времени).
   static const Duration maxTickGap = Duration(hours: 12);
+
+  /// URL по умолчанию для LLM Насти (Groq, OpenAI-совместимый API).
+  static const String companionDefaultUrl =
+      'https://api.groq.com/openai/v1/chat/completions';
+
+  /// Модель по умолчанию для Насти (Groq).
+  static const String companionDefaultModel = 'llama-3.3-70b-versatile';
+
+  /// Длительность блокировки чата Насти после срыва протокола.
+  static const Duration companionBlockDuration = Duration(hours: 24);
 }
 
 /// Имена Hive-боксов.
@@ -45,6 +55,8 @@ class BoxNames {
   static const String habits = 'habits';
   static const String chat = 'chat';
   static const String life = 'life';
+  static const String companion = 'companion';
+  static const String companionChat = 'companion_chat';
 }
 
 /// Ключи настроек в SharedPreferences.
@@ -63,4 +75,7 @@ class PrefKeys {
   static const String githubRepo = 'github_repo';
   static const String lastPensionMonth = 'last_pension_month';
   static const String protocolStart = 'protocol_start';
+  static const String companionApiUrl = 'companion_api_url';
+  static const String companionApiKey = 'companion_api_key';
+  static const String companionModel = 'companion_model';
 }
