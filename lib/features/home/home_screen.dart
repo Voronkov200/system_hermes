@@ -101,6 +101,13 @@ class HomeScreen extends ConsumerWidget {
                 onTap: () => context.go('/chat'),
               ),
               _ModuleCard(
+                title: 'Журнал изменений',
+                subtitle: 'Все действия и записи',
+                icon: Icons.history,
+                color: AppColors.violet,
+                onTap: () => context.push('/journal'),
+              ),
+              _ModuleCard(
                 title: 'Настройки',
                 subtitle: 'Тема, пенсия, Vault',
                 icon: Icons.settings_outlined,

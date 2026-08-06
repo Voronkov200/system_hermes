@@ -7,6 +7,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme.dart';
@@ -15,7 +17,9 @@ import '../../data/companion_catalog.dart';
 import '../../data/models.dart';
 import '../../services/companion_service.dart';
 import '../../services/hermes_service.dart';
+import '../../services/journal_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/whisper_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -27,7 +31,10 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
+  final VoiceTranscriber _voice = VoiceTranscriber();
   bool _nastya = false;
+  bool _recording = false;
+  bool _transcribing = false;
 
   @override
   void dispose() {
@@ -61,6 +68,69 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollDown();
   }
 
+  /// Голосовой ввод: запись → транскрибация Whisper → отправка в чат
+  /// и запись в журнал.
+  Future<void> _toggleVoice() async {
+    if (_transcribing) return;
+
+    if (!_recording) {
+      final ok = await Permission.microphone.request();
+      if (!ok.isGranted) {
+        _snack('Нет доступа к микрофону. Разреши в настройках.');
+        return;
+      }
+      try {
+        await _voice.startRecording();
+        setState(() => _recording = true);
+        _snack('Запись идёт… Нажми ещё раз, чтобы закончить.');
+      } catch (e) {
+        _snack('Не удалось начать запись: $e');
+      }
+      return;
+    }
+
+    setState(() {
+      _recording = false;
+      _transcribing = true;
+    });
+    final path = await _voice.stopRecording();
+    if (path == null) {
+      setState(() => _transcribing = false);
+      _snack('Запись не сохранилась.');
+      return;
+    }
+
+    final settings = ref.read(settingsProvider);
+    final key = _nastya ? settings.companionKey : settings.llmKey;
+    try {
+      final text = await _voice.transcribe(path, key);
+      ref.read(journalProvider.notifier).add(
+            type: 'voice',
+            source: 'user',
+            title: _shortTitle(text),
+            text: text,
+          );
+      _input.text = text;
+      await _send();
+    } catch (e) {
+      _snack('Транскрибация не удалась: $e');
+    } finally {
+      setState(() => _transcribing = false);
+    }
+  }
+
+  String _shortTitle(String text) {
+    final clean = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    return clean.length > 60 ? '${clean.substring(0, 60)}…' : clean;
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   /// Фото Насти: выбранное из галереи, либо фото по умолчанию (её TikTok).
   Widget _photoOrFallback(String path) {
     if (path.isNotEmpty && File(path).existsSync()) {
@@ -92,6 +162,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       appBar: AppBar(
         title: _nastya ? _NastyaTitle(companion: nastya) : _hermesTitle(),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Журнал изменений',
+            onPressed: () => context.push('/journal'),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: SegmentedButton<bool>(
@@ -258,6 +333,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                   child: Row(
                     children: [
+                      IconButton(
+                        onPressed: thinking || _transcribing
+                            ? null
+                            : _toggleVoice,
+                        tooltip: _recording
+                            ? 'Остановить запись'
+                            : 'Голосовое сообщение',
+                        icon: _transcribing
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2),
+                              )
+                            : Icon(
+                                _recording
+                                    ? Icons.stop_circle
+                                    : Icons.mic_none,
+                                color: _recording
+                                    ? AppColors.danger
+                                    : AppColors.textDim,
+                              ),
+                      ),
                       Expanded(
                         child: TextField(
                           controller: _input,
@@ -267,9 +365,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           textInputAction: TextInputAction.send,
                           style: const TextStyle(color: AppColors.textPrimary),
                           decoration: InputDecoration(
-                            hintText: _nastya
-                                ? 'Сообщение для Насти…'
-                                : 'Сообщение для Hermes…',
+                            hintText: _recording
+                                ? 'Запись… нажми ⏹ для транскрибации'
+                                : _nastya
+                                    ? 'Сообщение для Насти…'
+                                    : 'Сообщение для Hermes…',
                           ),
                         ),
                       ),

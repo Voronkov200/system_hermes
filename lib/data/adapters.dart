@@ -5,6 +5,7 @@
 
 import 'package:hive_ce/hive.dart';
 
+import '../services/journal_service.dart';
 import '../services/tasks_service.dart';
 import 'models.dart';
 
@@ -356,5 +357,6 @@ void registerHiveAdapters() {
     ..registerAdapter(ChatMessageAdapter())
     ..registerAdapter(LifeStateAdapter())
     ..registerAdapter(CompanionDataAdapter())
-    ..registerAdapter(HermesTaskAdapter());
+    ..registerAdapter(HermesTaskAdapter())
+    ..registerAdapter(JournalEntryAdapter());
 }

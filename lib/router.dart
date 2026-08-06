@@ -6,6 +6,7 @@ import 'features/bank/bank_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/habits/habits_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/journal/journal_screen.dart';
 import 'features/life/life_screen.dart';
 import 'features/mining/mining_screen.dart';
 import 'features/mining/pc_builder_screen.dart';
@@ -32,6 +33,7 @@ final appRouter = GoRouter(
     // Полноэкранные экраны.
     GoRoute(path: '/pc_builder', builder: (context, state) => const PcBuilderScreen()),
     GoRoute(path: '/obsidian', builder: (context, state) => const ObsidianScreen()),
+    GoRoute(path: '/journal', builder: (context, state) => const JournalScreen()),
     GoRoute(
       path: '/note',
       builder: (context, state) => NoteScreen(notePath: state.extra as String),

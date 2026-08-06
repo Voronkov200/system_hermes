@@ -11,6 +11,7 @@ import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 class FileTools {
   /// Корень файлов Hermes: внешнее хранилище, если доступно.
@@ -70,6 +71,60 @@ class FileTools {
         .toList()
       ..sort();
     return 'Содержимое $path:\n${parts.take(100).join('\n')}';
+  }
+
+  /// Извлечение текста из PDF (учебники). pages: "12", "12-15" или пусто
+  /// (первые страницы до лимита символов).
+  static Future<String> readPdf(String path, {String pages = ''}) async {
+    final rootDir = await root();
+    final full = File(_join(rootDir.path, path));
+    if (!full.existsSync()) return 'Файл не найден: $path';
+
+    final doc = await pdfrx.PdfDocument.openFile(full.path);
+    final total = doc.pages.length;
+
+    var start = 1;
+    var end = total;
+    if (pages.trim().isNotEmpty) {
+      final m = RegExp(r'^(\d+)(?:\s*[-–]\s*(\d+))?$').firstMatch(pages.trim());
+      if (m != null) {
+        start = int.parse(m.group(1)!);
+        end = m.group(2) != null ? int.parse(m.group(2)!) : start;
+        if (start < 1) start = 1;
+        if (end > total) end = total;
+        if (start > end) {
+          await doc.dispose();
+          return 'Неверный диапазон страниц (всего $total).';
+        }
+      }
+    }
+
+    final buffer = StringBuffer();
+    var chars = 0;
+    const maxChars = 20000;
+    for (var i = start; i <= end && chars < maxChars; i++) {
+      try {
+        final page = doc.pages[i - 1];
+        final text = await page.loadStructuredText();
+        final content = text.fullText.trim();
+        if (content.isEmpty) continue;
+        buffer.writeln('--- стр. $i ---');
+        buffer.writeln(content);
+        chars += content.length;
+      } catch (_) {}
+    }
+    await doc.dispose();
+
+    var out = buffer.toString().trim();
+    if (out.isEmpty) {
+      return 'Текст из PDF не извлекается (возможно, это скан без OCR). '
+          'В PDF $total страниц.';
+    }
+    final pagesDone = (chars >= maxChars)
+        ? 'первые страницы (лимит $maxChars символов)'
+        : 'страницы $start-$end';
+    if (chars >= maxChars) out = '${out.substring(0, maxChars)}…';
+    return 'PDF: $path ($total стр.), извлечено: $pagesDone.\n$out';
   }
 
   /// Генерация PDF-документации на телефоне.

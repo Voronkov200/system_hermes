@@ -172,6 +172,63 @@ const ToolDefinition markTaskDoneTool = ToolDefinition(
   },
 );
 
+const ToolDefinition journalAddTool = ToolDefinition(
+  name: 'journal_add',
+  description:
+      'Добавить запись в журнал изменений (табличку всех действий). '
+      'Используй, когда пользователь сделал что-то важное, надиктовал мысль '
+      'или попросил записать результат. Позже это можно будет найти и '
+      'просмотреть.',
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'type': {
+        'type': 'string',
+        'description': 'voice | file | pdf | task | note | study | system',
+      },
+      'title': {'type': 'string', 'description': 'Краткое название'},
+      'text': {'type': 'string', 'description': 'Содержание записи'},
+    },
+    'required': ['type', 'title'],
+  },
+);
+
+const ToolDefinition makeStudyPdfTool = ToolDefinition(
+  name: 'make_study_pdf',
+  description:
+      'Составить конспект по параграфу/теме учебника в PDF: '
+      'предмет → параграф → суть → определения → формулы/правила → '
+      'важные моменты → вопросы для проверки. Сохраняется в '
+      'SystemHermes/study/конспекты/.',
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'title': {'type': 'string', 'description': 'Название (предмет, параграф)'},
+      'text': {'type': 'string', 'description': 'Текст конспекта по шаблону'},
+    },
+    'required': ['title', 'text'],
+  },
+);
+
+const ToolDefinition readPdfTool = ToolDefinition(
+  name: 'read_pdf',
+  description:
+      'Извлечь текст из PDF-файла на телефоне (учебники). Папка study/ '
+      'содержит учебники и конспекты. pages: номер страницы, диапазон '
+      '"12-15" или пусто (первые страницы).',
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'path': {'type': 'string', 'description': 'Путь к PDF'},
+      'pages': {
+        'type': 'string',
+        'description': 'Страницы: "12", "12-15" (необязательно)',
+      },
+    },
+    'required': ['path'],
+  },
+);
+
 /// Инструменты Hermes Agent (полный набор).
 final List<ToolDefinition> hermesAgentTools = [
   webSearchTool,
@@ -179,14 +236,17 @@ final List<ToolDefinition> hermesAgentTools = [
   searchKnowledgeTool,
   readNoteTool,
   createNoteTool,
+  readPdfTool,
   writeFileTool,
   readFileTool,
   listDirTool,
   makePdfTool,
+  makeStudyPdfTool,
   currencyTool,
   setTaskTool,
   listTasksTool,
   markTaskDoneTool,
+  journalAddTool,
 ];
 
 /// Инструменты Насти (компаньон: база знаний + веб + задачи).
@@ -199,5 +259,6 @@ final List<ToolDefinition> nastyaAgentTools = [
   setTaskTool,
   listTasksTool,
   markTaskDoneTool,
+  journalAddTool,
   currencyTool,
 ];

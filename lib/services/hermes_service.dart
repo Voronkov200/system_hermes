@@ -31,6 +31,7 @@ import 'agent/agent_loop.dart';
 import 'agent/file_tools.dart';
 import 'agent/tool_schemas.dart';
 import 'agent/web_tools.dart';
+import 'journal_service.dart';
 
 /// Состояние чата.
 class ChatState {
@@ -362,6 +363,16 @@ class ChatController extends Notifier<ChatState> {
           final content = call.arguments['content'] as String? ?? '';
           final obs = ref.read(obsidianProvider.notifier);
           final error = await obs.createNote(title, content);
+          if (error == null) {
+            ref.read(journalProvider.notifier).logAgentAction(
+                  source: 'hermes',
+                  type: 'note',
+                  title: 'Заметка «$title»',
+                  detail: content.length > 200
+                      ? '${content.substring(0, 200)}…'
+                      : content,
+                );
+          }
           return error == null
               ? 'Заметка «$title» создана в Vault.'
               : 'Ошибка: $error';
@@ -449,7 +460,14 @@ class ChatController extends Notifier<ChatState> {
           final path = call.arguments['path'] as String? ?? '';
           final content = call.arguments['content'] as String? ?? '';
           if (path.isEmpty) return 'Ошибка: не указан путь';
-          return await FileTools.writeFile(path, content);
+          final result = await FileTools.writeFile(path, content);
+          ref.read(journalProvider.notifier).logAgentAction(
+                source: 'hermes',
+                type: 'file',
+                title: 'Файл $path',
+                detail: result,
+              );
+          return result;
 
         case 'read_file':
           final path = call.arguments['path'] as String? ?? '';
@@ -465,7 +483,51 @@ class ChatController extends Notifier<ChatState> {
           final text = call.arguments['text'] as String? ?? '';
           final path = call.arguments['path'] as String? ?? '';
           if (text.isEmpty) return 'Ошибка: пустой текст документа';
-          return await FileTools.makePdf(title: title, text: text, outPath: path);
+          final result =
+              await FileTools.makePdf(title: title, text: text, outPath: path);
+          ref.read(journalProvider.notifier).logAgentAction(
+                source: 'hermes',
+                type: 'pdf',
+                title: 'PDF: $title',
+                detail: result,
+              );
+          return result;
+
+        case 'read_pdf':
+          final path = call.arguments['path'] as String? ?? '';
+          final pages = call.arguments['pages'] as String? ?? '';
+          if (path.isEmpty) return 'Ошибка: не указан путь';
+          return await FileTools.readPdf(path, pages: pages);
+
+        case 'make_study_pdf':
+          final title = call.arguments['title'] as String? ?? 'Конспект';
+          final text = call.arguments['text'] as String? ?? '';
+          if (text.isEmpty) return 'Ошибка: пустой текст конспекта';
+          final result = await FileTools.makePdf(
+            title: title,
+            text: text,
+            outPath: 'study/конспекты/${_safeFile(title)}.pdf',
+          );
+          ref.read(journalProvider.notifier).logAgentAction(
+                source: 'hermes',
+                type: 'study',
+                title: 'Конспект: $title',
+                detail: result,
+              );
+          return result;
+
+        case 'journal_add':
+          final type = call.arguments['type'] as String? ?? 'system';
+          final jtitle = call.arguments['title'] as String? ?? '';
+          final jtext = call.arguments['text'] as String? ?? '';
+          if (jtitle.isEmpty) return 'Ошибка: пустое название записи';
+          ref.read(journalProvider.notifier).add(
+                type: type,
+                source: 'hermes',
+                title: jtitle,
+                text: jtext,
+              );
+          return 'Запись добавлена в журнал: $jtitle';
 
         case 'search_knowledge':
           final query = call.arguments['query'] as String? ?? '';
@@ -477,6 +539,12 @@ class ChatController extends Notifier<ChatState> {
           final description = call.arguments['description'] as String? ?? '';
           if (title.isEmpty) return 'Ошибка: пустое название задачи';
           final id = ref.read(tasksProvider.notifier).addTask(title, description);
+          ref.read(journalProvider.notifier).logAgentAction(
+                source: 'hermes',
+                type: 'task',
+                title: 'Задача: $title',
+                detail: description,
+              );
           return 'Задача создана (id: $id): $title';
 
         case 'list_tasks':
@@ -506,6 +574,14 @@ class ChatController extends Notifier<ChatState> {
   }
 
   // ------------------------------------------------ поиск по базе знаний
+
+  /// Безопасное имя файла (без служебных символов).
+  static String _safeFile(String s) {
+    final clean = s
+        .replaceAll(RegExp(r'[^\wа-яА-ЯёЁ0-9\- ]'), '')
+        .trim();
+    return clean.isEmpty ? 'document' : clean.replaceAll(' ', '_');
+  }
 
   /// Поиск по заметкам Obsidian Vault: по названию и по содержимому.
   Future<String> _searchKnowledge(String query) async {

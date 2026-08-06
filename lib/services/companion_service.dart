@@ -20,6 +20,7 @@ import 'agent/tool_schemas.dart';
 import 'agent/web_tools.dart';
 import 'bank_service.dart';
 import 'habits_service.dart';
+import 'journal_service.dart';
 import 'life_service.dart';
 import 'nbrb_api.dart';
 import 'obsidian_service.dart';
@@ -386,6 +387,13 @@ class CompanionController extends Notifier<CompanionState> {
           final content = call.arguments['content'] as String? ?? '';
           final obs = ref.read(obsidianProvider.notifier);
           final error = await obs.createNote(title, content);
+          if (error == null) {
+            ref.read(journalProvider.notifier).logAgentAction(
+                  source: 'nastya',
+                  type: 'note',
+                  title: 'Заметка «$title»',
+                );
+          }
           return error == null
               ? 'Заметка «$title» создана в Vault.'
               : 'Ошибка: $error';
@@ -406,6 +414,12 @@ class CompanionController extends Notifier<CompanionState> {
           if (title.isEmpty) return 'Ошибка: пустое название задачи';
           final id =
               ref.read(tasksProvider.notifier).addTask(title, description);
+          ref.read(journalProvider.notifier).logAgentAction(
+                source: 'nastya',
+                type: 'task',
+                title: 'Задача: $title',
+                detail: description,
+              );
           return 'Задача создана (id: $id): $title';
 
         case 'list_tasks':
@@ -425,6 +439,19 @@ class CompanionController extends Notifier<CompanionState> {
           if (id.isEmpty) return 'Ошибка: не указан task_id';
           await ref.read(tasksProvider.notifier).markDone(id);
           return 'Задача $id отмечена выполненной.';
+
+        case 'journal_add':
+          final type = call.arguments['type'] as String? ?? 'system';
+          final jtitle = call.arguments['title'] as String? ?? '';
+          final jtext = call.arguments['text'] as String? ?? '';
+          if (jtitle.isEmpty) return 'Ошибка: пустое название записи';
+          ref.read(journalProvider.notifier).add(
+                type: type,
+                source: 'nastya',
+                title: jtitle,
+                text: jtext,
+              );
+          return 'Запись добавлена в журнал: $jtitle';
 
         case 'get_currency_rates':
           final rates = await ref.read(nbrbApiProvider).fetchRates();

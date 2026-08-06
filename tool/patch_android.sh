@@ -14,8 +14,8 @@ if [ ! -f "$MANIFEST" ]; then
   exit 1
 fi
 
-# 1. Разрешения: интернет и доступ к внешнему хранилищу (для Obsidian Vault)
-sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\n    <application>|' "$MANIFEST"
+# 1. Разрешения: интернет, доступ к внешнему хранилищу (Obsidian), микрофон (запись голоса)
+sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <application>|' "$MANIFEST"
 
 # 2. Health Connect: запросы и пермишен на чтение шагов
 sed -i 's|</manifest>|<queries>\n        <package android:name="com.google.android.apps.healthdata" />\n    </queries>\n</manifest>|' "$MANIFEST"
