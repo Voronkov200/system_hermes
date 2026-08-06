@@ -5,6 +5,7 @@
 
 import 'package:hive_ce/hive.dart';
 
+import '../services/tasks_service.dart';
 import 'models.dart';
 
 class AccountAdapter extends TypeAdapter<Account> {
@@ -354,5 +355,6 @@ void registerHiveAdapters() {
     ..registerAdapter(ObsidianNoteAdapter())
     ..registerAdapter(ChatMessageAdapter())
     ..registerAdapter(LifeStateAdapter())
-    ..registerAdapter(CompanionDataAdapter());
+    ..registerAdapter(CompanionDataAdapter())
+    ..registerAdapter(HermesTaskAdapter());
 }

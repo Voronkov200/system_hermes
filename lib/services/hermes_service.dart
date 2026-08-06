@@ -26,6 +26,11 @@ import 'mining_service.dart';
 import 'nbrb_api.dart';
 import 'obsidian_service.dart';
 import 'settings_service.dart';
+import 'tasks_service.dart';
+import 'agent/agent_loop.dart';
+import 'agent/file_tools.dart';
+import 'agent/tool_schemas.dart';
+import 'agent/web_tools.dart';
 
 /// Состояние чата.
 class ChatState {
@@ -196,7 +201,10 @@ class ChatController extends Notifier<ChatState> {
     if (rawTools is List) {
       for (final raw in rawTools) {
         if (raw is! Map) continue;
-        final call = ToolCall.fromJson(raw.cast<String, dynamic>());
+        final call = AgentToolCall(
+          (raw['name'] as String?) ?? '',
+          ((raw['arguments'] as Map?) ?? {}).cast<String, dynamic>(),
+        );
         final result = await executeTool(call);
         _add(ChatMessage(
           id: genId(),
@@ -214,7 +222,7 @@ class ChatController extends Notifier<ChatState> {
 
   // ------------------------------------------------------- llm (openai-совм.)
 
-  /// Ответ через OpenAI-совместимый LLM (OpenCode Zen и т.п.).
+  /// Ответ через OpenAI-совместимый LLM с агентным циклом (function calling).
   Future<String> _llmRequest(String text, SettingsState s) async {
     final bank = ref.read(bankProvider);
     final mining = ref.read(miningProvider);
@@ -244,40 +252,29 @@ class ChatController extends Notifier<ChatState> {
             })
         .toList();
 
-    final res = await http
-        .post(
-          Uri.parse(s.companionApiUrl),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ${s.llmKey}',
-          },
-          body: jsonEncode({
-            'model': s.companionModel,
-            'messages': [
-              {'role': 'system', 'content': system},
-              ...history,
-            ],
-            'temperature': 0.7,
-            'max_tokens': 450,
-          }),
-        )
-        .timeout(const Duration(seconds: 60));
+    final result = await runAgentLoop(
+      apiUrl: s.companionApiUrl,
+      apiKey: s.llmKey,
+      model: s.companionModel,
+      systemPrompt: system,
+      history: history,
+      tools: hermesAgentTools,
+      executeTool: executeTool,
+      maxTokens: 1024,
+    );
 
-    if (res.statusCode != 200) {
-      final reason = switch (res.statusCode) {
-        401 => 'неверный API-ключ (401)',
-        404 => 'неверный URL или модель (404)',
-        429 => 'превышен лимит запросов (429)',
-        _ => 'ошибка сервера ИИ',
-      };
-      throw Exception('HTTP ${res.statusCode} — $reason');
+    for (final step in result.steps) {
+      _add(ChatMessage(
+        id: genId(),
+        role: 'system',
+        text: '[tool] ${step.toolName}: ${step.result}',
+        date: DateTime.now(),
+        toolName: step.toolName,
+        toolStatus: step.result.startsWith('Ошибка') ? 'error' : 'ok',
+      ));
     }
-    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    final choices = data['choices'] as List? ?? const [];
-    if (choices.isEmpty) throw Exception('Пустой ответ API');
-    final content = (choices.first as Map)['message']?['content'] as String?;
-    final trimmed = (content ?? '').trim();
-    return trimmed.isEmpty ? '…' : trimmed;
+    final reply = result.content.isEmpty ? 'Готово. Что дальше?' : result.content;
+    return reply.trim();
   }
 
   // ---------------------------------------------------------- offline
@@ -293,13 +290,13 @@ class ChatController extends Notifier<ChatState> {
       final parts = rest.split(':');
       final title = parts.first.trim();
       final content = parts.length > 1 ? parts.sublist(1).join(':').trim() : '';
-      return await executeTool(ToolCall(
-        name: 'create_obsidian_note',
-        arguments: {'title': title, 'content': content, 'tags': []},
+      return await executeTool(AgentToolCall(
+        'create_obsidian_note',
+        {'title': title, 'content': content, 'tags': []},
       ));
     }
     if (lower.contains('курс') || lower.contains('валют') || lower.contains('доллар') || lower.contains('евро')) {
-      return await executeTool(ToolCall(name: 'get_currency_rates', arguments: {}));
+      return await executeTool(const AgentToolCall('get_currency_rates', {}));
     }
     if (lower.contains('коммит') || lower.contains('github')) {
       final s = ref.read(settingsProvider);
@@ -312,9 +309,9 @@ class ChatController extends Notifier<ChatState> {
           .toIso8601String()
           .split('T')
           .first;
-      return await executeTool(ToolCall(
-        name: 'get_github_commits',
-        arguments: {'owner': s.githubOwner, 'repo': s.githubRepo, 'since': since},
+      return await executeTool(AgentToolCall(
+        'get_github_commits',
+        {'owner': s.githubOwner, 'repo': s.githubRepo, 'since': since},
       ));
     }
     if (lower.contains('статус')) {
@@ -341,9 +338,12 @@ class ChatController extends Notifier<ChatState> {
       return 'Всегда пожалуйста. Продолжай дисциплину — система это ценит.';
     }
     if (lower.contains('фото')) {
-      return await executeTool(ToolCall(
-        name: 'request_photo_verification',
-        arguments: {'task_id': 'offline', 'description': 'Подтверди любое выполненное дело фото'},
+      return await executeTool(const AgentToolCall(
+        'request_photo_verification',
+        {
+          'task_id': 'offline',
+          'description': 'Подтверди любое выполненное дело фото',
+        },
       ));
     }
     return 'Записал. Я — контроллер: ставлю задачи, проверяю их через '
@@ -354,7 +354,7 @@ class ChatController extends Notifier<ChatState> {
   // ------------------------------------------------------- tool calling
 
   /// Выполнение локального инструмента Hermes.
-  Future<String> executeTool(ToolCall call) async {
+  Future<String> executeTool(AgentToolCall call) async {
     try {
       switch (call.name) {
         case 'create_obsidian_note':
@@ -433,12 +433,113 @@ class ChatController extends Notifier<ChatState> {
           await habitsN.markWorkout(habitId, targetReps);
           return 'Тренировка отмечена.';
 
+        // ------------------------------------------------ агентные инструменты
+
+        case 'web_search':
+          final query = call.arguments['query'] as String? ?? '';
+          if (query.isEmpty) return 'Ошибка: пустой запрос';
+          return await WebTools.search(query);
+
+        case 'get_webpage':
+          final url = call.arguments['url'] as String? ?? '';
+          if (url.isEmpty) return 'Ошибка: пустой URL';
+          return await WebTools.getPage(url);
+
+        case 'write_file':
+          final path = call.arguments['path'] as String? ?? '';
+          final content = call.arguments['content'] as String? ?? '';
+          if (path.isEmpty) return 'Ошибка: не указан путь';
+          return await FileTools.writeFile(path, content);
+
+        case 'read_file':
+          final path = call.arguments['path'] as String? ?? '';
+          if (path.isEmpty) return 'Ошибка: не указан путь';
+          return await FileTools.readFile(path);
+
+        case 'list_dir':
+          final path = call.arguments['path'] as String? ?? '';
+          return await FileTools.listDir(path);
+
+        case 'make_pdf':
+          final title = call.arguments['title'] as String? ?? 'Документ';
+          final text = call.arguments['text'] as String? ?? '';
+          final path = call.arguments['path'] as String? ?? '';
+          if (text.isEmpty) return 'Ошибка: пустой текст документа';
+          return await FileTools.makePdf(title: title, text: text, outPath: path);
+
+        case 'search_knowledge':
+          final query = call.arguments['query'] as String? ?? '';
+          if (query.isEmpty) return 'Ошибка: пустой запрос';
+          return await _searchKnowledge(query);
+
+        case 'set_task':
+          final title = call.arguments['title'] as String? ?? '';
+          final description = call.arguments['description'] as String? ?? '';
+          if (title.isEmpty) return 'Ошибка: пустое название задачи';
+          final id = ref.read(tasksProvider.notifier).addTask(title, description);
+          return 'Задача создана (id: $id): $title';
+
+        case 'list_tasks':
+          final tasks = ref.read(tasksProvider).tasks;
+          if (tasks.isEmpty) return 'Задач пока нет.';
+          final parts = tasks.map((t) {
+            final mark = t.status == 'done' ? '✅' : '⬜';
+            final desc = t.description.isEmpty ? '' : ' — ${t.description}';
+            return '$mark ${t.id} ${t.title}$desc';
+          });
+          final open = tasks.where((t) => t.status == 'open').length;
+          return 'Задачи ($open открыто, ${tasks.length - open} выполнено):\n'
+              '${parts.join('\n')}';
+
+        case 'mark_task_done':
+          final id = call.arguments['task_id'] as String? ?? '';
+          if (id.isEmpty) return 'Ошибка: не указан task_id';
+          await ref.read(tasksProvider.notifier).markDone(id);
+          return 'Задача $id отмечена выполненной.';
+
         default:
           return 'Неизвестный инструмент: ${call.name}';
       }
     } catch (e) {
       return 'Ошибка выполнения: $e';
     }
+  }
+
+  // ------------------------------------------------ поиск по базе знаний
+
+  /// Поиск по заметкам Obsidian Vault: по названию и по содержимому.
+  Future<String> _searchKnowledge(String query) async {
+    final q = query.toLowerCase().trim();
+    if (q.isEmpty) return 'Ошибка: пустой запрос';
+    final obsN = ref.read(obsidianProvider.notifier);
+    await obsN.refresh();
+    final notes = ref.read(obsidianProvider).notes;
+    if (notes.isEmpty) return 'Vault не найден или не доступен на этом устройстве.';
+
+    final byTitle = notes
+        .where((n) => n.title.toLowerCase().contains(q))
+        .take(8)
+        .toList();
+    final byContent = <ObsidianNote>[];
+    for (final n in notes.sublist(notes.length > 25 ? notes.length - 25 : 0)) {
+      final note = await obsN.readNote(n.path);
+      if (note?.content.toLowerCase().contains(q) ?? false) {
+        byContent.add(n);
+        if (byContent.length >= 8) break;
+      }
+    }
+
+    final seen = <String>{};
+    final matches = [...byTitle, ...byContent]
+        .where((n) => seen.add(n.title))
+        .take(10)
+        .toList();
+    if (matches.isEmpty) {
+      return 'По запросу «$query» в базе знаний ничего не найдено. '
+          'Попробуй интернет-поиск (web_search).';
+    }
+    final lines = matches.map((n) => '• ${n.title}').join('\n');
+    return 'Найдено по запросу «$query»:\n$lines';
   }
 
   // ---------------------------------------------------------- сводка

@@ -10,6 +10,7 @@ import 'core/constants.dart';
 import 'data/adapters.dart';
 import 'data/models.dart';
 import 'services/settings_service.dart';
+import 'services/tasks_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,7 @@ Future<void> main() async {
   await Hive.openBox<LifeState>(BoxNames.life);
   await Hive.openBox<CompanionData>(BoxNames.companion);
   await Hive.openBox<ChatMessage>(BoxNames.companionChat);
+  await Hive.openBox<HermesTask>(BoxNames.tasks);
 
   final prefs = await SharedPreferences.getInstance();
 
