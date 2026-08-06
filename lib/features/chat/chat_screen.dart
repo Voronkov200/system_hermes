@@ -15,6 +15,7 @@ import '../../data/companion_catalog.dart';
 import '../../data/models.dart';
 import '../../services/companion_service.dart';
 import '../../services/hermes_service.dart';
+import '../../services/settings_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -76,6 +77,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final hermes = ref.watch(chatProvider);
     final nastya = ref.watch(companionProvider);
+    final settings = ref.watch(settingsProvider);
+
+    // Офлайн-режим: ИИ не подключён (нет API-ключа / URL сервера Hermes).
+    final llmOffline = _nastya
+        ? settings.companionKey.isEmpty
+        : (settings.hermesUrl.trim().isEmpty && settings.llmKey.isEmpty);
 
     final pending = _nastya ? null : hermes.pendingPhotoTask;
     final thinking = _nastya ? nastya.thinking : hermes.thinking;
@@ -119,8 +126,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Stack(
         children: [
           // Фон: фото Насти (выбранное или по умолчанию из её TikTok),
-          // прикрытое светлым градиентом — фон остаётся светлым и нежным,
-          // фото даёт мягкий отблеск, сообщения читаются.
+          // прикрытое полупрозрачным светлым градиентом — фон светлый,
+          // но фото остаётся видимым.
           if (_nastya)
             Positioned.fill(
               child: Stack(
@@ -133,11 +140,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Color(0xEFFFF8F2),
-                          Color(0xEFFFEEF6),
-                          Color(0xEAE8F4FF),
+                          Color(0xB3FFF6EC),
+                          Color(0x99FFE7F3),
+                          Color(0x8CDCEAFB),
                         ],
-                        stops: [0.0, 0.55, 1.0],
+                        stops: [0.0, 0.6, 1.0],
                       ),
                     ),
                   ),
@@ -194,6 +201,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         child: Text(
                           'Настя обижена после срыва. Чат разблокируется: '
                           '${fmtDateTime(nastya.blockedUntil ?? DateTime.now())}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              // Офлайн-режим: ИИ не подключён — отвечают скрипты.
+              if (llmOffline)
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.warning),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.cloud_off,
+                          color: AppColors.warning, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _nastya
+                              ? 'ИИ не подключён: отвечаю по скрипту. '
+                                  'Впиши API-ключ: Настройки → ИИ и компаньон.'
+                              : 'ИИ не подключён: Hermes отвечает по скрипту. '
+                                  'Впиши API-ключ: Настройки → ИИ и компаньон.',
                           style: const TextStyle(fontSize: 12),
                         ),
                       ),
