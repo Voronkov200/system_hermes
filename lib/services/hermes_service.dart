@@ -15,10 +15,12 @@ import 'package:image_picker/image_picker.dart';
 import '../core/constants.dart';
 import '../core/utils.dart';
 import '../data/models.dart';
+import '../data/persona.dart';
 import 'bank_service.dart';
 import 'github_api.dart';
 import 'habits_service.dart';
 import 'health_service.dart';
+import 'life_service.dart';
 import 'mining_service.dart';
 import 'nbrb_api.dart';
 import 'obsidian_service.dart';
@@ -114,12 +116,14 @@ class ChatController extends Notifier<ChatState> {
     try {
       if (s.hermesUrl.trim().isNotEmpty) {
         reply = await _remoteRequest(trimmed, s);
+      } else if (s.hermesApiKey.trim().isNotEmpty) {
+        reply = await _llmRequest(trimmed, s);
       } else {
         reply = await _offlineRequest(trimmed);
       }
     } catch (e) {
-      reply = 'Ошибка соединения с Hermes Agent: $e\n\n'
-          'Проверь URL сервера в настройках (или работай в офлайн-режиме).';
+      reply = 'Ошибка соединения: $e\n\n'
+          'Проверь API-ключ/URL в настройках (или работай в офлайн-режиме).';
     }
 
     _setState(thinking: false);
@@ -204,6 +208,68 @@ class ChatController extends Notifier<ChatState> {
     }
     return (data['reply'] as String?) ??
         'Hermes Agent ответил без текста.';
+  }
+
+  // ------------------------------------------------------- llm (openai-совм.)
+
+  /// Ответ через OpenAI-совместимый LLM (OpenCode Zen и т.п.).
+  Future<String> _llmRequest(String text, SettingsState s) async {
+    final bank = ref.read(bankProvider);
+    final mining = ref.read(miningProvider);
+    final habits = ref.read(habitsProvider);
+    final life = ref.read(lifeProvider).state;
+    final fuel = bank.byId(Account.fuelId)?.balance ?? 0;
+    final assets = bank.byId(Account.assetsId)?.balance ?? 0;
+
+    final system = buildHermesSystemPrompt(
+      fuelBalance: fuel,
+      assetsBalance: assets,
+      cleanStreak: habits.cleanStreak(),
+      lifeLevel: 1 + (life.xp / 100).floor(),
+      xp: life.xp,
+      farmOnline: mining.farm.status == 'online',
+      farmLocked: mining.locked,
+      farmHashRate: mining.hashRate,
+    );
+
+    final all = _readMessages();
+    final tail = all.length > 16 ? all.sublist(all.length - 16) : all;
+    final history = tail
+        .where((m) => m.role != 'system')
+        .map((m) => {
+              'role': m.role == 'user' ? 'user' : 'assistant',
+              'content': m.text,
+            })
+        .toList();
+
+    final res = await http
+        .post(
+          Uri.parse(s.companionApiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${s.hermesApiKey}',
+          },
+          body: jsonEncode({
+            'model': s.companionModel,
+            'messages': [
+              {'role': 'system', 'content': system},
+              ...history,
+            ],
+            'temperature': 0.7,
+            'max_tokens': 450,
+          }),
+        )
+        .timeout(const Duration(seconds: 60));
+
+    if (res.statusCode != 200) {
+      throw Exception('HTTP ${res.statusCode}');
+    }
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final choices = data['choices'] as List? ?? const [];
+    if (choices.isEmpty) throw Exception('Пустой ответ API');
+    final content = (choices.first as Map)['message']?['content'] as String?;
+    final trimmed = (content ?? '').trim();
+    return trimmed.isEmpty ? '…' : trimmed;
   }
 
   // ---------------------------------------------------------- offline

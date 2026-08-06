@@ -34,12 +34,12 @@ class AppConstants {
   /// Максимум секунд начисляемых за один "тик" (защита от читов по времени).
   static const Duration maxTickGap = Duration(hours: 12);
 
-  /// URL по умолчанию для LLM Насти (Groq, OpenAI-совместимый API).
+  /// URL по умолчанию для LLM Насти и Hermes (OpenCode Zen, OpenAI-совместимый).
   static const String companionDefaultUrl =
-      'https://api.groq.com/openai/v1/chat/completions';
+      'https://opencode.ai/zen/v1/chat/completions';
 
-  /// Модель по умолчанию для Насти (Groq).
-  static const String companionDefaultModel = 'llama-3.3-70b-versatile';
+  /// Модель по умолчанию (бесплатная на OpenCode Zen).
+  static const String companionDefaultModel = 'deepseek-v4-flash-free';
 
   /// Длительность блокировки чата Насти после срыва протокола.
   static const Duration companionBlockDuration = Duration(hours: 24);
