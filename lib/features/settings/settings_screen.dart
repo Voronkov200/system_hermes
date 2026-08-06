@@ -1,5 +1,6 @@
 // Экран настроек: тема, пенсия, Vault, Hermes Agent, GitHub, сброс.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -378,11 +379,20 @@ class _TextFieldSetting extends ConsumerStatefulWidget {
 class _TextFieldSettingState extends ConsumerState<_TextFieldSetting> {
   late final TextEditingController _controller =
       TextEditingController(text: widget.initial);
+  Timer? _debounce;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _save() {
+    final v = _controller.text.trim();
+    if (v == widget.initial) return;
+    widget.onSave(v);
+    toast(context, 'Сохранено');
   }
 
   @override
@@ -396,16 +406,23 @@ class _TextFieldSettingState extends ConsumerState<_TextFieldSetting> {
           hintText: widget.hint,
           isDense: true,
         ),
+        onChanged: (v) {
+          // Автосохранение при вводе (через паузу) — чтобы значение
+          // не потерялось, даже если уйти с экрана без Enter.
+          _debounce?.cancel();
+          _debounce = Timer(const Duration(milliseconds: 700), () {
+            final val = _controller.text.trim();
+            if (val == widget.initial) return;
+            widget.onSave(val);
+            toast(context, 'Сохранено');
+          });
+        },
         onSubmitted: (v) {
+          _debounce?.cancel();
           widget.onSave(v.trim());
           toast(context, 'Сохранено');
         },
-        onTapOutside: (_) {
-          final v = _controller.text.trim();
-          if (v == widget.initial) return;
-          widget.onSave(v);
-          toast(context, 'Сохранено');
-        },
+        onTapOutside: (_) => _save(),
       ),
     );
   }

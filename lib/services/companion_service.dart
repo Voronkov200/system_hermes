@@ -9,6 +9,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:http/http.dart' as http;
@@ -304,6 +305,7 @@ class CompanionController extends Notifier<CompanionState> {
         reply = offlineReplyFor(trimmed, _levelIndex());
       }
     } catch (e) {
+      debugPrint('[Настя] LLM error: $e');
       reply = 'Что-то пошло не так, и я не получила ответ от своего мозга: '
           '$e\nПроверь API-ключ и URL в настройках — или я вернусь к '
           'офлайн-режиму, если ключ убрать. Я умею ждать.';
@@ -349,7 +351,13 @@ class CompanionController extends Notifier<CompanionState> {
         .timeout(const Duration(seconds: 60));
 
     if (res.statusCode != 200) {
-      throw Exception('HTTP ${res.statusCode}');
+      final reason = switch (res.statusCode) {
+        401 => 'неверный API-ключ (401)',
+        404 => 'неверный URL или модель (404)',
+        429 => 'превышен лимит запросов (429)',
+        _ => 'ошибка сервера ИИ',
+      };
+      throw Exception('HTTP ${res.statusCode} — $reason');
     }
     final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     final choices = data['choices'] as List? ?? const [];

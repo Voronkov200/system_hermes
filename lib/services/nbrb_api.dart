@@ -5,34 +5,47 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
-import '../core/constants.dart';
 import '../data/models.dart';
 
 class NbrbApi {
   final http.Client _client = http.Client();
 
+  /// Официальные курсы Нацбанка РБ: два зеркала (на случай блокировки одного).
+  static const List<String> _urls = [
+    'https://www.nbrb.by/api/exrates/rates?periodicity=0',
+    'https://api.nbrb.by/exrates/rates?periodicity=0',
+  ];
+
   /// Возвращает актуальные курсы USD и EUR (столько BYN за 1 единицу).
   Future<List<CurrencyRate>> fetchRates() async {
-    final res = await _client
-        .get(Uri.parse(AppConstants.nbrbRatesUrl))
-        .timeout(const Duration(seconds: 15));
-    if (res.statusCode != 200) {
-      throw Exception('Ошибка API НБРБ: HTTP ${res.statusCode}');
+    Object? lastError;
+    for (final url in _urls) {
+      try {
+        final res = await _client
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 12));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(res.bodyBytes)) as List<dynamic>;
+          final rates = <CurrencyRate>[];
+          for (final item in data) {
+            final code = item['Cur_Abbreviation'] as String?;
+            if (code != 'USD' && code != 'EUR') continue;
+            final date = DateTime.tryParse(item['Date'] as String? ?? '');
+            rates.add(CurrencyRate(
+              code: code!,
+              scale: (item['Cur_Scale'] as num).toInt(),
+              rate: (item['Cur_OfficialRate'] as num).toDouble(),
+              date: date ?? DateTime.now(),
+            ));
+          }
+          return rates;
+        }
+        lastError = Exception('HTTP ${res.statusCode}');
+      } catch (e) {
+        lastError = e;
+      }
     }
-    final data = jsonDecode(utf8.decode(res.bodyBytes)) as List<dynamic>;
-    final rates = <CurrencyRate>[];
-    for (final item in data) {
-      final code = item['Cur_Abbreviation'] as String?;
-      if (code != 'USD' && code != 'EUR') continue;
-      final date = DateTime.tryParse(item['Date'] as String? ?? '');
-      rates.add(CurrencyRate(
-        code: code!,
-        scale: (item['Cur_Scale'] as num).toInt(),
-        rate: (item['Cur_OfficialRate'] as num).toDouble(),
-        date: date ?? DateTime.now(),
-      ));
-    }
-    return rates;
+    throw Exception('Курсы НБРБ недоступны: $lastError');
   }
 
   /// Курс конкретной валюты из списка, null если нет.
