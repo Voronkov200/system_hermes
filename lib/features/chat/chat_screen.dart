@@ -118,12 +118,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Stack(
         children: [
-          // Фон: фото Насти (выбранное или по умолчанию из её TikTok).
+          // Фон: фото Насти (выбранное или по умолчанию из её TikTok),
+          // прикрытое светлым градиентом — фон остаётся светлым и нежным,
+          // фото даёт мягкий отблеск, сообщения читаются.
           if (_nastya)
             Positioned.fill(
-              child: Opacity(
-                opacity: 0.15,
-                child: _photoOrFallback(nastya.avatarPath),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _photoOrFallback(nastya.avatarPath),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color(0xEFFFF8F2),
+                          Color(0xEFFFEEF6),
+                          Color(0xEAE8F4FF),
+                        ],
+                        stops: [0.0, 0.55, 1.0],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           Column(
@@ -230,7 +248,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.send),
-                        color: AppColors.accent,
+                        color: _nastya ? AppColors.violet : AppColors.accent,
                       ),
                     ],
                   ),
