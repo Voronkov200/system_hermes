@@ -10,9 +10,10 @@ class AppShell extends StatelessWidget {
 
   int _indexFor(String path) {
     if (path.startsWith('/bank')) return 1;
-    if (path.startsWith('/mining')) return 2;
-    if (path.startsWith('/habits')) return 3;
-    if (path.startsWith('/chat')) return 4;
+    if (path.startsWith('/life')) return 2;
+    if (path.startsWith('/mining')) return 3;
+    if (path.startsWith('/habits')) return 4;
+    if (path.startsWith('/chat')) return 5;
     return 0;
   }
 
@@ -24,7 +25,7 @@ class AppShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) {
-          const paths = ['/', '/bank', '/mining', '/habits', '/chat'];
+          const paths = ['/', '/bank', '/life', '/mining', '/habits', '/chat'];
           context.go(paths[i]);
         },
         destinations: const [
@@ -37,6 +38,11 @@ class AppShell extends StatelessWidget {
             icon: Icon(Icons.account_balance_wallet_outlined),
             selectedIcon: Icon(Icons.account_balance_wallet),
             label: 'Банк',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.self_improvement_outlined),
+            selectedIcon: Icon(Icons.self_improvement),
+            label: 'Жизнь',
           ),
           NavigationDestination(
             icon: Icon(Icons.memory_outlined),

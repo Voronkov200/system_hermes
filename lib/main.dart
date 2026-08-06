@@ -22,6 +22,7 @@ Future<void> main() async {
   await Hive.openBox<MiningFarm>(BoxNames.farm);
   await Hive.openBox<HabitTracker>(BoxNames.habits);
   await Hive.openBox<ChatMessage>(BoxNames.chat);
+  await Hive.openBox<LifeState>(BoxNames.life);
 
   final prefs = await SharedPreferences.getInstance();
 

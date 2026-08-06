@@ -225,6 +225,49 @@ class ObsidianNote {
 }
 
 // =====================================================================
+// ЖИЗНЬ (RPG-механики "Богатой жизни", адаптированные под реальность)
+// =====================================================================
+
+/// Показатели и прогресс "Жизни": энергия, настроение, дисциплина, XP.
+@HiveType(typeId: 8)
+class LifeState {
+  double energy; // 0-100
+  double mood; // 0-100
+  double discipline; // 0-100
+  int xp;
+  DateTime lastTick; // момент последнего автотика
+  DateTime startedAt; // дата старта "Жизни"
+  final List<String> unlockedAchievements; // id открытых достижений
+  int currentQuestIndex; // индекс текущего квеста
+  DateTime? questCompletedAt; // когда открыт квест (для старения)
+  final Map<String, DateTime> lastActionAt; // id действия -> последний раз
+  final Map<String, int> actionCounts; // id действия -> сколько раз
+
+  LifeState({
+    this.energy = 100,
+    this.mood = 100,
+    this.discipline = 100,
+    this.xp = 0,
+    required this.lastTick,
+    required this.startedAt,
+    List<String>? unlockedAchievements,
+    this.currentQuestIndex = 0,
+    this.questCompletedAt,
+    Map<String, DateTime>? lastActionAt,
+    Map<String, int>? actionCounts,
+  })  : unlockedAchievements = unlockedAchievements ?? [],
+        lastActionAt = lastActionAt ?? {},
+        actionCounts = actionCounts ?? {};
+
+  factory LifeState.empty() =>
+      LifeState(lastTick: DateTime.now(), startedAt: DateTime.now());
+
+  /// Дней с начала "Жизни".
+  int get daysInSystem =>
+      DateTime.now().difference(startedAt).inDays + 1;
+}
+
+// =====================================================================
 // ЧАТ С HERMES
 // =====================================================================
 

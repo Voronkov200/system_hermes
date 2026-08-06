@@ -44,6 +44,7 @@ class BoxNames {
   static const String farm = 'farm';
   static const String habits = 'habits';
   static const String chat = 'chat';
+  static const String life = 'life';
 }
 
 /// Ключи настроек в SharedPreferences.

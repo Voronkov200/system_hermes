@@ -226,6 +226,73 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
   }
 }
 
+class LifeStateAdapter extends TypeAdapter<LifeState> {
+  @override
+  final int typeId = 8;
+
+  @override
+  LifeState read(BinaryReader reader) {
+    final lastActionAt = <String, DateTime>{};
+    final actionCounts = <String, int>{};
+
+    final actionsCount = reader.readInt();
+    for (var i = 0; i < actionsCount; i++) {
+      final id = reader.readString();
+      lastActionAt[id] = DateTime.fromMillisecondsSinceEpoch(reader.readInt());
+    }
+    final countsCount = reader.readInt();
+    for (var i = 0; i < countsCount; i++) {
+      final id = reader.readString();
+      actionCounts[id] = reader.readInt();
+    }
+
+    return LifeState(
+      energy: reader.readDouble(),
+      mood: reader.readDouble(),
+      discipline: reader.readDouble(),
+      xp: reader.readInt(),
+      lastTick: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
+      startedAt: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
+      unlockedAchievements: reader.readStringList(),
+      currentQuestIndex: reader.readInt(),
+      questCompletedAt: reader.readBool()
+          ? DateTime.fromMillisecondsSinceEpoch(reader.readInt())
+          : null,
+      lastActionAt: lastActionAt,
+      actionCounts: actionCounts,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, LifeState obj) {
+    writer.writeInt(obj.lastActionAt.length);
+    obj.lastActionAt.forEach((id, at) {
+      writer
+        ..writeString(id)
+        ..writeInt(at.millisecondsSinceEpoch);
+    });
+    writer.writeInt(obj.actionCounts.length);
+    obj.actionCounts.forEach((id, count) {
+      writer
+        ..writeString(id)
+        ..writeInt(count);
+    });
+    writer
+      ..writeDouble(obj.energy)
+      ..writeDouble(obj.mood)
+      ..writeDouble(obj.discipline)
+      ..writeInt(obj.xp)
+      ..writeInt(obj.lastTick.millisecondsSinceEpoch)
+      ..writeInt(obj.startedAt.millisecondsSinceEpoch)
+      ..writeStringList(obj.unlockedAchievements)
+      ..writeInt(obj.currentQuestIndex)
+      ..writeBool(obj.questCompletedAt != null);
+    if (obj.questCompletedAt != null) {
+      writer.writeInt(obj.questCompletedAt!.millisecondsSinceEpoch);
+    }
+  }
+}
+
 /// Регистрация всех адаптеров (вызывается до открытия боксов).
 void registerHiveAdapters() {
   Hive
@@ -236,5 +303,6 @@ void registerHiveAdapters() {
     ..registerAdapter(MiningFarmAdapter())
     ..registerAdapter(HabitTrackerAdapter())
     ..registerAdapter(ObsidianNoteAdapter())
-    ..registerAdapter(ChatMessageAdapter());
+    ..registerAdapter(ChatMessageAdapter())
+    ..registerAdapter(LifeStateAdapter());
 }
