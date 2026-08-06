@@ -289,27 +289,29 @@ class CompanionController extends Notifier<CompanionState> {
     // Заблокирована после срыва: отвечает сухо, без LLM.
     if (d.blocked) {
       final hours = d.blockedUntil!.difference(now).inHours + 1;
-      state = _readState(thinking: false);
       _nastyaSays('Я сказала — не пиши. Осталось ~$hours ч. '
           'Переживёшь. Займись делом.');
+      state = _readState();
       return;
     }
 
     String reply;
     try {
       final s = ref.read(settingsProvider);
-      if (s.companionApiKey.trim().isNotEmpty) {
+      if (s.companionKey.isNotEmpty) {
         reply = await _remoteRequest(trimmed, s);
       } else {
         reply = offlineReplyFor(trimmed, _levelIndex());
       }
     } catch (e) {
-      reply = 'Что-то пошло не так, и я не получила ответ от своего мозга. '
-          'Попробуй позже — или настрой мой API ключ. Я умею ждать.';
+      reply = 'Что-то пошло не так, и я не получила ответ от своего мозга: '
+          '$e\nПроверь API-ключ и URL в настройках — или я вернусь к '
+          'офлайн-режиму, если ключ убрать. Я умею ждать.';
     }
 
     state = _readState(thinking: false);
     _nastyaSays(reply);
+    state = _readState();
   }
 
   int _levelIndex() {
@@ -332,7 +334,7 @@ class CompanionController extends Notifier<CompanionState> {
           Uri.parse(s.companionApiUrl),
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer ${s.companionApiKey}',
+            'Authorization': 'Bearer ${s.companionKey}',
           },
           body: jsonEncode({
             'model': s.companionModel,

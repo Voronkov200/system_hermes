@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../data/companion_catalog.dart';
@@ -59,6 +60,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollDown();
   }
 
+  /// Фото Насти: выбранное из галереи, либо фото по умолчанию (её TikTok).
+  Widget _photoOrFallback(String path) {
+    if (path.isNotEmpty && File(path).existsSync()) {
+      return Image.file(File(path), fit: BoxFit.cover);
+    }
+    return Image.asset(
+      AppConstants.nastyaDefaultPhoto,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final hermes = ref.watch(chatProvider);
@@ -105,15 +118,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Stack(
         children: [
-          // Фон: фото Насти (если выбрано) в режиме компаньона.
-          if (_nastya && nastya.avatarPath.isNotEmpty)
+          // Фон: фото Насти (выбранное или по умолчанию из её TikTok).
+          if (_nastya)
             Positioned.fill(
               child: Opacity(
-                opacity: 0.08,
-                child: Image.file(
-                  File(nastya.avatarPath),
-                  fit: BoxFit.cover,
-                ),
+                opacity: 0.15,
+                child: _photoOrFallback(nastya.avatarPath),
               ),
             ),
           Column(
@@ -261,7 +271,6 @@ class _NastyaTitle extends StatelessWidget {
         _NastyaAvatar(
           path: companion.avatarPath,
           size: 34,
-          affinity: companion.affinity,
         ),
         const SizedBox(width: 10),
         Column(
@@ -303,16 +312,14 @@ class _NastyaTitle extends StatelessWidget {
   }
 }
 
-/// Круглый аватар Насти: фото или градиент с инициалом.
+/// Круглый аватар Насти: фото (выбранное или по умолчанию).
 class _NastyaAvatar extends StatelessWidget {
   final String path;
   final double size;
-  final double affinity;
 
   const _NastyaAvatar({
     required this.path,
     required this.size,
-    required this.affinity,
   });
 
   @override
@@ -327,27 +334,32 @@ class _NastyaAvatar extends StatelessWidget {
         ),
       );
     }
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.violet,
-            AppColors.danger.withValues(alpha: 0.55 + affinity / 200),
-          ],
-        ),
-      ),
-      child: Center(
-        child: Text(
-          'Н',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: size * 0.45,
-            fontWeight: FontWeight.w800,
+    return ClipOval(
+      child: Image.asset(
+        AppConstants.nastyaDefaultPhoto,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: size,
+          height: size,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.violet, AppColors.danger],
+            ),
+          ),
+          child: Center(
+            child: Text(
+              'Н',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: size * 0.45,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ),
       ),

@@ -43,6 +43,10 @@ class AppConstants {
 
   /// Длительность блокировки чата Насти после срыва протокола.
   static const Duration companionBlockDuration = Duration(hours: 24);
+
+  /// Фото Насти по умолчанию (из её TikTok @nastuyshkakristmas).
+  /// Используется как аватар и фон чата, пока не выбрано своё фото.
+  static const String nastyaDefaultPhoto = 'assets/nastya/avatar.webp';
 }
 
 /// Имена Hive-боксов.

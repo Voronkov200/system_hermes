@@ -1,5 +1,7 @@
 // Экран настроек: тема, пенсия, Vault, Hermes Agent, GitHub, сброс.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -169,6 +171,13 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
 
           const _SectionTitle('Hermes Agent'),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Text(
+              'Ключ Hermes используется и Настей, если её собственный ключ не задан.',
+              style: TextStyle(color: AppColors.textDim, fontSize: 11),
+            ),
+          ),
           _TextFieldSetting(
             label: 'URL сервера Hermes',
             initial: s.hermesUrl,
@@ -188,8 +197,10 @@ class SettingsScreen extends ConsumerWidget {
 
           const _SectionTitle('Настя (ИИ-компаньон)'),
           ListTile(
+            leading: _AvatarPreview(path: ref.watch(companionProvider).avatarPath),
             title: const Text('Фото Насти'),
-            subtitle: const Text('Аватар и фон в чате (из галереи)'),
+            subtitle: const Text('Аватар и фон в чате. '
+                'По умолчанию — фото с её TikTok'),
             trailing: FilledButton.tonal(
               onPressed: () async {
                 final path = await ref
@@ -204,7 +215,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           _TextFieldSetting(
-            label: 'API URL (Groq / OpenAI)',
+            label: 'API URL (OpenCode Zen / OpenAI)',
             initial: s.companionApiUrl,
             hint: AppConstants.companionDefaultUrl,
             onSave: (v) =>
@@ -213,7 +224,7 @@ class SettingsScreen extends ConsumerWidget {
           _TextFieldSetting(
             label: 'API ключ',
             initial: s.companionApiKey,
-            hint: 'ключ Groq (без ключа — офлайн-режим)',
+            hint: 'sk-… из OpenCode Zen (без ключа — офлайн-режим)',
             obscure: true,
             onSave: (v) =>
                 ref.read(settingsProvider.notifier).setCompanionApiKey(v),
@@ -285,6 +296,35 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+/// Кружок-превью фото Насти (выбранное или по умолчанию).
+class _AvatarPreview extends StatelessWidget {
+  final String path;
+
+  const _AvatarPreview({required this.path});
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 44.0;
+    Widget image;
+    if (path.isNotEmpty && File(path).existsSync()) {
+      image = Image.file(File(path), fit: BoxFit.cover);
+    } else {
+      image = Image.asset(
+        AppConstants.nastyaDefaultPhoto,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(
+          Icons.favorite,
+          color: AppColors.violet,
+          size: 20,
+        ),
+      );
+    }
+    return ClipOval(
+      child: SizedBox(width: size, height: size, child: image),
+    );
+  }
+}
+
 class _TextFieldSetting extends ConsumerStatefulWidget {
   final String label;
   final String initial;
@@ -327,6 +367,12 @@ class _TextFieldSettingState extends ConsumerState<_TextFieldSetting> {
         ),
         onSubmitted: (v) {
           widget.onSave(v.trim());
+          toast(context, 'Сохранено');
+        },
+        onTapOutside: (_) {
+          final v = _controller.text.trim();
+          if (v == widget.initial) return;
+          widget.onSave(v);
           toast(context, 'Сохранено');
         },
       ),

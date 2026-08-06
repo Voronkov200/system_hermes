@@ -47,6 +47,16 @@ class SettingsState {
     this.companionModel = AppConstants.companionDefaultModel,
   });
 
+  /// Ключ для LLM Hermes: свой ключ, либо ключ Насти, либо пусто.
+  String get llmKey => hermesApiKey.trim().isNotEmpty
+      ? hermesApiKey.trim()
+      : companionApiKey.trim();
+
+  /// Ключ для LLM Насти: свой ключ, либо ключ Hermes, либо пусто.
+  String get companionKey => companionApiKey.trim().isNotEmpty
+      ? companionApiKey.trim()
+      : hermesApiKey.trim();
+
   SettingsState copyWith({
     ThemeMode? themeMode,
     int? pensionDay,

@@ -153,7 +153,8 @@ class _HabitCard extends ConsumerWidget {
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Не срывался'),
-          ),          FilledButton(
+          ),
+          FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Да, срыв был'),

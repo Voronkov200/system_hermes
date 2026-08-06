@@ -116,7 +116,7 @@ class ChatController extends Notifier<ChatState> {
     try {
       if (s.hermesUrl.trim().isNotEmpty) {
         reply = await _remoteRequest(trimmed, s);
-      } else if (s.hermesApiKey.trim().isNotEmpty) {
+      } else if (s.llmKey.isNotEmpty) {
         reply = await _llmRequest(trimmed, s);
       } else {
         reply = await _offlineRequest(trimmed);
@@ -247,7 +247,7 @@ class ChatController extends Notifier<ChatState> {
           Uri.parse(s.companionApiUrl),
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer ${s.hermesApiKey}',
+            'Authorization': 'Bearer ${s.llmKey}',
           },
           body: jsonEncode({
             'model': s.companionModel,
@@ -388,7 +388,7 @@ class ChatController extends Notifier<ChatState> {
                 owner: owner,
                 repo: repo,
                 since: since,
-                token: s.hermesApiKey,
+                token: s.llmKey,
               );
           final msgs = (data['messages'] as List).take(5).toList();
           final tail = msgs.isEmpty ? '' : 'Последние:\n${msgs.join('\n')}';
