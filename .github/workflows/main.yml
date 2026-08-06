@@ -35,6 +35,12 @@ jobs:
       - name: Patch Android config
         run: bash tool/patch_android.sh
 
+      # Стабильная подпись: release-сборки подписываются debug-ключом,
+      # хранящимся в репозитории (иначе каждый раннер генерирует свой ключ
+      # и обновление приложения на телефоне становится невозможным)
+      - name: Use stable debug keystore
+        run: mkdir -p $HOME/.android && cp tool/debug.keystore $HOME/.android/debug.keystore
+
       - name: Build APK (release)
         run: flutter build apk --release
 
