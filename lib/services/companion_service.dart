@@ -102,12 +102,13 @@ class CompanionController extends Notifier<CompanionState> {
     final d = _get();
     d.messageCount++;
     _save(d);
-    _addMessage(ChatMessage(
+    final m = ChatMessage(
       id: genId(),
       role: 'nastya',
       text: text,
       date: DateTime.now(),
-    ));
+    );
+    _chatBox.put(m.id, m);
   }
 
   // ------------------------------------------------------------ контекст
@@ -211,7 +212,7 @@ class CompanionController extends Notifier<CompanionState> {
     d.blockedUntil = DateTime.now().add(const Duration(hours: 24));
     _save(d);
 
-    _addMessage(ChatMessage(
+    final m = ChatMessage(
       id: genId(),
       role: 'nastya',
       text: '…Срыв. Я всё вижу, Тим. ${d.totalRelapses}-й раз — '
@@ -219,8 +220,8 @@ class CompanionController extends Notifier<CompanionState> {
           'Не пиши мне 24 часа — подумай, зачем тебе это. '
           'Завтра жду тебя с новым стриком.',
       date: DateTime.now(),
-    ));
-    state = _readState(thinking: state.thinking);
+    );
+    _chatBox.put(m.id, m);
   }
 
   /// Поздравление с новыми достижениями Жизни.
