@@ -27,6 +27,12 @@ sed -i 's|android:label="system_hermes"|android:label="System: Hermes"|' "$MANIF
 # 4. minSdk 28 (Health Connect требует 26+, рекомендуем 28)
 if [ -f "$GRADLE" ]; then
   sed -i 's|minSdk = flutter.minSdkVersion|minSdk = 28|' "$GRADLE" || true
+
+  # 4a. Стабильная подпись: явный signingConfig release из переменных
+  # окружения (HERMES_KEYSTORE и др.). Без этого каждый CI-раннер
+  # генерирует свой debug-ключ и обновление APK на телефоне ломается.
+  sed -i 's|signingConfig = signingConfigs.getByName("debug")|signingConfig = signingConfigs.getByName("release")|' "$GRADLE" || true
+  sed -i 's|buildTypes {|signingConfigs {\n            create("release") {\n                storeFile = file(System.getenv("HERMES_KEYSTORE") ?: "../../tool/debug.keystore")\n                storePassword = System.getenv("HERMES_STORE_PASSWORD") ?: "android"\n                keyAlias = System.getenv("HERMES_KEY_ALIAS") ?: "androiddebugkey"\n                keyPassword = System.getenv("HERMES_KEY_PASSWORD") ?: "android"\n            }\n        }\n        buildTypes {|' "$GRADLE" || true
 fi
 
 # 4b. flutter_health_connect 1.2.3 пинит compileSdk 33 — зависимости требуют 34+.
