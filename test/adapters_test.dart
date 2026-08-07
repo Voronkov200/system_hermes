@@ -13,9 +13,12 @@ import 'package:system_hermes/data/models.dart';
 class LegacyMyPcStateAdapter extends MyPcStateAdapter {
   @override
   void write(BinaryWriter writer, MyPcState obj) {
+    // Как в старом адаптере: длина списка через writeInt + цикл writeString.
+    writer.writeInt(obj.tweaks.length);
+    for (final t in obj.tweaks) {
+      writer.writeString(t);
+    }
     writer
-      ..writeInt(obj.tweaks.length)
-      ..writeStringList(obj.tweaks)
       ..writeString(obj.phase)
       ..writeInt(obj.setupStage)
       ..writeDouble(obj.setupProgress)
