@@ -415,10 +415,10 @@ class _WindowsLogo extends StatelessWidget {
         padding: EdgeInsets.zero,
         physics: const NeverScrollableScrollPhysics(),
         children: [
-          _cell(color, cell),
-          _cell(color, cell),
-          _cell(color, cell),
-          _cell(color, cell),
+          _cell(Colors.white, cell),
+          _cell(Colors.white, cell),
+          _cell(Colors.white, cell),
+          _cell(Colors.white, cell),
         ],
       ),
     );
