@@ -392,7 +392,7 @@ class MyPcStateAdapter extends TypeAdapter<MyPcState> {
       bootCount: reader.readInt(),
     );
     // Персонализация (добавлена позже — старые данные без неё).
-    if (reader.readBool()) {
+    if (reader.availableBytes > 0 && reader.readBool()) {
       state
         ..wallpaperId = reader.readString()
         ..computerName = reader.readString()
