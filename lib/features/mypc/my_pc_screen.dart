@@ -322,7 +322,7 @@ class _SetupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stage = state.setupStage.clamp(0, 3) as int;
+    final stage = state.setupStage.clamp(0, 3);
     final progress = state.setupProgress.clamp(0.0, 100.0).toDouble();
     final copied = progress / 100 * state.imageSizeGb;
     return ColoredBox(
@@ -334,7 +334,7 @@ class _SetupScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _WindowsLogo(size: 96),
+                const _WindowsLogo(size: 96),
                 const SizedBox(height: 24),
                 Text(
                   'Установка Windows',
@@ -401,9 +401,8 @@ class _SetupScreen extends StatelessWidget {
 /// Логотип Windows: 4 квадрата.
 class _WindowsLogo extends StatelessWidget {
   final double size;
-  final Color color;
 
-  const _WindowsLogo({this.size = 32, this.color = Colors.white});
+  const _WindowsLogo({this.size = 32});
 
   @override
   Widget build(BuildContext context) {
@@ -562,7 +561,7 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
           _WinWindow(
             title: 'Компьютер',
             onClose: () => setState(() => _open = null),
-            child: _ExplorerWindow(),
+            child: const _ExplorerWindow(),
           ),
         if (_open == _Win.about)
           _WinWindow(
@@ -593,13 +592,15 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
             onStart: () => setState(() => _startMenuOpen = !_startMenuOpen),
             openWindows: {
               if (_open != null)
-                _open!: {
-                  'terminal': 'Терминал',
-                  'explorer': 'Компьютер',
-                  'about': 'Об этом ПК',
-                  'browser': 'Браузер',
-                  'personalize': 'Персонализация',
-                }[_open]!,
+                _open!: _open == _Win.terminal
+                    ? 'Терминал'
+                    : _open == _Win.explorer
+                        ? 'Компьютер'
+                        : _open == _Win.about
+                            ? 'Об этом ПК'
+                            : _open == _Win.browser
+                                ? 'Браузер'
+                                : 'Персонализация',
             },
             onWindowTap: _open == null
                 ? null
@@ -618,8 +619,8 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
               theme: widget.state.taskbarTheme,
               onClose: () => setState(() => _startMenuOpen = false),
               onOpen: (win) => _openWindow(win),
-              onShutdown: () => ref.read(myPcProvider.notifier).shutdown(),
-              onReboot: () => ref.read(myPcProvider.notifier).reboot(),
+              onShutdown: ref.read(myPcProvider.notifier).shutdown,
+              onReboot: ref.read(myPcProvider.notifier).reboot,
             ),
           ),
       ],

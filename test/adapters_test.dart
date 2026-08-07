@@ -117,7 +117,7 @@ void main() {
   test('VirtualFsFile: round-trip', () async {
     Hive.registerAdapter(VirtualFsFileAdapter());
     final box = await Hive.openBox<VirtualFsFile>('myPcFiles');
-    final file = VirtualFsFile(
+    final file = const VirtualFsFile(
       path: r'C:\Users\Hermes\Desktop\Привет.txt',
       content: 'привет мир',
     );
