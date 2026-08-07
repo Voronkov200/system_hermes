@@ -14,9 +14,11 @@ import '../../services/bank_service.dart';
 import '../../services/companion_service.dart';
 import '../../services/habits_service.dart';
 import '../../services/hermes_service.dart';
+import '../../services/journal_service.dart';
 import '../../services/mining_service.dart';
 import '../../services/obsidian_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/tasks_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -49,6 +51,8 @@ class SettingsScreen extends ConsumerWidget {
     await ref.read(habitsProvider.notifier).reset();
     await ref.read(chatProvider.notifier).reset();
     await ref.read(companionProvider.notifier).reset();
+    await ref.read(tasksProvider.notifier).reset();
+    await ref.read(journalProvider.notifier).clear();
     if (context.mounted) {
       toast(context, 'Все данные сброшены');
     }

@@ -21,6 +21,17 @@ class VoiceTranscriber {
 
   bool get isRecording => _recording;
 
+  /// Освобождение ресурсов микрофона (вызывается при закрытии чата).
+  Future<void> dispose() async {
+    if (_recording) {
+      _recording = false;
+      try {
+        await _recorder.stop();
+      } catch (_) {}
+    }
+    await _recorder.dispose();
+  }
+
   /// Начало записи с микрофона.
   Future<void> startRecording() async {
     if (_recording) return;

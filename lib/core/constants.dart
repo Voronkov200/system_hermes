@@ -82,6 +82,7 @@ class PrefKeys {
   static const String githubRepo = 'github_repo';
   static const String lastPensionMonth = 'last_pension_month';
   static const String protocolStart = 'protocol_start';
+  static const String workoutBonusDay = 'workout_bonus_day';
   static const String companionApiUrl = 'companion_api_url';
   static const String companionApiKey = 'companion_api_key';
   static const String companionModel = 'companion_model';

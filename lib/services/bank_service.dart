@@ -217,7 +217,7 @@ class BankController extends Notifier<BankState> {
   Future<void> applyWorkoutBonus() async {
     final s = ref.read(settingsProvider);
     final today = dateKeyLocal();
-    if (s.lastPensionMonth == '__bonus_$today') return; // уже начислен
+    if (s.lastWorkoutBonusDay == today) return; // уже начислен
 
     final fuel = _accounts.get(Account.fuelId);
     if (fuel != null) {
@@ -226,7 +226,7 @@ class BankController extends Notifier<BankState> {
       _logTransaction('bonus', 2, 'BYN',
           'Бонус: обе тренировки выполнены');
     }
-    await ref.read(settingsProvider.notifier).setLastPensionMonth('__bonus_$today');
+    await ref.read(settingsProvider.notifier).setWorkoutBonusDay(today);
     final next = _readState();
     state = BankState(
       accounts: next.accounts,

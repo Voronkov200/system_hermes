@@ -25,6 +25,7 @@ class SettingsState {
   String githubRepo;
   String lastPensionMonth; // '2026-08' — месяц последнего начисления
   String protocolStart; // дата начала протокола (для стрика)
+  String lastWorkoutBonusDay; // '2026-08-07' — день последнего бонуса за тренировки
   String companionApiUrl; // LLM для Насти (Groq-совместимый)
   String companionApiKey;
   String companionModel;
@@ -42,6 +43,7 @@ class SettingsState {
     this.githubRepo = '',
     this.lastPensionMonth = '',
     this.protocolStart = '',
+    this.lastWorkoutBonusDay = '',
     this.companionApiUrl = AppConstants.companionDefaultUrl,
     this.companionApiKey = '',
     this.companionModel = AppConstants.companionDefaultModel,
@@ -70,6 +72,7 @@ class SettingsState {
     String? githubRepo,
     String? lastPensionMonth,
     String? protocolStart,
+    String? lastWorkoutBonusDay,
     String? companionApiUrl,
     String? companionApiKey,
     String? companionModel,
@@ -87,6 +90,7 @@ class SettingsState {
       githubRepo: githubRepo ?? this.githubRepo,
       lastPensionMonth: lastPensionMonth ?? this.lastPensionMonth,
       protocolStart: protocolStart ?? this.protocolStart,
+      lastWorkoutBonusDay: lastWorkoutBonusDay ?? this.lastWorkoutBonusDay,
       companionApiUrl: companionApiUrl ?? this.companionApiUrl,
       companionApiKey: companionApiKey ?? this.companionApiKey,
       companionModel: companionModel ?? this.companionModel,
@@ -117,6 +121,8 @@ class SettingsController extends Notifier<SettingsState> {
       githubRepo: prefs.getString(PrefKeys.githubRepo) ?? '',
       lastPensionMonth: prefs.getString(PrefKeys.lastPensionMonth) ?? '',
       protocolStart: prefs.getString(PrefKeys.protocolStart) ?? '',
+      lastWorkoutBonusDay:
+          prefs.getString(PrefKeys.workoutBonusDay) ?? '',
       companionApiUrl: prefs.getString(PrefKeys.companionApiUrl) ??
           AppConstants.companionDefaultUrl,
       companionApiKey: prefs.getString(PrefKeys.companionApiKey) ?? '',
@@ -142,6 +148,7 @@ class SettingsController extends Notifier<SettingsState> {
       githubRepo: s.githubRepo,
       lastPensionMonth: s.lastPensionMonth,
       protocolStart: s.protocolStart,
+      lastWorkoutBonusDay: s.lastWorkoutBonusDay,
       companionApiUrl: s.companionApiUrl,
       companionApiKey: s.companionApiKey,
       companionModel: s.companionModel,
@@ -160,6 +167,8 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.githubRepo, next.githubRepo);
     await prefs.setString(PrefKeys.lastPensionMonth, next.lastPensionMonth);
     await prefs.setString(PrefKeys.protocolStart, next.protocolStart);
+    await prefs.setString(
+        PrefKeys.workoutBonusDay, next.lastWorkoutBonusDay);
     await prefs.setString(PrefKeys.companionApiUrl, next.companionApiUrl);
     await prefs.setString(PrefKeys.companionApiKey, next.companionApiKey);
     await prefs.setString(PrefKeys.companionModel, next.companionModel);
@@ -206,6 +215,10 @@ class SettingsController extends Notifier<SettingsState> {
 
   Future<void> setLastPensionMonth(String month) async {
     await _save((n) => n.lastPensionMonth = month);
+  }
+
+  Future<void> setWorkoutBonusDay(String day) async {
+    await _save((n) => n.lastWorkoutBonusDay = day);
   }
 
   Future<void> setCompanionApiUrl(String url) async {

@@ -115,6 +115,11 @@ class TasksController extends Notifier<TasksState> {
     state = TasksState(tasks: _sorted());
   }
 
+  Future<void> reset() async {
+    await _box.clear();
+    state = const TasksState(tasks: []);
+  }
+
   List<HermesTask> _sorted() {
     final tasks = _box.values.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));

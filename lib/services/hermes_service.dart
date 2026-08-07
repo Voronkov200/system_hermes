@@ -94,12 +94,20 @@ class ChatController extends Notifier<ChatState> {
     );
   }
 
-  void _setState({bool? thinking, String? photoTask, String? photoDesc}) {
+  void _setState({
+    bool? thinking,
+    String? photoTask,
+    String? photoDesc,
+    bool clearPhoto = false,
+  }) {
     state = ChatState(
       messages: _readMessages(),
       thinking: thinking ?? state.thinking,
-      pendingPhotoTask: photoTask ?? state.pendingPhotoTask,
-      pendingPhotoDescription: photoDesc ?? state.pendingPhotoDescription,
+      pendingPhotoTask:
+          clearPhoto ? null : (photoTask ?? state.pendingPhotoTask),
+      pendingPhotoDescription: clearPhoto
+          ? null
+          : (photoDesc ?? state.pendingPhotoDescription),
     );
   }
 
@@ -159,7 +167,7 @@ class ChatController extends Notifier<ChatState> {
         toolStatus: 'ok',
         imagePath: file.path,
       ));
-      _setState(photoTask: null, photoDesc: null);
+      _setState(clearPhoto: true);
       _add(ChatMessage(
         id: genId(),
         role: 'hermes',

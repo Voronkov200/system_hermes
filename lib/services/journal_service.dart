@@ -76,7 +76,7 @@ class JournalController extends Notifier<JournalState> {
     return JournalState(entries: _sorted());
   }
 
-  /// Добавление записи в журнал.
+  /// Добавление записи в журнал (лимит 1500 записей — старые удаляются).
   void add({
     required String type,
     required String source,
@@ -92,6 +92,10 @@ class JournalController extends Notifier<JournalState> {
       text: text.trim(),
     );
     _box.put(entry.id, entry);
+    if (_box.length > 1500) {
+      final oldest = _sorted().last;
+      _box.delete(oldest.id);
+    }
     state = JournalState(entries: _sorted());
   }
 
@@ -102,10 +106,6 @@ class JournalController extends Notifier<JournalState> {
     required String title,
     String? detail,
   }) {
-    if (_box.length >= 1500) {
-      final oldest = _sorted().first;
-      _box.delete(oldest.id);
-    }
     add(
       type: type,
       source: source,

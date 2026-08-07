@@ -40,6 +40,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void dispose() {
     _input.dispose();
     _scroll.dispose();
+    _voice.dispose();
     super.dispose();
   }
 
