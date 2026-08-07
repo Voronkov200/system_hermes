@@ -10,6 +10,7 @@ import 'features/journal/journal_screen.dart';
 import 'features/life/life_screen.dart';
 import 'features/mining/mining_screen.dart';
 import 'features/mining/pc_builder_screen.dart';
+import 'features/mypc/my_pc_screen.dart';
 import 'features/obsidian/note_screen.dart';
 import 'features/obsidian/obsidian_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -28,6 +29,7 @@ final appRouter = GoRouter(
         GoRoute(path: '/mining', builder: (context, state) => const MiningScreen()),
         GoRoute(path: '/habits', builder: (context, state) => const HabitsScreen()),
         GoRoute(path: '/chat', builder: (context, state) => const ChatScreen()),
+        GoRoute(path: '/mypc', builder: (context, state) => const MyPcScreen()),
       ],
     ),
     // Полноэкранные экраны.

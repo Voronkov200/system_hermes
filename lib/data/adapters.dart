@@ -358,5 +358,82 @@ void registerHiveAdapters() {
     ..registerAdapter(LifeStateAdapter())
     ..registerAdapter(CompanionDataAdapter())
     ..registerAdapter(HermesTaskAdapter())
-    ..registerAdapter(JournalEntryAdapter());
+    ..registerAdapter(JournalEntryAdapter())
+    ..registerAdapter(MyPcStateAdapter())
+    ..registerAdapter(VirtualFsFileAdapter());
+}
+
+class MyPcStateAdapter extends TypeAdapter<MyPcState> {
+  @override
+  final int typeId = 12;
+
+  @override
+  MyPcState read(BinaryReader reader) {
+    final tweaks = <String>[];
+    final tweaksCount = reader.readInt();
+    for (var i = 0; i < tweaksCount; i++) {
+      tweaks.add(reader.readString());
+    }
+    return MyPcState(
+      phase: reader.readString(),
+      setupStage: reader.readInt(),
+      setupProgress: reader.readDouble(),
+      phaseStartedAt: reader.readBool()
+          ? DateTime.fromMillisecondsSinceEpoch(reader.readInt())
+          : null,
+      installedAt: reader.readBool()
+          ? DateTime.fromMillisecondsSinceEpoch(reader.readInt())
+          : null,
+      osName: reader.readString(),
+      edition: reader.readString(),
+      imageSizeGb: reader.readDouble(),
+      sourceEditions: reader.readInt(),
+      tweaks: tweaks,
+      bootCount: reader.readInt(),
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, MyPcState obj) {
+    writer
+      ..writeInt(obj.tweaks.length)
+      ..writeStringList(obj.tweaks)
+      ..writeString(obj.phase)
+      ..writeInt(obj.setupStage)
+      ..writeDouble(obj.setupProgress)
+      ..writeBool(obj.phaseStartedAt != null);
+    if (obj.phaseStartedAt != null) {
+      writer.writeInt(obj.phaseStartedAt!.millisecondsSinceEpoch);
+    }
+    writer.writeBool(obj.installedAt != null);
+    if (obj.installedAt != null) {
+      writer.writeInt(obj.installedAt!.millisecondsSinceEpoch);
+    }
+    writer
+      ..writeString(obj.osName)
+      ..writeString(obj.edition)
+      ..writeDouble(obj.imageSizeGb)
+      ..writeInt(obj.sourceEditions)
+      ..writeInt(obj.bootCount);
+  }
+}
+
+class VirtualFsFileAdapter extends TypeAdapter<VirtualFsFile> {
+  @override
+  final int typeId = 13;
+
+  @override
+  VirtualFsFile read(BinaryReader reader) => VirtualFsFile(
+        path: reader.readString(),
+        content: reader.readString(),
+        isFolder: reader.readBool(),
+      );
+
+  @override
+  void write(BinaryWriter writer, VirtualFsFile obj) {
+    writer
+      ..writeString(obj.path)
+      ..writeString(obj.content)
+      ..writeBool(obj.isFolder);
+  }
 }

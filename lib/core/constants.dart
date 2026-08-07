@@ -64,6 +64,8 @@ class BoxNames {
   static const String companionChat = 'companion_chat';
   static const String tasks = 'tasks';
   static const String journal = 'journal';
+  static const String myPc = 'my_pc';
+  static const String myPcFiles = 'my_pc_files';
 }
 
 /// Ключи настроек в SharedPreferences.

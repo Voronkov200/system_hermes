@@ -304,6 +304,109 @@ class CompanionData {
 }
 
 // =====================================================================
+// МОЙ ПК (виртуальный компьютер с установкой Windows)
+// =====================================================================
+
+/// Состояние виртуального ПК: фазы включения, установки и рабочего стола.
+@HiveType(typeId: 12)
+class MyPcState {
+  /// Фаза: off | bios | setup | reboot | desktop
+  String phase;
+  int setupStage; // 0..3 — этап установки
+  double setupProgress; // 0..100
+  DateTime? phaseStartedAt; // начало текущей фазы (для тайминга)
+  DateTime? installedAt; // момент завершения установки
+  String osName; // имя сборки
+  String edition; // редакция Windows
+  double imageSizeGb; // реальный размер образа install.esd
+  int sourceEditions; // сколько редакций было в оригинальном ISO
+  final List<String> tweaks; // применённые к сборке твики
+  int bootCount; // сколько раз включался
+
+  MyPcState({
+    this.phase = 'off',
+    this.setupStage = 0,
+    this.setupProgress = 0,
+    this.phaseStartedAt,
+    this.installedAt,
+    this.osName = 'Windows 11 Pro — Hermes Edition',
+    this.edition = 'Windows 11 Pro',
+    this.imageSizeGb = 4.4,
+    this.sourceEditions = 6,
+    List<String>? tweaks,
+    this.bootCount = 0,
+  }) : tweaks = tweaks ?? [];
+
+  factory MyPcState.empty() => MyPcState();
+
+  bool get installed => phase == 'desktop';
+}
+
+/// Виртуальный файл/папка в файловой системе виртуального ПК.
+@HiveType(typeId: 13)
+class VirtualFsFile {
+  final String path; // полный путь, например C:\Users\Hermes\Desktop\Привет.txt
+  final String content; // содержимое (для папок пусто)
+  final bool isFolder;
+
+  const VirtualFsFile({
+    required this.path,
+    this.content = '',
+    this.isFolder = false,
+  });
+
+  String get name {
+    final parts = path.split('\\');
+    return parts.isEmpty ? path : parts.last;
+  }
+
+  /// Родительский каталог ('C:\Users\Hermes' для 'C:\Users\Hermes\Desktop').
+  String get parent {
+    final parts = path.split('\\');
+    if (parts.length <= 2) return '';
+    return parts.sublist(0, parts.length - 1).join('\\');
+  }
+
+  /// Имя без расширения (для папок — само имя).
+  String get stem {
+    final dot = name.lastIndexOf('.');
+    return dot > 0 ? name.substring(0, dot) : name;
+  }
+}
+
+/// Каталог виртуальных файлов "Моего ПК".
+class VirtualFsCatalog {
+  VirtualFsCatalog._();
+
+  /// Виртуальный образ сборки (символизирует реальный install.esd).
+  static const esdFileName = 'Win11_25H2_Hermes_ru-RU.esd';
+
+  static List<VirtualFsFile> defaults() => const [
+        VirtualFsFile(path: r'C:\Windows', isFolder: true),
+        VirtualFsFile(path: r'C:\Program Files', isFolder: true),
+        VirtualFsFile(path: r'C:\Users', isFolder: true),
+        VirtualFsFile(path: r'C:\Hermes OS', isFolder: true),
+        VirtualFsFile(path: r'C:\Windows\system32', isFolder: true),
+        VirtualFsFile(path: r'C:\Windows\explorer.exe', content: 'Оболочка Windows 11.'),
+        VirtualFsFile(path: r'C:\Windows\win.ini', content: '; для совместимости со старыми программами\r\n[fonts]\r\n[extensions]'),
+        VirtualFsFile(path: r'C:\Program Files\Groq CLI', isFolder: true),
+        VirtualFsFile(path: r'C:\Program Files\Groq CLI\groq.exe', content: 'Интерфейс командной строки Groq.'),
+        VirtualFsFile(path: r'C:\Users\Hermes', isFolder: true),
+        VirtualFsFile(path: r'C:\Users\Hermes\Desktop', isFolder: true),
+        VirtualFsFile(path: r'C:\Users\Hermes\Documents', isFolder: true),
+        VirtualFsFile(path: r'C:\Users\Hermes\Downloads', isFolder: true),
+        VirtualFsFile(path: r'C:\Users\Hermes\Desktop\Привет.txt', content: 'Добро пожаловать в Hermes OS!\r\nТвой виртуальный ПК работает.'),
+        VirtualFsFile(path: r'C:\Users\Hermes\Desktop\Сборка Hermes OS.txt', content: 'Урезанная сборка Windows 11 Pro (25H2, RU)\r\nРедакций в оригинале: 6 -> 1\r\nОбраз сжат в ESD.\r\nУдалены рекламные приложения.'),
+        VirtualFsFile(path: r'C:\Users\Hermes\Documents\План.txt', content: 'Протокол Дофаминовой Стабильности:\r\n- приседания и отжимания каждый день\r\n- без срывов 30 дней'),
+        VirtualFsFile(path: r'C:\Users\Hermes\Documents\Дневник.txt', content: 'День 1: система запущена.'),
+        VirtualFsFile(path: r'C:\Users\Hermes\Downloads\Win11_25H2_Hermes_ru-RU.esd', content: 'install.esd — сжатая сборка Windows 11 Pro Hermes Edition.'),
+        VirtualFsFile(path: r'C:\Hermes OS\README.txt', content: 'Hermes OS — твоя сборка Windows 11.\r\nКастомизация: твики, удаление мусора, ESD-сжатие.'),
+        VirtualFsFile(path: r'C:\Hermes OS\unattend.xml', content: '<unattend>Автовход: Hermes. OOBE: пропущен.</unattend>'),
+        VirtualFsFile(path: r'C:\Hermes OS\tweaks.txt', content: 'Телеметрия: off\r\nПоиск Bing: off\r\nРеклама в Пуске: off'),
+      ];
+}
+
+// =====================================================================
 // ЧАТ С HERMES
 // =====================================================================
 
