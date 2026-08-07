@@ -102,10 +102,31 @@ class MyPcController extends Notifier<MyPcStateView> {
 
   // ------------------------------------------------------------ фазы
 
+  /// Выбор обоев рабочего стола.
+  Future<void> setWallpaper(String id) async {
+    var s = _current();
+    s = _copyWith(s, wallpaperId: id);
+    _save(s);
+  }
+
+  /// Смена имени компьютера.
+  Future<void> setComputerName(String name) async {
+    var s = _current();
+    s = _copyWith(s, computerName: name.isEmpty ? 'HERMES-01' : name);
+    _save(s);
+  }
+
+  /// Смена темы панели задач (dark | light | blue).
+  Future<void> setTaskbarTheme(String theme) async {
+    var s = _current();
+    s = _copyWith(s, taskbarTheme: theme);
+    _save(s);
+  }
+
   /// Включение ПК: BIOS, затем автозагрузка с установочного диска.
   Future<void> powerOn() async {
-    var s = _current();
-    s = MyPcState(
+    final s = _current();
+    final next = MyPcState(
       phase: 'bios',
       setupStage: 0,
       setupProgress: 0,
@@ -117,14 +138,17 @@ class MyPcController extends Notifier<MyPcStateView> {
       sourceEditions: s.sourceEditions,
       tweaks: s.tweaks,
       bootCount: s.bootCount + 1,
+      wallpaperId: s.wallpaperId,
+      computerName: s.computerName,
+      taskbarTheme: s.taskbarTheme,
     );
-    _save(s);
+    _save(next);
   }
 
   /// Выключение ПК.
   Future<void> shutdown() async {
-    var s = _current();
-    s = MyPcState(
+    final s = _current();
+    final next = MyPcState(
       phase: 'off',
       setupStage: s.setupStage,
       setupProgress: s.setupProgress,
@@ -135,14 +159,17 @@ class MyPcController extends Notifier<MyPcStateView> {
       sourceEditions: s.sourceEditions,
       tweaks: s.tweaks,
       bootCount: s.bootCount,
+      wallpaperId: s.wallpaperId,
+      computerName: s.computerName,
+      taskbarTheme: s.taskbarTheme,
     );
-    _save(s);
+    _save(next);
   }
 
   /// Перезагрузка (перезапуск всего цикла: BIOS -> установка/рабочий стол).
   Future<void> reboot() async {
-    var s = _current();
-    s = MyPcState(
+    final s = _current();
+    final next = MyPcState(
       phase: 'bios',
       setupStage: s.installedAt != null ? 4 : s.setupStage,
       setupProgress: s.installedAt != null ? 100 : s.setupProgress,
@@ -154,8 +181,11 @@ class MyPcController extends Notifier<MyPcStateView> {
       sourceEditions: s.sourceEditions,
       tweaks: s.tweaks,
       bootCount: s.bootCount + 1,
+      wallpaperId: s.wallpaperId,
+      computerName: s.computerName,
+      taskbarTheme: s.taskbarTheme,
     );
-    _save(s);
+    _save(next);
   }
 
   /// Тик таймера (раз в секунду): продвигает фазы установки.
@@ -222,6 +252,9 @@ class MyPcController extends Notifier<MyPcStateView> {
     double? setupProgress,
     DateTime? phaseStartedAt,
     DateTime? installedAt,
+    String? wallpaperId,
+    String? computerName,
+    String? taskbarTheme,
   }) =>
       MyPcState(
         phase: phase ?? s.phase,
@@ -235,6 +268,9 @@ class MyPcController extends Notifier<MyPcStateView> {
         sourceEditions: s.sourceEditions,
         tweaks: s.tweaks,
         bootCount: s.bootCount,
+        wallpaperId: wallpaperId ?? s.wallpaperId,
+        computerName: computerName ?? s.computerName,
+        taskbarTheme: taskbarTheme ?? s.taskbarTheme,
       );
 
   MyPcState _current() => _box.get('pc') ?? MyPcState.empty();

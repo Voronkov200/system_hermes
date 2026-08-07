@@ -374,7 +374,7 @@ class MyPcStateAdapter extends TypeAdapter<MyPcState> {
     for (var i = 0; i < tweaksCount; i++) {
       tweaks.add(reader.readString());
     }
-    return MyPcState(
+    final state = MyPcState(
       phase: reader.readString(),
       setupStage: reader.readInt(),
       setupProgress: reader.readDouble(),
@@ -391,6 +391,14 @@ class MyPcStateAdapter extends TypeAdapter<MyPcState> {
       tweaks: tweaks,
       bootCount: reader.readInt(),
     );
+    // Персонализация (добавлена позже — старые данные без неё).
+    if (reader.readBool()) {
+      state
+        ..wallpaperId = reader.readString()
+        ..computerName = reader.readString()
+        ..taskbarTheme = reader.readString();
+    }
+    return state;
   }
 
   @override
@@ -414,7 +422,11 @@ class MyPcStateAdapter extends TypeAdapter<MyPcState> {
       ..writeString(obj.edition)
       ..writeDouble(obj.imageSizeGb)
       ..writeInt(obj.sourceEditions)
-      ..writeInt(obj.bootCount);
+      ..writeInt(obj.bootCount)
+      ..writeBool(true)
+      ..writeString(obj.wallpaperId)
+      ..writeString(obj.computerName)
+      ..writeString(obj.taskbarTheme);
   }
 }
 

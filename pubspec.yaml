@@ -42,6 +42,8 @@ dependencies:
   record: ^7.1.1
   # Разрешения Android (микрофон)
   permission_handler: ^11.3.1
+  # Браузер в "Моём ПК" (встроенный WebView)
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:

@@ -323,6 +323,11 @@ class MyPcState {
   final List<String> tweaks; // применённые к сборке твики
   int bootCount; // сколько раз включался
 
+  // Персонализация.
+  String wallpaperId; // id обоев рабочего стола
+  String computerName; // имя компьютера
+  String taskbarTheme; // dark | light | blue
+
   MyPcState({
     this.phase = 'off',
     this.setupStage = 0,
@@ -335,6 +340,9 @@ class MyPcState {
     this.sourceEditions = 6,
     List<String>? tweaks,
     this.bootCount = 0,
+    this.wallpaperId = 'default',
+    this.computerName = 'HERMES-01',
+    this.taskbarTheme = 'dark',
   }) : tweaks = tweaks ?? [];
 
   factory MyPcState.empty() => MyPcState();

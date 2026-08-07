@@ -12,6 +12,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../services/mining_service.dart';
 import '../../services/my_pc_service.dart';
+import 'browser_window.dart';
 
 String _fmtDate(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
@@ -20,6 +21,55 @@ String _fmtTime(DateTime d) =>
     '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
 String _fmtDateTime(DateTime d) => '${_fmtDate(d)} ${_fmtTime(d)}';
+
+/// Пресеты обоев рабочего стола (персонализация).
+class WallpaperPresets {
+  WallpaperPresets._();
+
+  static const ids = ['default', 'ocean', 'forest', 'sunset', 'matrix'];
+
+  static const List<({String id, String name, List<Color> colors})> all = [
+    (
+      id: 'default',
+      name: 'Hermes Night',
+      colors: [Color(0xFF0B2E59), Color(0xFF122F5A), Color(0xFF3E2C63), Color(0xFF701F4E)],
+    ),
+    (
+      id: 'ocean',
+      name: 'Океан',
+      colors: [Color(0xFF0D47A1), Color(0xFF0277BD), Color(0xFF00838F), Color(0xFF00695C)],
+    ),
+    (
+      id: 'forest',
+      name: 'Лес',
+      colors: [Color(0xFF1B5E20), Color(0xFF2E7D32), Color(0xFF33691E), Color(0xFF004D40)],
+    ),
+    (
+      id: 'sunset',
+      name: 'Закат',
+      colors: [Color(0xFF4A148C), Color(0xFFAD1457), Color(0xFFE65100), Color(0xFFF9A825)],
+    ),
+    (
+      id: 'matrix',
+      name: 'Матрица',
+      colors: [Color(0xFF000000), Color(0xFF003300), Color(0xFF006600), Color(0xFF00B33C)],
+    ),
+  ];
+
+  static List<Color> colorsFor(String id) {
+    for (final p in all) {
+      if (p.id == id) return p.colors;
+    }
+    return all.first.colors;
+  }
+
+  static String nameFor(String id) {
+    for (final p in all) {
+      if (p.id == id) return p.name;
+    }
+    return all.first.name;
+  }
+}
 
 class MyPcScreen extends ConsumerStatefulWidget {
   const MyPcScreen({super.key});
@@ -428,6 +478,8 @@ enum _Win {
   terminal,
   explorer,
   about,
+  browser,
+  personalize,
 }
 
 class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
@@ -436,21 +488,17 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final wallpaper = WallpaperPresets.colorsFor(widget.state.wallpaperId);
     return Stack(
       children: [
         // Обои.
-        const Positioned.fill(
+        Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF0B2E59),
-                  Color(0xFF122F5A),
-                  Color(0xFF3E2C63),
-                  Color(0xFF701F4E),
-                ],
+                colors: wallpaper,
               ),
             ),
           ),
@@ -463,6 +511,11 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _DesktopIcon(
+                icon: Icons.public,
+                label: 'Браузер',
+                onTap: () => _openWindow(_Win.browser),
+              ),
+              _DesktopIcon(
                 icon: Icons.computer,
                 label: 'Компьютер',
                 onTap: () => _openWindow(_Win.explorer),
@@ -471,6 +524,11 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
                 icon: Icons.terminal,
                 label: 'Терминал',
                 onTap: () => _openWindow(_Win.terminal),
+              ),
+              _DesktopIcon(
+                icon: Icons.palette_outlined,
+                label: 'Персонализация',
+                onTap: () => _openWindow(_Win.personalize),
               ),
               _DesktopIcon(
                 icon: Icons.info_outline,
@@ -512,12 +570,25 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
             onClose: () => setState(() => _open = null),
             child: _AboutWindow(state: widget.state),
           ),
+        if (_open == _Win.browser)
+          _WinWindow(
+            title: 'Браузер — Hermes',
+            onClose: () => setState(() => _open = null),
+            child: const BrowserWindow(),
+          ),
+        if (_open == _Win.personalize)
+          _WinWindow(
+            title: 'Персонализация',
+            onClose: () => setState(() => _open = null),
+            child: _PersonalizeWindow(state: widget.state),
+          ),
         // Панель задач.
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
           child: _Taskbar(
+            theme: widget.state.taskbarTheme,
             startMenuOpen: _startMenuOpen,
             onStart: () => setState(() => _startMenuOpen = !_startMenuOpen),
             openWindows: {
@@ -526,6 +597,8 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
                   'terminal': 'Терминал',
                   'explorer': 'Компьютер',
                   'about': 'Об этом ПК',
+                  'browser': 'Браузер',
+                  'personalize': 'Персонализация',
                 }[_open]!,
             },
             onWindowTap: _open == null
@@ -542,6 +615,7 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
             left: 6,
             bottom: 52,
             child: _StartMenu(
+              theme: widget.state.taskbarTheme,
               onClose: () => setState(() => _startMenuOpen = false),
               onOpen: (win) => _openWindow(win),
               onShutdown: () => ref.read(myPcProvider.notifier).shutdown(),
@@ -847,7 +921,7 @@ class _TerminalWindowState extends ConsumerState<_TerminalWindow> {
   List<String> _systemInfo() {
     final specs = _specsOf(ref);
     return [
-      'Имя компьютера: HERMES-01',
+      'Имя компьютера: ${widget.state.computerName}',
       'ОС: ${widget.state.osName}',
       'Сборка: 26100.2000 (25H2, RU)',
       'Издание: ${widget.state.edition}',
@@ -1154,7 +1228,7 @@ class _AboutWindow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final specs = _specsOf(ref);
     final rows = <(String, String)>[
-      ('Имя компьютера', 'HERMES-01'),
+      ('Имя компьютера', state.computerName),
       ('Процессор', specs['CPU']!),
       ('Видеокарта', specs['GPU']!),
       ('Память', specs['RAM']!),
@@ -1262,23 +1336,39 @@ class _AboutWindow extends ConsumerWidget {
 // =====================================================================
 
 class _Taskbar extends StatelessWidget {
+  final String theme;
   final bool startMenuOpen;
   final VoidCallback onStart;
   final Map<_Win, String> openWindows;
   final ValueChanged<_Win>? onWindowTap;
 
   const _Taskbar({
+    required this.theme,
     required this.startMenuOpen,
     required this.onStart,
     required this.openWindows,
     required this.onWindowTap,
   });
 
+  Color get _barColor => switch (theme) {
+        'light' => const Color(0xFFE9E9E9),
+        'blue' => const Color(0xFF00458A),
+        _ => const Color(0xFF1C1C1C),
+      };
+
+  Color get _buttonColor => switch (theme) {
+        'light' => const Color(0xFFD4D4D4),
+        'blue' => const Color(0xFF005DA6),
+        _ => const Color(0xFF3A3A3A),
+      };
+
+  Color get _textColor => theme == 'light' ? Colors.black87 : Colors.white;
+
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 42,
-      color: const Color(0xFF1C1C1C),
+      color: _barColor,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
@@ -1287,7 +1377,7 @@ class _Taskbar extends StatelessWidget {
             child: Container(
               width: 42,
               height: 36,
-              color: startMenuOpen ? const Color(0xFF3A3A3A) : null,
+              color: startMenuOpen ? _buttonColor : null,
               child: const Center(child: _WindowsLogo(size: 20)),
             ),
           ),
@@ -1301,14 +1391,14 @@ class _Taskbar extends StatelessWidget {
                   height: 32,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3A3A3A),
+                    color: _buttonColor,
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Row(
                     children: [
                       Text(
                         entry.value,
-                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                        style: TextStyle(color: _textColor, fontSize: 11),
                       ),
                     ],
                   ),
@@ -1316,7 +1406,7 @@ class _Taskbar extends StatelessWidget {
               ),
             ),
           const Spacer(),
-          _Clock(),
+          _Clock(textColor: _textColor),
           const SizedBox(width: 8),
         ],
       ),
@@ -1325,6 +1415,10 @@ class _Taskbar extends StatelessWidget {
 }
 
 class _Clock extends StatefulWidget {
+  final Color textColor;
+
+  const _Clock({this.textColor = Colors.white70});
+
   @override
   State<_Clock> createState() => _ClockState();
 }
@@ -1350,7 +1444,7 @@ class _ClockState extends State<_Clock> {
     return Text(
       '${_fmtTime(now)}\n${_fmtDate(now)}',
       textAlign: TextAlign.right,
-      style: const TextStyle(color: Colors.white70, fontSize: 10, height: 1.3),
+      style: TextStyle(color: widget.textColor, fontSize: 10, height: 1.3),
     );
   }
 }
@@ -1360,12 +1454,14 @@ class _ClockState extends State<_Clock> {
 // =====================================================================
 
 class _StartMenu extends StatelessWidget {
+  final String theme;
   final VoidCallback onClose;
   final ValueChanged<_Win> onOpen;
   final VoidCallback onShutdown;
   final VoidCallback onReboot;
 
   const _StartMenu({
+    required this.theme,
     required this.onClose,
     required this.onOpen,
     required this.onShutdown,
@@ -1374,8 +1470,13 @@ class _StartMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = theme == 'light';
+    final bg = isLight ? const Color(0xFFF0F0F0) : const Color(0xFF202020);
+    final textColor = isLight ? Colors.black87 : Colors.white;
+    final iconColor = isLight ? Colors.black54 : Colors.white70;
+    final dividerColor = isLight ? const Color(0xFFD0D0D0) : const Color(0xFF3A3A3A);
     return Material(
-      color: const Color(0xFF202020),
+      color: bg,
       elevation: 8,
       borderRadius: BorderRadius.circular(6),
       child: Container(
@@ -1388,6 +1489,8 @@ class _StartMenu extends StatelessWidget {
             _StartMenuItem(
               icon: Icons.person,
               label: 'Hermes',
+              iconColor: iconColor,
+              textColor: textColor,
               onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Hermes: система готова. Протокол активен.'),
@@ -1396,24 +1499,46 @@ class _StartMenu extends StatelessWidget {
               ),
             ),
             _StartMenuItem(
+              icon: Icons.public,
+              label: 'Браузер',
+              iconColor: iconColor,
+              textColor: textColor,
+              onTap: () => onOpen(_Win.browser),
+            ),
+            _StartMenuItem(
               icon: Icons.computer,
               label: 'Компьютер',
+              iconColor: iconColor,
+              textColor: textColor,
               onTap: () => onOpen(_Win.explorer),
             ),
             _StartMenuItem(
               icon: Icons.terminal,
               label: 'Терминал',
+              iconColor: iconColor,
+              textColor: textColor,
               onTap: () => onOpen(_Win.terminal),
+            ),
+            _StartMenuItem(
+              icon: Icons.palette_outlined,
+              label: 'Персонализация',
+              iconColor: iconColor,
+              textColor: textColor,
+              onTap: () => onOpen(_Win.personalize),
             ),
             _StartMenuItem(
               icon: Icons.info_outline,
               label: 'Об этом ПК',
+              iconColor: iconColor,
+              textColor: textColor,
               onTap: () => onOpen(_Win.about),
             ),
-            const Divider(color: Color(0xFF3A3A3A), height: 12),
+            Divider(color: dividerColor, height: 12),
             _StartMenuItem(
               icon: Icons.restart_alt,
               label: 'Перезагрузка',
+              iconColor: iconColor,
+              textColor: textColor,
               onTap: () {
                 onClose();
                 onReboot();
@@ -1422,6 +1547,8 @@ class _StartMenu extends StatelessWidget {
             _StartMenuItem(
               icon: Icons.power_settings_new,
               label: 'Выключение',
+              iconColor: iconColor,
+              textColor: textColor,
               onTap: () {
                 onClose();
                 onShutdown();
@@ -1437,11 +1564,15 @@ class _StartMenu extends StatelessWidget {
 class _StartMenuItem extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color iconColor;
+  final Color textColor;
   final VoidCallback onTap;
 
   const _StartMenuItem({
     required this.icon,
     required this.label,
+    required this.iconColor,
+    required this.textColor,
     required this.onTap,
   });
 
@@ -1453,14 +1584,174 @@ class _StartMenuItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: Colors.white70),
+            Icon(icon, size: 18, color: iconColor),
             const SizedBox(width: 10),
             Text(
               label,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
+              style: TextStyle(color: textColor, fontSize: 12),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// =====================================================================
+// ПЕРСОНАЛИЗАЦИЯ
+// =====================================================================
+
+class _PersonalizeWindow extends ConsumerStatefulWidget {
+  final MyPcState state;
+
+  const _PersonalizeWindow({required this.state});
+
+  @override
+  ConsumerState<_PersonalizeWindow> createState() => _PersonalizeWindowState();
+}
+
+class _PersonalizeWindowState extends ConsumerState<_PersonalizeWindow> {
+  late final TextEditingController _nameCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.state.computerName);
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+    return Container(
+      color: const Color(0xFFF0F0F0),
+      padding: const EdgeInsets.all(14),
+      child: ListView(
+        children: [
+          const Text(
+            'Обои рабочего стола',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 1.8,
+            children: [
+              for (final p in WallpaperPresets.all)
+                GestureDetector(
+                  onTap: () {
+                    ref.read(myPcProvider.notifier).setWallpaper(p.id);
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: p.colors,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: state.wallpaperId == p.id
+                            ? AppColors.accent
+                            : Colors.transparent,
+                        width: 3,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        p.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const Divider(height: 28),
+          const Text(
+            'Имя компьютера',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _nameCtrl,
+            style: const TextStyle(color: Colors.black87, fontSize: 13),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(color: Colors.grey.shade400),
+              ),
+              hintText: 'HERMES-01',
+              isDense: true,
+            ),
+            onSubmitted: (v) {
+              ref.read(myPcProvider.notifier).setComputerName(v.trim());
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Имя компьютера обновлено')),
+              );
+            },
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Нажмите Enter, чтобы применить',
+            style: TextStyle(fontSize: 11, color: Colors.black45),
+          ),
+          const Divider(height: 28),
+          const Text(
+            'Тема панели задач',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (final t in const [
+                (id: 'dark', name: 'Тёмная'),
+                (id: 'light', name: 'Светлая'),
+                (id: 'blue', name: 'Синяя'),
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(t.name),
+                    selected: state.taskbarTheme == t.id,
+                    onSelected: (_) {
+                      ref
+                          .read(myPcProvider.notifier)
+                          .setTaskbarTheme(t.id);
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
