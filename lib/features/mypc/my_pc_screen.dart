@@ -618,7 +618,7 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
             child: _StartMenu(
               theme: widget.state.taskbarTheme,
               onClose: () => setState(() => _startMenuOpen = false),
-              onOpen: (win) => _openWindow(win),
+              onOpen: _openWindow,
               onShutdown: ref.read(myPcProvider.notifier).shutdown,
               onReboot: ref.read(myPcProvider.notifier).reboot,
             ),
