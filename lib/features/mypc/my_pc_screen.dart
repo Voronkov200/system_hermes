@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../services/mining_service.dart';
 import '../../services/my_pc_service.dart';
@@ -49,23 +50,71 @@ class _MyPcScreenState extends ConsumerState<MyPcScreen> {
   Widget build(BuildContext context) {
     final pc = ref.watch(myPcProvider);
     final phase = pc.state.phase;
+    final isOff = phase == 'off';
     return Scaffold(
-      appBar: AppBar(title: const Text('Мой ПК')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: AspectRatio(
-            aspectRatio: 16 / 10,
-            child: _MonitorFrame(
-              child: switch (phase) {
-                'off' => const _OffScreen(),
-                'bios' => const _BiosScreen(),
-                'setup' => _SetupScreen(state: pc.state),
-                'reboot' => const _RebootScreen(),
-                _ => _DesktopScreen(state: pc.state),
-              },
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Монитор на всю доступную высоту.
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+                child: _MonitorFrame(
+                  child: switch (phase) {
+                    'off' => const _OffScreen(),
+                    'bios' => const _BiosScreen(),
+                    'setup' => _SetupScreen(state: pc.state),
+                    'reboot' => const _RebootScreen(),
+                    _ => _DesktopScreen(state: pc.state),
+                  },
+                ),
+              ),
             ),
-          ),
+            // Панель управления.
+            Container(
+              height: 58,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              color: AppColors.surface,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      switch (phase) {
+                        'off' => 'ПК выключен',
+                        'bios' => 'Загрузка BIOS...',
+                        'setup' => 'Установка Windows',
+                        'reboot' => 'Перезагрузка...',
+                        _ => 'Windows 11 Pro — работает',
+                      },
+                      style: const TextStyle(
+                        color: AppColors.textDim,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: isOff ? 'Включить' : 'Выключить',
+                    onPressed: () => isOff
+                        ? ref.read(myPcProvider.notifier).powerOn()
+                        : ref.read(myPcProvider.notifier).shutdown(),
+                    icon: Icon(
+                      isOff ? Icons.power_settings_new : Icons.power_off,
+                      color: isOff ? AppColors.accent : AppColors.danger,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    tooltip: 'Перезагрузить',
+                    onPressed: isOff
+                        ? null
+                        : () => ref.read(myPcProvider.notifier).reboot(),
+                    icon: const Icon(Icons.restart_alt,
+                        color: AppColors.warning),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -117,29 +166,46 @@ class _OffScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () => ref.read(myPcProvider.notifier).powerOn(),
-      child: ColoredBox(
-        color: Colors.black,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.power_settings_new,
-                size: 64,
-                color: Colors.white.withValues(alpha: 0.35),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Нажмите, чтобы включить',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.35),
-                  fontSize: 14,
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Material(
+              color: const Color(0xFF1A222E),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => ref.read(myPcProvider.notifier).powerOn(),
+                child: const Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Icon(
+                    Icons.power_settings_new,
+                    size: 64,
+                    color: AppColors.accent,
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Нажмите кнопку питания',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 17,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Будет установлена: ${VirtualFsCatalog.esdFileName.replaceAll('.esd', '')}',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -178,8 +244,8 @@ class _BiosScreen extends StatelessWidget {
             style: const TextStyle(
               color: Color(0xFF33FF66),
               fontFamily: 'monospace',
-              fontSize: 12,
-              height: 1.5,
+              fontSize: 15,
+              height: 1.6,
             ),
           ),
         ),
@@ -218,22 +284,22 @@ class _SetupScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _WindowsLogo(size: 64),
-                const SizedBox(height: 20),
+                _WindowsLogo(size: 96),
+                const SizedBox(height: 24),
                 Text(
                   'Установка Windows',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.92),
-                    fontSize: 26,
+                    fontSize: 34,
                     fontWeight: FontWeight.w300,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Text(
                   state.osName,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.75),
-                    fontSize: 13,
+                    fontSize: 16,
                   ),
                 ),
               ],
@@ -249,24 +315,24 @@ class _SetupScreen extends StatelessWidget {
                 children: [
                   Text(
                     _stages[stage],
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: const TextStyle(color: Colors.white, fontSize: 17),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     stage == 0
                         ? 'Скопировано: ${copied.toStringAsFixed(1)} ГБ из ${state.imageSizeGb.toStringAsFixed(1)} ГБ'
                         : 'Установка: ${progress.toStringAsFixed(0)}%',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 12,
+                      fontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: progress / 100,
-                      minHeight: 14,
+                      minHeight: 16,
                       backgroundColor: Colors.white.withValues(alpha: 0.25),
                       valueColor:
                           const AlwaysStoppedAnimation(Color(0xFFF2F2F2)),
@@ -847,8 +913,8 @@ class _TerminalWindowState extends ConsumerState<_TerminalWindow> {
                 style: const TextStyle(
                   color: Color(0xFFCCCCCC),
                   fontFamily: 'monospace',
-                  fontSize: 12,
-                  height: 1.4,
+                  fontSize: 13,
+                  height: 1.5,
                 ),
               ),
             ),
@@ -862,7 +928,7 @@ class _TerminalWindowState extends ConsumerState<_TerminalWindow> {
                   style: const TextStyle(
                     color: Color(0xFFCCCCCC),
                     fontFamily: 'monospace',
-                    fontSize: 12,
+                    fontSize: 13,
                   ),
                 ),
                 Expanded(
@@ -872,7 +938,7 @@ class _TerminalWindowState extends ConsumerState<_TerminalWindow> {
                     style: const TextStyle(
                       color: Colors.white,
                       fontFamily: 'monospace',
-                      fontSize: 12,
+                      fontSize: 13,
                     ),
                     decoration: const InputDecoration(
                       isDense: true,
