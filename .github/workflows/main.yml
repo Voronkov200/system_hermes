@@ -41,6 +41,10 @@ jobs:
       - name: Use stable debug keystore
         run: mkdir -p $HOME/.android && cp tool/debug.keystore $HOME/.android/debug.keystore
 
+      # Проверка анализатора и тестов до сборки
+      - name: Analyze & Test
+        run: flutter analyze && flutter test
+
       - name: Build APK (release)
         run: flutter build apk --release
 
