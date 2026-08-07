@@ -42,6 +42,7 @@ void main() {
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('hermes_hive_test');
     Hive.init(tempDir.path);
+    Hive.resetAdapters();
   });
 
   tearDown(() async {
