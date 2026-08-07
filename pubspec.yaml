@@ -39,7 +39,7 @@ dependencies:
   # Извлечение текста из PDF учебников (pdfium)
   pdfrx: ^2.4.7
   # Запись голоса с микрофона (транскрибация)
-  record: ^5.1.2
+  record: ^7.1.1
   # Разрешения Android (микрофон)
   permission_handler: ^11.3.1
 
