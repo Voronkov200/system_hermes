@@ -217,16 +217,16 @@ class MyPcController extends Notifier<MyPcStateView> {
 
   MyPcState _copyWith(
     MyPcState s, {
-    required String phase,
-    required int setupStage,
-    required double setupProgress,
+    String? phase,
+    int? setupStage,
+    double? setupProgress,
     DateTime? phaseStartedAt,
     DateTime? installedAt,
   }) =>
       MyPcState(
-        phase: phase,
-        setupStage: setupStage,
-        setupProgress: setupProgress,
+        phase: phase ?? s.phase,
+        setupStage: setupStage ?? s.setupStage,
+        setupProgress: setupProgress ?? s.setupProgress,
         phaseStartedAt: phaseStartedAt ?? s.phaseStartedAt,
         installedAt: installedAt ?? s.installedAt,
         osName: s.osName,

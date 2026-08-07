@@ -479,6 +479,7 @@ class _DesktopScreenState extends ConsumerState<_DesktopScreen> {
               onClose: () => setState(() => _startMenuOpen = false),
               onOpen: (win) => _openWindow(win),
               onShutdown: () => ref.read(myPcProvider.notifier).shutdown(),
+              onReboot: () => ref.read(myPcProvider.notifier).reboot(),
             ),
           ),
       ],
@@ -608,13 +609,13 @@ class _WinWindow extends StatelessWidget {
 // ТЕРМИНАЛ
 // =====================================================================
 
-class _TerminalWindow extends StatefulWidget {
+class _TerminalWindow extends ConsumerStatefulWidget {
   final MyPcState state;
 
   const _TerminalWindow({required this.state});
 
   @override
-  State<_TerminalWindow> createState() => _TerminalWindowState();
+  ConsumerState<_TerminalWindow> createState() => _TerminalWindowState();
 }
 
 class _TerminalWindowState extends ConsumerState<_TerminalWindow> {
@@ -778,7 +779,7 @@ class _TerminalWindowState extends ConsumerState<_TerminalWindow> {
   }
 
   List<String> _systemInfo() {
-    final specs = _specsOf(context);
+    final specs = _specsOf(ref);
     return [
       'Имя компьютера: HERMES-01',
       'ОС: ${widget.state.osName}',
@@ -894,8 +895,8 @@ class _TerminalWindowState extends ConsumerState<_TerminalWindow> {
 }
 
 /// Характеристики ПК из комплектующих майнинг-фермы (или по умолчанию).
-Map<String, String> _specsOf(BuildContext context) {
-  final farm = context.read(miningProvider).farm;
+Map<String, String> _specsOf(WidgetRef ref) {
+  final farm = ref.read(miningProvider).farm;
   final ids = farm.componentIds;
   const defaults = {
     'CPU': 'Intel Core i5-10400F',
@@ -929,18 +930,18 @@ Map<String, String> _specsOf(BuildContext context) {
 // ПРОВОДНИК
 // =====================================================================
 
-class _ExplorerWindow extends StatefulWidget {
+class _ExplorerWindow extends ConsumerStatefulWidget {
   const _ExplorerWindow();
 
   @override
-  State<_ExplorerWindow> createState() => _ExplorerWindowState();
+  ConsumerState<_ExplorerWindow> createState() => _ExplorerWindowState();
 }
 
-class _ExplorerWindowState extends State<_ExplorerWindow> {
+class _ExplorerWindowState extends ConsumerState<_ExplorerWindow> {
   String _path = r'C:\';
 
   void _openFile(String path) {
-    final f = context.read(myPcProvider.notifier).fileAt(path);
+    final f = ref.read(myPcProvider.notifier).fileAt(path);
     if (f == null) return;
     showDialog<void>(
       context: context,
@@ -968,7 +969,7 @@ class _ExplorerWindowState extends State<_ExplorerWindow> {
 
   @override
   Widget build(BuildContext context) {
-    final files = context.read(myPcProvider.notifier).listDir(_path);
+    final files = ref.read(myPcProvider.notifier).listDir(_path);
     return Container(
       color: Colors.white,
       child: Column(
@@ -1085,7 +1086,7 @@ class _AboutWindow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final specs = _specsOf(context);
+    final specs = _specsOf(ref);
     final rows = <(String, String)>[
       ('Имя компьютера', 'HERMES-01'),
       ('Процессор', specs['CPU']!),
@@ -1296,11 +1297,13 @@ class _StartMenu extends StatelessWidget {
   final VoidCallback onClose;
   final ValueChanged<_Win> onOpen;
   final VoidCallback onShutdown;
+  final VoidCallback onReboot;
 
   const _StartMenu({
     required this.onClose,
     required this.onOpen,
     required this.onShutdown,
+    required this.onReboot,
   });
 
   @override
@@ -1347,7 +1350,7 @@ class _StartMenu extends StatelessWidget {
               label: 'Перезагрузка',
               onTap: () {
                 onClose();
-                context.read(myPcProvider.notifier).reboot();
+                onReboot();
               },
             ),
             _StartMenuItem(
