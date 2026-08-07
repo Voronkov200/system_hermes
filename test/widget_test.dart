@@ -11,7 +11,9 @@ import 'package:system_hermes/app.dart';
 import 'package:system_hermes/core/constants.dart';
 import 'package:system_hermes/data/adapters.dart';
 import 'package:system_hermes/data/models.dart';
+import 'package:system_hermes/services/journal_service.dart';
 import 'package:system_hermes/services/settings_service.dart';
+import 'package:system_hermes/services/tasks_service.dart';
 
 void main() {
   setUpAll(() async {
@@ -26,6 +28,10 @@ void main() {
     await Hive.openBox<LifeState>(BoxNames.life);
     await Hive.openBox<CompanionData>(BoxNames.companion);
     await Hive.openBox<ChatMessage>(BoxNames.companionChat);
+    await Hive.openBox<HermesTask>(BoxNames.tasks);
+    await Hive.openBox<JournalEntry>(BoxNames.journal);
+    await Hive.openBox<MyPcState>(BoxNames.myPc);
+    await Hive.openBox<VirtualFsFile>(BoxNames.myPcFiles);
 
     SharedPreferences.setMockInitialValues({});
   });

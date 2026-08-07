@@ -397,6 +397,10 @@ class MyPcStateAdapter extends TypeAdapter<MyPcState> {
         ..wallpaperId = reader.readString()
         ..computerName = reader.readString()
         ..taskbarTheme = reader.readString();
+      // bootPriority добавлен ещё позже — его может не быть в старых данных.
+      if (reader.availableBytes > 0) {
+        state.bootPriority = reader.readString();
+      }
     }
     return state;
   }
@@ -426,7 +430,8 @@ class MyPcStateAdapter extends TypeAdapter<MyPcState> {
       ..writeBool(true)
       ..writeString(obj.wallpaperId)
       ..writeString(obj.computerName)
-      ..writeString(obj.taskbarTheme);
+      ..writeString(obj.taskbarTheme)
+      ..writeString(obj.bootPriority);
   }
 }
 
@@ -435,17 +440,32 @@ class VirtualFsFileAdapter extends TypeAdapter<VirtualFsFile> {
   final int typeId = 13;
 
   @override
-  VirtualFsFile read(BinaryReader reader) => VirtualFsFile(
-        path: reader.readString(),
-        content: reader.readString(),
-        isFolder: reader.readBool(),
-      );
+  VirtualFsFile read(BinaryReader reader) {
+    final path = reader.readString();
+    final content = reader.readString();
+    final isFolder = reader.readBool();
+    // originalPath добавлен позже — старые данные без него.
+    final String? originalPath;
+    if (reader.availableBytes > 0 && reader.readBool()) {
+      originalPath = reader.readString();
+    } else {
+      originalPath = null;
+    }
+    return VirtualFsFile(
+      path: path,
+      content: content,
+      isFolder: isFolder,
+      originalPath: originalPath,
+    );
+  }
 
   @override
   void write(BinaryWriter writer, VirtualFsFile obj) {
     writer
       ..writeString(obj.path)
       ..writeString(obj.content)
-      ..writeBool(obj.isFolder);
+      ..writeBool(obj.isFolder)
+      ..writeBool(obj.originalPath != null);
+    if (obj.originalPath != null) writer.writeString(obj.originalPath!);
   }
 }

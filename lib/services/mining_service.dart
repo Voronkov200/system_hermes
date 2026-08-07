@@ -68,6 +68,12 @@ class MiningController extends Notifier<MiningState> {
       return (mult: mult, labels: labels);
     }
 
+    // Драйверы виртуального ПК: без них ферма работает на половинной мощности.
+    if (!farm.driversInstalled) {
+      mult *= 0.5;
+      labels.add('-50% нет драйверов');
+    }
+
     if (habits.byId('workout_squat')?.doneToday() ?? false) {
       mult += 0.10;
       labels.add('+10% приседания выполнены');

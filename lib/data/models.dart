@@ -328,6 +328,9 @@ class MyPcState {
   String computerName; // имя компьютера
   String taskbarTheme; // dark | light | blue
 
+  /// Приоритет загрузки в BIOS: dvd | hdd | usb.
+  String bootPriority;
+
   MyPcState({
     this.phase = 'off',
     this.setupStage = 0,
@@ -343,6 +346,7 @@ class MyPcState {
     this.wallpaperId = 'default',
     this.computerName = 'HERMES-01',
     this.taskbarTheme = 'dark',
+    this.bootPriority = 'dvd',
   }) : tweaks = tweaks ?? [];
 
   factory MyPcState.empty() => MyPcState();
@@ -357,11 +361,18 @@ class VirtualFsFile {
   final String content; // содержимое (для папок пусто)
   final bool isFolder;
 
+  /// Оригинальный путь до перемещения в Корзину (null — обычный файл).
+  final String? originalPath;
+
   const VirtualFsFile({
     required this.path,
     this.content = '',
     this.isFolder = false,
+    this.originalPath,
   });
+
+  /// Файл находится в Корзине.
+  bool get recycled => originalPath != null;
 
   String get name {
     final parts = path.split('\\');
@@ -389,16 +400,22 @@ class VirtualFsCatalog {
   /// Виртуальный образ сборки (символизирует реальный install.esd).
   static const esdFileName = 'Win11_25H2_Hermes_ru-RU.esd';
 
+  /// Каталог Корзины.
+  static const recycleBinPath = r'C:\$Recycle.Bin';
+
   static List<VirtualFsFile> defaults() => const [
         VirtualFsFile(path: r'C:\Windows', isFolder: true),
         VirtualFsFile(path: r'C:\Program Files', isFolder: true),
         VirtualFsFile(path: r'C:\Users', isFolder: true),
         VirtualFsFile(path: r'C:\Hermes OS', isFolder: true),
+        VirtualFsFile(path: r'C:\Drivers', isFolder: true),
+        VirtualFsFile(path: r'C:\$Recycle.Bin', isFolder: true),
         VirtualFsFile(path: r'C:\Windows\system32', isFolder: true),
         VirtualFsFile(path: r'C:\Windows\explorer.exe', content: 'Оболочка Windows 11.'),
         VirtualFsFile(path: r'C:\Windows\win.ini', content: '; для совместимости со старыми программами\r\n[fonts]\r\n[extensions]'),
         VirtualFsFile(path: r'C:\Program Files\Groq CLI', isFolder: true),
         VirtualFsFile(path: r'C:\Program Files\Groq CLI\groq.exe', content: 'Интерфейс командной строки Groq.'),
+        VirtualFsFile(path: r'C:\Drivers\GPU_Driver.exe', content: 'Установщик драйвера видеокарты для майнинг-фермы.'),
         VirtualFsFile(path: r'C:\Users\Hermes', isFolder: true),
         VirtualFsFile(path: r'C:\Users\Hermes\Desktop', isFolder: true),
         VirtualFsFile(path: r'C:\Users\Hermes\Documents', isFolder: true),

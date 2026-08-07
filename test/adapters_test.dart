@@ -39,6 +39,40 @@ class LegacyMyPcStateAdapter extends MyPcStateAdapter {
   }
 }
 
+/// Промежуточный формат: персонализация есть, bootPriority ещё нет.
+class MidMyPcStateAdapter extends MyPcStateAdapter {
+  @override
+  void write(BinaryWriter writer, MyPcState obj) {
+    // Пишем всё как в версии с персонализацией, но без bootPriority.
+    writer.writeInt(obj.tweaks.length);
+    for (final t in obj.tweaks) {
+      writer.writeString(t);
+    }
+    writer
+      ..writeString(obj.phase)
+      ..writeInt(obj.setupStage)
+      ..writeDouble(obj.setupProgress)
+      ..writeBool(obj.phaseStartedAt != null);
+    if (obj.phaseStartedAt != null) {
+      writer.writeInt(obj.phaseStartedAt!.millisecondsSinceEpoch);
+    }
+    writer.writeBool(obj.installedAt != null);
+    if (obj.installedAt != null) {
+      writer.writeInt(obj.installedAt!.millisecondsSinceEpoch);
+    }
+    writer
+      ..writeString(obj.osName)
+      ..writeString(obj.edition)
+      ..writeDouble(obj.imageSizeGb)
+      ..writeInt(obj.sourceEditions)
+      ..writeInt(obj.bootCount)
+      ..writeBool(true)
+      ..writeString(obj.wallpaperId)
+      ..writeString(obj.computerName)
+      ..writeString(obj.taskbarTheme);
+  }
+}
+
 void main() {
   late Directory tempDir;
 
@@ -73,6 +107,7 @@ void main() {
       wallpaperId: 'ocean',
       computerName: 'MY-PC',
       taskbarTheme: 'blue',
+      bootPriority: 'hdd',
     );
     await box.put('state', state);
     final loaded = box.get('state')!;
@@ -82,6 +117,7 @@ void main() {
     expect(loaded.wallpaperId, 'ocean');
     expect(loaded.computerName, 'MY-PC');
     expect(loaded.taskbarTheme, 'blue');
+    expect(loaded.bootPriority, 'hdd');
     expect(loaded.installedAt, DateTime(2026, 8, 7, 12, 1));
     await box.close();
   });
@@ -115,6 +151,31 @@ void main() {
     expect(loaded.wallpaperId, 'default');
     expect(loaded.computerName, 'HERMES-01');
     expect(loaded.taskbarTheme, 'dark');
+    expect(loaded.bootPriority, 'dvd');
+    await box2.close();
+  });
+
+  test('MyPcState: персонализация без bootPriority читается без краша', () async {
+    Hive.registerAdapter(MidMyPcStateAdapter());
+    final box = await Hive.openBox<MyPcState>('myPc');
+    await box.put(
+      'state',
+      MyPcState(
+        wallpaperId: 'sunset',
+        computerName: 'OLD-PC',
+        taskbarTheme: 'light',
+      ),
+    );
+    await box.close();
+
+    Hive.resetAdapters();
+    Hive.registerAdapter(MyPcStateAdapter());
+    final box2 = await Hive.openBox<MyPcState>('myPc');
+    final loaded = box2.get('state')!;
+    expect(loaded.wallpaperId, 'sunset');
+    expect(loaded.computerName, 'OLD-PC');
+    expect(loaded.taskbarTheme, 'light');
+    expect(loaded.bootPriority, 'dvd');
     await box2.close();
   });
 
@@ -131,6 +192,22 @@ void main() {
     expect(loaded.content, 'привет мир');
     expect(loaded.isFolder, false);
     expect(loaded.name, 'Привет.txt');
+    expect(loaded.recycled, false);
+    await box.close();
+  });
+
+  test('VirtualFsFile: корзина (originalPath) round-trip', () async {
+    Hive.registerAdapter(VirtualFsFileAdapter());
+    final box = await Hive.openBox<VirtualFsFile>('myPcFiles');
+    const recycled = VirtualFsFile(
+      path: r'C:\$Recycle.Bin\Привет.txt',
+      content: 'привет мир',
+      originalPath: r'C:\Users\Hermes\Desktop\Привет.txt',
+    );
+    await box.put('file', recycled);
+    final loaded = box.get('file')!;
+    expect(loaded.recycled, true);
+    expect(loaded.originalPath, r'C:\Users\Hermes\Desktop\Привет.txt');
     await box.close();
   });
 
