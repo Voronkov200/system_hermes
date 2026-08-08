@@ -33,13 +33,58 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     super.dispose();
   }
 
+  /// Если текст похож на сбой распознавания — показать диалог
+  /// с редактируемой фразой. Возвращает исправленный текст или null.
+  Future<String?> _confirmIfBroken(String q) async {
+    final reason = SearchService.looksBrokenSpeech(q);
+    if (reason == null) return q;
+    final controller = TextEditingController(text: q);
+    final res = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Похоже, я неправильно распознал текст'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Я услышал: «$q» ($reason). Поправь текст или нажми «Искать».',
+              style: const TextStyle(color: AppColors.textDim, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Текст'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Искать'),
+          ),
+        ],
+      ),
+    );
+    return res;
+  }
+
   Future<void> _run([String? query]) async {
-    final q = (query ?? _controller.text).trim();
+    var q = (query ?? _controller.text).trim();
+    if (q.isEmpty || _busy) return;
+    final confirmed = await _confirmIfBroken(q);
+    if (confirmed == null) return;
+    q = confirmed.trim();
     if (q.isEmpty || _busy) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
-      _stage = 'Ищу в интернете…';
+      _stage = 'Планирую поиск…';
       _error = null;
       _answer = null;
       _lastQuery = q;
@@ -65,7 +110,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Future<void> _runDeep() async {
-    final q = _controller.text.trim();
+    var q = _controller.text.trim();
+    if (q.isEmpty || _busy) return;
+    final confirmed = await _confirmIfBroken(q);
+    if (confirmed == null) return;
+    q = confirmed.trim();
     if (q.isEmpty || _busy) return;
     FocusScope.of(context).unfocus();
     setState(() {
@@ -328,7 +377,37 @@ class _AnswerViewState extends ConsumerState<_AnswerView> {
         const SizedBox(height: 8),
         for (var i = 0; i < answer.sources.length; i++)
           _SourceTile(index: i + 1, hit: answer.sources[i]),
+        if (SearchService.log.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const _SearchLogCard(),
+        ],
       ],
+    );
+  }
+}
+
+/// Технический лог поиска: что искали, каким провайдером, что нашли.
+class _SearchLogCard extends StatelessWidget {
+  const _SearchLogCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(top: 4),
+      child: ExpansionTile(
+        dense: true,
+        title: const Text(
+          'Технический лог',
+          style: TextStyle(fontSize: 12, color: AppColors.textDim),
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          SelectableText(
+            SearchService.log.join('\n'),
+            style: const TextStyle(fontSize: 11, height: 1.4),
+          ),
+        ],
+      ),
     );
   }
 }

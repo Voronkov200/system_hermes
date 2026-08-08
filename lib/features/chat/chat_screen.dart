@@ -106,19 +106,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final key = _nastya ? settings.companionKey : settings.llmKey;
     try {
       final text = await _voice.transcribe(path, key);
-      ref.read(journalProvider.notifier).add(
-            type: 'voice',
-            source: 'user',
-            title: _shortTitle(text),
-            text: text,
-          );
-      _input.text = text;
-      await _send();
+      if (!mounted) return;
+      await _confirmVoiceText(text);
     } catch (e) {
       _snack('Транскрибация не удалась: $e');
     } finally {
       setState(() => _transcribing = false);
     }
+  }
+
+  /// Показать распознанный текст и дать его поправить до отправки —
+  /// сбой STT не должен уходить в поиск как «правда».
+  Future<void> _confirmVoiceText(String text) async {
+    final controller = TextEditingController(text: text);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Я распознал:'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            labelText: 'Проверь и поправь, если что-то не так',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Отправить'),
+          ),
+        ],
+      ),
+    );
+    final confirmed = (result ?? '').trim();
+    if (confirmed.isEmpty || !mounted) return;
+    ref.read(journalProvider.notifier).add(
+          type: 'voice',
+          source: 'user',
+          title: _shortTitle(confirmed),
+          text: confirmed,
+        );
+    _input.text = confirmed;
+    await _send();
   }
 
   String _shortTitle(String text) {

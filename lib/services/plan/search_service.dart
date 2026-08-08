@@ -58,6 +58,18 @@ class SearchService {
   /// в начале следующего поиска пробуем то, что работало недавно.
   static String? _lastGoodProvider;
 
+  /// Технический лог последнего поиска: что искали, каким провайдером,
+  /// сколько нашли. Показывается под ответом (диагностика).
+  static final List<String> log = [];
+
+  static void _log(String line) {
+    final now = DateTime.now();
+    final t = '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}';
+    log.add('$t $line');
+    if (log.length > 40) log.removeAt(0);
+  }
+
   /// Порядок HTML-провайдеров для перебора.
   static const _providerOrder = [
     'ddg', // DuckDuckGo HTML
@@ -67,6 +79,28 @@ class SearchService {
     'yahoo', // Yahoo (со сниженным приоритетом из-за сущностей в заголовках)
     'wiki', // Wikipedia API — доступна почти всегда
   ];
+
+  /// Признаки того, что текст похож на плохо распознанную речь
+  /// (обрывки, случайные цифры, шум). Возвращает причину или null.
+  static String? looksBrokenSpeech(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return 'пустой текст';
+    if (t.length < 5) return 'фраза слишком короткая';
+    final digits = RegExp(r'\d').allMatches(t).length;
+    if (digits >= 4 && digits * 100 ~/ t.length > 15) {
+      return 'много случайных цифр';
+    }
+    final words =
+        t.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.length < 2) return 'меньше двух слов';
+    final cyr = RegExp(r'[а-яА-ЯёЁ]').allMatches(t).length;
+    final lat = RegExp(r'[a-zA-Z]').allMatches(t).length;
+    if (lat + digits > cyr * 3 && lat > digits) {
+      return 'набор латинских слов и цифр без смысла';
+    }
+    if (cyr == 0 && lat == 0) return 'нет букв';
+    return null;
+  }
 
   /// Поиск по всем провайдерам: свой SearXNG → публичные SearXNG →
   /// DDG (HTML) → DDG lite → Bing → Brave → Yahoo → Wikipedia. Без LLM.
@@ -80,7 +114,10 @@ class SearchService {
     if (custom.isNotEmpty) {
       try {
         final hits = await _searxng(custom, query, limit);
-        if (hits.isNotEmpty) return hits;
+        if (hits.isNotEmpty) {
+          _log('Провайдер: свой SearXNG (${hits.length})');
+          return hits;
+        }
       } catch (_) {}
     }
     // 0.5. Последний рабочий HTML-провайдер — ускоряет повторные поиски
@@ -89,14 +126,20 @@ class SearchService {
     if (saved != null) {
       try {
         final hits = await _via(saved, query, limit);
-        if (hits.isNotEmpty) return hits;
+        if (hits.isNotEmpty) {
+          _log('Провайдер: $saved (кэш, ${hits.length})');
+          return hits;
+        }
       } catch (_) {}
     }
     // 1. Публичные SearXNG-инстансы: пока не получим JSON с результатами.
     for (final instance in _searxngInstances) {
       try {
         final hits = await _searxng(instance, query, limit);
-        if (hits.isNotEmpty) return hits;
+        if (hits.isNotEmpty) {
+          _log('Провайдер: $instance (${hits.length})');
+          return hits;
+        }
       } catch (_) {
         // пробуем следующий инстанс
       }
@@ -107,6 +150,7 @@ class SearchService {
         final hits = await _via(name, query, limit);
         if (hits.isNotEmpty) {
           _lastGoodProvider = name;
+          _log('Провайдер: $name (${hits.length})');
           return hits;
         }
       } catch (_) {
@@ -115,6 +159,78 @@ class SearchService {
     }
     throw Exception('Поисковые сервисы недоступны — проверь интернет '
         'и попробуй ещё раз.');
+  }
+
+  /// Поиск с переписыванием запроса: LLM превращает человеческий вопрос
+  /// в 2-3 коротких поисковых запроса, каждый ищется отдельно, дубли
+  /// убираются. Если переписывание упало — ищем как есть.
+  static Future<List<SearchHit>> searchWebRewritten(
+    WidgetRef ref,
+    String query, {
+    void Function(String stage)? onStage,
+    int limit = 6,
+  }) async {
+    final searxngUrl = ref.read(settingsProvider).searchSearxngUrl;
+    final queries = await _rewriteQueries(ref, query);
+    _log('Переписанные запросы: ${queries.join(' | ')}');
+    final all = <SearchHit>[];
+    final seen = <String>{};
+    for (final q in queries) {
+      onStage?.call('Ищу: "$q"');
+      try {
+        final hits = await searchWeb(q, searxngUrl: searxngUrl, limit: 5);
+        for (final h in hits) {
+          if (seen.add(h.url)) all.add(h);
+        }
+      } catch (_) {}
+      if (all.length >= limit * 2) break;
+    }
+    if (all.isEmpty) {
+      // Фолбэк: ищем исходную фразу целиком.
+      onStage?.call('Ищу: "$query"');
+      _log('Переписывание не дало результатов — ищу исходную фразу.');
+      try {
+        final hits = await searchWeb(query, searxngUrl: searxngUrl,
+            limit: limit);
+        for (final h in hits) {
+          if (seen.add(h.url)) all.add(h);
+        }
+      } catch (e) {
+        _log('Провал: $e');
+        rethrow;
+      }
+    }
+    final out = all.take(limit).toList();
+    _log('Итого источников: ${out.length}');
+    return out;
+  }
+
+  /// LLM переписывает вопрос в короткие поисковые запросы.
+  static Future<List<String>> _rewriteQueries(
+      WidgetRef ref, String query) async {
+    final today = _todayStr();
+    try {
+      final raw = await llmComplete(
+        ref,
+        system: 'Ты — эксперт по поисковым запросам. Сегодня $today. '
+            'Преврати вопрос пользователя в 2-3 коротких поисковых запроса, '
+            'по одному на строку, без нумерации и кавычек. Каждый запрос — '
+            'отдельный ракурс темы, 3-8 слов, фактологичный. Если вопрос '
+            'уже короткий и чёткий — верни его одним запросом.',
+        user: 'Вопрос: $query',
+        maxTokens: 300,
+        timeoutSeconds: 60,
+      );
+      final qs = raw
+          .split('\n')
+          .map((l) => l.trim().replaceAll(RegExp(r'^[-*\d.)\s]+'), ''))
+          .where((l) => l.length >= 4 && l.length <= 120)
+          .take(3)
+          .toList();
+      return qs.isEmpty ? [query] : qs;
+    } catch (_) {
+      return [query];
+    }
   }
 
   /// Запуск HTML-провайдера по имени.
@@ -141,10 +257,12 @@ class SearchService {
     String query, {
     void Function(String stage)? onStage,
   }) async {
-    onStage?.call('Ищу в интернете…');
-    final hits = await searchWeb(
+    _gateInput(query);
+    onStage?.call('Планирую поиск…');
+    final hits = await searchWebRewritten(
+      ref,
       query,
-      searxngUrl: ref.read(settingsProvider).searchSearxngUrl,
+      onStage: onStage,
     );
 
     onStage?.call('Составляю ответ…');
@@ -179,6 +297,17 @@ class SearchService {
     return SearchAnswer(text: text, sources: hits);
   }
 
+  /// Проверка входного текста: если похоже на сбой распознавания речи —
+  /// не ищем, а просим уточнить.
+  static void _gateInput(String query) {
+    final reason = looksBrokenSpeech(query);
+    if (reason != null) {
+      throw Exception('Похоже, я неправильно распознал твою речь: '
+          '"${query.trim()}" ($reason). Повтори фразу чётче или напиши '
+          'текстом — и я поищу.');
+    }
+  }
+
   /// Глубокое исследование (стиль Deep Research): тема → подвопросы →
   /// поиск по каждому → подробный отчёт с цитатами [n] на все источники.
   static Future<SearchAnswer> deepResearch(
@@ -186,8 +315,8 @@ class SearchService {
     String query, {
     void Function(String stage)? onStage,
   }) async {
+    _gateInput(query);
     final today = _todayStr();
-    final searxngUrl = ref.read(settingsProvider).searchSearxngUrl;
 
     // 1. План: уточняющие подвопросы.
     onStage?.call('Планирую исследование…');
@@ -221,7 +350,12 @@ class SearchService {
       onStage?.call('Изучаю подвопрос ${i + 1} из ${subqs.length}…');
       List<SearchHit> hits = const [];
       try {
-        hits = await searchWeb(subqs[i], searxngUrl: searxngUrl, limit: 5);
+        hits = await searchWebRewritten(
+          ref,
+          subqs[i],
+          onStage: onStage,
+          limit: 5,
+        );
       } catch (_) {}
       if (hits.isEmpty) {
         blocks.writeln('Подвопрос: ${subqs[i]}\n(результатов не найдено)');
