@@ -78,7 +78,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     var q = (query ?? _controller.text).trim();
     if (q.isEmpty || _busy) return;
     final confirmed = await _confirmIfBroken(q);
-    if (confirmed == null) return;
+    if (!mounted || confirmed == null) return;
     q = confirmed.trim();
     if (q.isEmpty || _busy) return;
     FocusScope.of(context).unfocus();
@@ -113,7 +113,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     var q = _controller.text.trim();
     if (q.isEmpty || _busy) return;
     final confirmed = await _confirmIfBroken(q);
-    if (confirmed == null) return;
+    if (!mounted || confirmed == null) return;
     q = confirmed.trim();
     if (q.isEmpty || _busy) return;
     FocusScope.of(context).unfocus();
