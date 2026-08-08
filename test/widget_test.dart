@@ -30,8 +30,6 @@ void main() {
     await Hive.openBox<ChatMessage>(BoxNames.companionChat);
     await Hive.openBox<HermesTask>(BoxNames.tasks);
     await Hive.openBox<JournalEntry>(BoxNames.journal);
-    await Hive.openBox<MyPcState>(BoxNames.myPc);
-    await Hive.openBox<VirtualFsFile>(BoxNames.myPcFiles);
 
     SharedPreferences.setMockInitialValues({});
   });

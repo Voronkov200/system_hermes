@@ -14,7 +14,7 @@ class AppShell extends StatelessWidget {
     if (path.startsWith('/mining')) return 3;
     if (path.startsWith('/habits')) return 4;
     if (path.startsWith('/chat')) return 5;
-    if (path.startsWith('/mypc')) return 6;
+    if (path.startsWith('/plan')) return 6;
     return 0;
   }
 
@@ -26,7 +26,7 @@ class AppShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) {
-          const paths = ['/', '/bank', '/life', '/mining', '/habits', '/chat', '/mypc'];
+          const paths = ['/', '/bank', '/life', '/mining', '/habits', '/chat', '/plan'];
           context.go(paths[i]);
         },
         destinations: const [
@@ -61,9 +61,9 @@ class AppShell extends StatelessWidget {
             label: 'Hermes',
           ),
           NavigationDestination(
-            icon: Icon(Icons.desktop_windows_outlined),
-            selectedIcon: Icon(Icons.desktop_windows),
-            label: 'Мой ПК',
+            icon: Icon(Icons.checklist_rtl),
+            selectedIcon: Icon(Icons.checklist),
+            label: 'План',
           ),
         ],
       ),

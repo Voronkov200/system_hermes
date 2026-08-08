@@ -52,8 +52,6 @@ Future<void> main() async {
   await _openBoxSafely<ChatMessage>(BoxNames.companionChat);
   await _openBoxSafely<HermesTask>(BoxNames.tasks);
   await _openBoxSafely<JournalEntry>(BoxNames.journal);
-  await _openBoxSafely<MyPcState>(BoxNames.myPc);
-  await _openBoxSafely<VirtualFsFile>(BoxNames.myPcFiles);
 
   final prefs = await SharedPreferences.getInstance();
 
