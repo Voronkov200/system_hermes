@@ -23,6 +23,12 @@ class WebTools {
     return hits;
   }
 
+  /// Только DuckDuckGo (HTML-парсинг), без фолбэка на Wikipedia.
+  static Future<List<WebSearchHit>> searchDdgHtml(
+      String query, {int limit = 5}) async {
+    return _ddgSearch(query, limit);
+  }
+
   /// Поиск по Wikipedia API (работает там, где остальное заблокировано).
   static Future<List<WebSearchHit>> searchWikipedia(
       String query, {int limit = 5}) async {

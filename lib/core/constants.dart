@@ -87,4 +87,5 @@ class PrefKeys {
   static const String companionApiUrl = 'companion_api_url';
   static const String companionApiKey = 'companion_api_key';
   static const String companionModel = 'companion_model';
+  static const String searchSearxngUrl = 'search_searxng_url';
 }

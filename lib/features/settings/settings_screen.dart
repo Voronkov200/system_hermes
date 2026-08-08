@@ -274,6 +274,25 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
 
+          const _SectionTitle('Поиск в интернете'),
+          _TextFieldSetting(
+            label: 'Свой SearXNG-инстанс',
+            initial: s.searchSearxngUrl,
+            hint: 'https://поиск.домен (пусто — публичные инстансы)',
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setSearchSearxngUrl(v),
+          ),
+          const ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              'Публичные инстансы часто блокируют запросы. Свой SearXNG '
+              '(Docker: docker run -p 8080:8080 searxng/searxng) даёт '
+              'стабильный поиск и свежие новости.',
+              style: TextStyle(fontSize: 12, color: AppColors.textDim),
+            ),
+          ),
+          const Divider(),
+
           const _SectionTitle('GitHub (верификация коммитов)'),
           _TextFieldSetting(
             label: 'GitHub owner (логин)',

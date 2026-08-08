@@ -29,6 +29,7 @@ class SettingsState {
   String companionApiUrl; // LLM для Насти (Groq-совместимый)
   String companionApiKey;
   String companionModel;
+  String searchSearxngUrl; // свой SearXNG-инстанс для модуля «Поиск»
 
   SettingsState({
     this.themeMode = ThemeMode.dark,
@@ -47,6 +48,7 @@ class SettingsState {
     this.companionApiUrl = AppConstants.companionDefaultUrl,
     this.companionApiKey = '',
     this.companionModel = AppConstants.companionDefaultModel,
+    this.searchSearxngUrl = '',
   });
 
   /// Ключ для LLM Hermes: свой ключ, либо ключ Насти, либо пусто.
@@ -76,6 +78,7 @@ class SettingsState {
     String? companionApiUrl,
     String? companionApiKey,
     String? companionModel,
+    String? searchSearxngUrl,
   }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
@@ -94,6 +97,7 @@ class SettingsState {
       companionApiUrl: companionApiUrl ?? this.companionApiUrl,
       companionApiKey: companionApiKey ?? this.companionApiKey,
       companionModel: companionModel ?? this.companionModel,
+      searchSearxngUrl: searchSearxngUrl ?? this.searchSearxngUrl,
     );
   }
 }
@@ -128,6 +132,7 @@ class SettingsController extends Notifier<SettingsState> {
       companionApiKey: prefs.getString(PrefKeys.companionApiKey) ?? '',
       companionModel: prefs.getString(PrefKeys.companionModel) ??
           AppConstants.companionDefaultModel,
+      searchSearxngUrl: prefs.getString(PrefKeys.searchSearxngUrl) ?? '',
     );
   }
 
@@ -152,6 +157,7 @@ class SettingsController extends Notifier<SettingsState> {
       companionApiUrl: s.companionApiUrl,
       companionApiKey: s.companionApiKey,
       companionModel: s.companionModel,
+      searchSearxngUrl: s.searchSearxngUrl,
     );
     apply(next);
     state = next;
@@ -172,6 +178,7 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.companionApiUrl, next.companionApiUrl);
     await prefs.setString(PrefKeys.companionApiKey, next.companionApiKey);
     await prefs.setString(PrefKeys.companionModel, next.companionModel);
+    await prefs.setString(PrefKeys.searchSearxngUrl, next.searchSearxngUrl);
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
@@ -231,6 +238,10 @@ class SettingsController extends Notifier<SettingsState> {
 
   Future<void> setCompanionModel(String model) async {
     await _save((n) => n.companionModel = model);
+  }
+
+  Future<void> setSearchSearxngUrl(String url) async {
+    await _save((n) => n.searchSearxngUrl = url.trim());
   }
 
   Future<void> ensureProtocolStart() async {
