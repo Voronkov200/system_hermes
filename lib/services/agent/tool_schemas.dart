@@ -229,6 +229,65 @@ const ToolDefinition readPdfTool = ToolDefinition(
   },
 );
 
+const ToolDefinition getGithubCommitsTool = ToolDefinition(
+  name: 'get_github_commits',
+  description:
+      'Коммиты владельца в GitHub-репозитории за период (цифровой след '
+      'дисциплины). Нужны настройки GitHub owner/repo.',
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'owner': {'type': 'string', 'description': 'Владелец репозитория'},
+      'repo': {'type': 'string', 'description': 'Репозиторий'},
+      'since': {'type': 'string', 'description': 'Дата с (YYYY-MM-DD)'},
+    },
+    'required': ['owner', 'repo', 'since'],
+  },
+);
+
+const ToolDefinition getHealthDataTool = ToolDefinition(
+  name: 'get_health_data',
+  description: 'Количество шагов за сегодня через Health Connect.',
+  parameters: {
+    'type': 'object',
+    'properties': {},
+    'required': [],
+  },
+);
+
+const ToolDefinition requestPhotoVerificationTool = ToolDefinition(
+  name: 'request_photo_verification',
+  description:
+      'Попросить владельца прислать фото, подтверждающее выполненное дело '
+      '(цифровой след).',
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'task_id': {'type': 'string', 'description': 'ID задачи (необязательно)'},
+      'description': {'type': 'string', 'description': 'Что подтвердить'},
+    },
+    'required': ['description'],
+  },
+);
+
+const ToolDefinition updateProtocolStatusTool = ToolDefinition(
+  name: 'update_dopamine_protocol_status',
+  description:
+      'Отметить в протоколе тренировку (приседания/отжимания) или срыв '
+      'воздержания. Срыв = штраф и блокировка фермы.',
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'habit_id': {
+        'type': 'string',
+        'description': 'ID привычки: workout_squat, workout_pushups или abstinence',
+      },
+      'status': {'type': 'string', 'description': '"broken" (срыв) или "done"'},
+    },
+    'required': ['habit_id', 'status'],
+  },
+);
+
 /// Инструменты Hermes Agent (полный набор).
 final List<ToolDefinition> hermesAgentTools = [
   webSearchTool,
@@ -247,6 +306,10 @@ final List<ToolDefinition> hermesAgentTools = [
   listTasksTool,
   markTaskDoneTool,
   journalAddTool,
+  getGithubCommitsTool,
+  getHealthDataTool,
+  requestPhotoVerificationTool,
+  updateProtocolStatusTool,
 ];
 
 /// Инструменты Насти (компаньон: база знаний + веб + задачи).

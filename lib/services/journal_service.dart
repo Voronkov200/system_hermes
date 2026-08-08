@@ -93,7 +93,11 @@ class JournalController extends Notifier<JournalState> {
     );
     _box.put(entry.id, entry);
     if (_box.length > 1500) {
-      final oldest = _sorted().last;
+      // Удаляем самую старую запись из всего бокса, а не из списка из 500.
+      var oldest = _box.values.first;
+      for (final v in _box.values) {
+        if (v.date.isBefore(oldest.date)) oldest = v;
+      }
       _box.delete(oldest.id);
     }
     state = JournalState(entries: _sorted());
@@ -114,8 +118,10 @@ class JournalController extends Notifier<JournalState> {
     );
   }
 
-  Future<void> remove(String id) async {
-    await _box.delete(id);
+  /// Удаление записи. Синхронное: элемент уходит из списка в том же кадре,
+  /// чтобы Dismissible не падал с «still part of the tree».
+  void remove(String id) {
+    _box.delete(id);
     state = JournalState(entries: _sorted());
   }
 

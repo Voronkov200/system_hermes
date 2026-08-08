@@ -79,6 +79,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
       _error = null;
     });
     final path = await _transcriber.stopRecording();
+    if (!mounted) return;
     if (path == null) {
       setState(() {
         _busy = false;

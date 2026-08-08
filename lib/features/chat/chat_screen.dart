@@ -95,6 +95,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _transcribing = true;
     });
     final path = await _voice.stopRecording();
+    if (!mounted) return;
     if (path == null) {
       setState(() => _transcribing = false);
       _snack('Запись не сохранилась.');

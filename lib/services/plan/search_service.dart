@@ -164,13 +164,15 @@ class SearchService {
     final hits = <SearchHit>[];
     var si = 0;
     final rows = RegExp(
-      r"""<a rel="nofollow" href="//duckduckgo\.com/l/\?uddg=([^&"]+)">(.*?)</a>""",
+      r"""<a rel="nofollow" href="//duckduckgo\.com/l/\?uddg=([^"]+)"[^>]*>(.*?)</a>""",
       dotAll: true,
     ).allMatches(html);
     for (final m in rows) {
       if (hits.length >= limit) break;
-      final url = Uri.decodeQueryComponent(m.group(1) ?? '');
-      if (url.isEmpty) continue;
+      // Значение uddg заканчивается на первом & (в HTML — &amp; перед rut).
+      final encoded = (m.group(1) ?? '').split('&').first;
+      if (encoded.isEmpty) continue;
+      final url = Uri.decodeQueryComponent(encoded);
       final snippet =
           si < snips.length ? _clean(snips[si++].group(1) ?? '') : '';
       hits.add(SearchHit(

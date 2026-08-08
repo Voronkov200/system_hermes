@@ -209,22 +209,23 @@ class _TaskCard extends ConsumerWidget {
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref) {
+    final screenContext = context;
     showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Удалить задачу?'),
         content: Text('«${task.title}» будет удалена безвозвратно.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Отмена'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () {
-              Navigator.of(context).pop();
+              Navigator.of(dialogContext).pop();
               ref.read(tasksProvider.notifier).removeTask(task.id);
-              toast(context, 'Задача удалена');
+              toast(screenContext, 'Задача удалена');
             },
             child: const Text('Удалить'),
           ),

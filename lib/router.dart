@@ -52,7 +52,8 @@ final appRouter = GoRouter(
     GoRoute(path: '/journal', builder: (context, state) => const JournalScreen()),
     GoRoute(
       path: '/note',
-      builder: (context, state) => NoteScreen(notePath: state.extra as String),
+      builder: (context, state) =>
+          NoteScreen(notePath: state.extra as String? ?? ''),
     ),
     GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
   ],

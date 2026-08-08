@@ -79,6 +79,10 @@ class _BankScreenState extends ConsumerState<BankScreen>
           FilledButton(
             onPressed: () {
               final v = double.tryParse(controller.text.replaceAll(',', '.'));
+              if (v == null || v.isNaN || v.isInfinite || v <= 0) {
+                Navigator.pop(ctx, null);
+                return;
+              }
               Navigator.pop(ctx, v);
             },
             child: const Text('Перевести'),

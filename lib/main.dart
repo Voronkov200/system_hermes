@@ -57,6 +57,11 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
 
+  // Дата начала протокола (якорь стрика чистоты) — устанавливается один раз.
+  if ((prefs.getString(PrefKeys.protocolStart) ?? '').isEmpty) {
+    await prefs.setString(PrefKeys.protocolStart, dateKeyLocal());
+  }
+
   runApp(
     ProviderScope(
       overrides: [

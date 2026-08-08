@@ -15,6 +15,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/constants.dart';
 import '../core/utils.dart';
+import '../data/life_catalog.dart';
 import '../data/models.dart';
 import '../data/persona.dart';
 import 'bank_service.dart';
@@ -58,8 +59,9 @@ class ChatController extends Notifier<ChatState> {
   ChatState build() {
     _box = Hive.box<ChatMessage>(BoxNames.chat);
     if (_box.isEmpty) {
-      _box.put(genId(), ChatMessage(
-        id: '',
+      final welcomeId = genId();
+      _box.put(welcomeId, ChatMessage(
+        id: welcomeId,
         role: 'hermes',
         text: 'Система HERMES онлайн. Я контроллер твоей цифровой ОС жизни.\n'
             'Доступные команды: «создай заметку …», «курс валют», «коммиты», '
@@ -244,7 +246,7 @@ class ChatController extends Notifier<ChatState> {
       fuelBalance: fuel,
       assetsBalance: assets,
       cleanStreak: habits.cleanStreak(),
-      lifeLevel: 1 + (life.xp / 100).floor(),
+      lifeLevel: LifeCatalog.levelForXp(life.xp),
       xp: life.xp,
       farmOnline: mining.farm.status == 'online',
       farmLocked: mining.locked,

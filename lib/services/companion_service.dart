@@ -14,6 +14,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/constants.dart';
 import '../data/companion_catalog.dart';
+import '../data/life_catalog.dart';
 import '../data/models.dart';
 import 'agent/agent_loop.dart';
 import 'agent/tool_schemas.dart';
@@ -139,7 +140,7 @@ class CompanionController extends Notifier<CompanionState> {
     );
   }
 
-  int lifeLevelForXp(int xp) => 1 + (xp / 100).floor();
+  int lifeLevelForXp(int xp) => LifeCatalog.levelForXp(xp);
 
   /// Формула симпатии: дисциплина + прогресс + действия − срывы.
   double _computeAffinity() {
