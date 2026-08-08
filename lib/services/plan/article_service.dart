@@ -71,7 +71,7 @@ class ArticleService {
   /// Безопасное имя файла.
   static String _slug(String s) {
     final clean = s
-        .replaceAll(RegExp(r'[^\wа-ЯёЁ\- ]'), '')
+        .replaceAll(RegExp(r'[^\wа-яА-ЯёЁ\- ]'), '')
         .trim()
         .replaceAll(RegExp(r'\s+'), '_');
     if (clean.isEmpty) return 'article';
