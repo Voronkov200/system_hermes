@@ -157,12 +157,7 @@ class SearchService {
       return '[$i] ${h.title.trim()}\nURL: ${h.url}\n$snippet';
     }).join('\n\n');
 
-    final now = DateTime.now();
-    const months = [
-      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-    ];
-    final today = '${now.day} ${months[now.month - 1]} ${now.year} года';
+    final today = _todayStr();
 
     final text = await llmComplete(
       ref,
@@ -182,6 +177,101 @@ class SearchService {
     );
 
     return SearchAnswer(text: text, sources: hits);
+  }
+
+  /// Глубокое исследование (стиль Deep Research): тема → подвопросы →
+  /// поиск по каждому → подробный отчёт с цитатами [n] на все источники.
+  static Future<SearchAnswer> deepResearch(
+    WidgetRef ref,
+    String query, {
+    void Function(String stage)? onStage,
+  }) async {
+    final today = _todayStr();
+    final searxngUrl = ref.read(settingsProvider).searchSearxngUrl;
+
+    // 1. План: уточняющие подвопросы.
+    onStage?.call('Планирую исследование…');
+    final plan = await llmComplete(
+      ref,
+      system: 'Ты — планировщик исследования. Сегодня $today. '
+          'Составь 4-5 уточняющих подвопросов по теме пользователя, '
+          'по одному на строку, без нумерации и кавычек. Подвопросы должны '
+          'покрывать: текущее состояние, причины и контекст, конкретные '
+          'примеры и цифры, перспективы и критику.',
+      user: 'Тема исследования: $query',
+      maxTokens: 400,
+      timeoutSeconds: 60,
+    );
+    final subqs = plan
+        .split('\n')
+        .map((l) => l.trim().replaceAll(RegExp(r'^[-*\d.)\s]+'), ''))
+        .where((l) => l.length > 8)
+        .take(5)
+        .toList();
+    if (subqs.isEmpty) {
+      throw Exception('Не удалось составить план исследования.');
+    }
+
+    // 2. Поиск по каждому подвопросу, сквозная нумерация источников.
+    final allHits = <SearchHit>[];
+    final seen = <String>{};
+    final blocks = StringBuffer();
+    var globalIdx = 0;
+    for (var i = 0; i < subqs.length; i++) {
+      onStage?.call('Изучаю подвопрос ${i + 1} из ${subqs.length}…');
+      List<SearchHit> hits = const [];
+      try {
+        hits = await searchWeb(subqs[i], searxngUrl: searxngUrl, limit: 5);
+      } catch (_) {}
+      if (hits.isEmpty) {
+        blocks.writeln('Подвопрос: ${subqs[i]}\n(результатов не найдено)');
+        continue;
+      }
+      blocks.writeln('Подвопрос: ${subqs[i]}');
+      for (final h in hits) {
+        if (!seen.add(h.url)) continue;
+        globalIdx++;
+        final snippet = h.snippet.trim().isEmpty
+            ? h.title
+            : h.snippet.trim().replaceAll('\n', ' ');
+        blocks.writeln(
+            '[$globalIdx] ${h.title.trim()}\nURL: ${h.url}\n$snippet');
+        allHits.add(h);
+      }
+      blocks.writeln();
+    }
+    if (allHits.isEmpty) {
+      throw Exception('Поисковые сервисы недоступны — нечего анализировать.');
+    }
+
+    // 3. Сводный отчёт.
+    onStage?.call('Составляю отчёт…');
+    final text = await llmComplete(
+      ref,
+      system: 'Ты — аналитик-исследователь (стиль NotebookLM Deep Research). '
+          'Сегодня $today. Напиши ПОДРОБНЫЙ структурированный отчёт по теме '
+          'пользователя на русском, используя только результаты поиска, '
+          'сгруппированные по подвопросам. Структура отчёта: '
+          '1) «Суть» — 2-3 предложения; 2) раздел по каждому подвопросу с '
+          'фактами, цифрами и примерами; 3) «Выводы» — итог и перспективы. '
+          'Каждый факт подкрепляй источником в квадратных скобках: [1], [2]. '
+          'Не выдумывай данные; если информации не хватает — честно скажи. '
+          'Не упоминай, что у тебя есть список результатов.',
+      user: 'Тема: $query\n\nРезультаты по подвопросам:\n$blocks',
+      maxTokens: 4000,
+      timeoutSeconds: 300,
+    );
+
+    return SearchAnswer(text: text, sources: allHits);
+  }
+
+  static String _todayStr() {
+    final now = DateTime.now();
+    const months = [
+      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+    ];
+    return '${now.day} ${months[now.month - 1]} ${now.year} года';
   }
 
   /// DuckDuckGo lite: чистая табличная разметка, свежие результаты.

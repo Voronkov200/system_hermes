@@ -64,6 +64,37 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
   }
 
+  Future<void> _runDeep() async {
+    final q = _controller.text.trim();
+    if (q.isEmpty || _busy) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _stage = 'Планирую исследование…';
+      _error = null;
+      _answer = null;
+      _lastQuery = q;
+    });
+    try {
+      final answer = await SearchService.deepResearch(
+        ref,
+        q,
+        onStage: (s) => setState(() => _stage = s),
+      );
+      if (!mounted) return;
+      setState(() {
+        _answer = answer;
+        _busy = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '$e';
+        _busy = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -90,6 +121,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   onPressed: _busy ? null : _run,
                   icon: const Icon(Icons.search),
                   tooltip: 'Искать',
+                ),
+                const SizedBox(width: 6),
+                IconButton.filledTonal(
+                  onPressed: _busy ? null : _runDeep,
+                  icon: const Icon(Icons.science_outlined),
+                  tooltip: 'Глубокое исследование',
                 ),
               ],
             ),
