@@ -13,8 +13,28 @@ class WebTools {
       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) '
       'Chrome/125.0 Mobile Safari/537.36';
 
+  /// Один результат поиска.
+  static Future<List<WebSearchHit>> searchStructured(
+      String query, {int limit = 5}) async {
+    final hits = await _ddgSearch(query, limit);
+    if (hits.isEmpty) {
+      return _wikipediaHits(query, limit);
+    }
+    return hits;
+  }
+
   /// Поиск в интернете, возвращает текст со ссылками и сниппетами.
   static Future<String> search(String query, {int limit = 5}) async {
+    final hits = await searchStructured(query, limit: limit);
+    if (hits.isEmpty) return 'Ничего не найдено по запросу «$query».';
+    final parts = hits
+        .map((h) => h.title.isNotEmpty ? '${h.title}\n${h.url}\n${h.snippet}' : '')
+        .where((s) => s.isNotEmpty);
+    return 'Результаты поиска по «$query»:\n\n${parts.join('\n\n')}';
+  }
+
+  static Future<List<WebSearchHit>> _ddgSearch(
+      String query, int limit) async {
     final res = await http
         .post(
           Uri.parse(_ddgUrl),
@@ -27,7 +47,7 @@ class WebTools {
       throw Exception('Поиск недоступен: HTTP ${res.statusCode}');
     }
     final html = res.body;
-    final results = <String>[];
+    final hits = <WebSearchHit>[];
     final linkRe =
         RegExp(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
             dotAll: true);
@@ -37,7 +57,7 @@ class WebTools {
     final links = linkRe.allMatches(html).toList();
     final snips = snipRe.allMatches(html).toList();
 
-    for (var i = 0; i < links.length && results.length < limit; i++) {
+    for (var i = 0; i < links.length && hits.length < limit; i++) {
       var href = links[i].group(1) ?? '';
       final m = RegExp(r'uddg=([^&]+)').firstMatch(href);
       if (m != null) href = Uri.decodeComponent(m.group(1)!);
@@ -46,14 +66,9 @@ class WebTools {
           ? _stripHtml(snips[i].group(1) ?? '').trim()
           : '';
       if (title.isEmpty && href.isEmpty) continue;
-      results.add('$title\n$href\n$snippet');
+      hits.add(WebSearchHit(title: title, url: href, snippet: snippet));
     }
-
-    if (results.isEmpty) {
-      final wiki = await _wikipediaSearch(query, limit);
-      return wiki;
-    }
-    return 'Результаты поиска по «$query»:\n\n${results.join('\n\n')}';
+    return hits;
   }
 
   /// Загрузка страницы и извлечение читаемого текста.
@@ -84,7 +99,8 @@ class WebTools {
 
   // ------------------------------------------------------- Wikipedia
 
-  static Future<String> _wikipediaSearch(String query, int limit) async {
+  static Future<List<WebSearchHit>> _wikipediaHits(
+      String query, int limit) async {
     final url = Uri.parse('https://ru.wikipedia.org/w/api.php').replace(
       queryParameters: {
         'action': 'query',
@@ -105,15 +121,15 @@ class WebTools {
     final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     final items = (data['query']?['search'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
-    if (items.isEmpty) return 'Ничего не найдено по запросу «$query».';
-    final parts = items.take(limit).map((it) {
+    return items.take(limit).map((it) {
       final title = it['title'] as String? ?? '';
-      final snippet = _stripHtml(it['snippet'] as String? ?? '');
-      return '$title\nhttps://ru.wikipedia.org/wiki/'
-          '${Uri.encodeComponent(title).replaceAll('%20', '_')}\n$snippet';
-    });
-    return 'Результаты поиска по «$query» (Wikipedia):\n\n'
-        '${parts.join('\n\n')}';
+      return WebSearchHit(
+        title: title,
+        url: 'https://ru.wikipedia.org/wiki/'
+            '${Uri.encodeComponent(title).replaceAll('%20', '_')}',
+        snippet: _stripHtml(it['snippet'] as String? ?? ''),
+      );
+    }).toList();
   }
 
   /// Удаление HTML-тегов и декодирование сущностей.
@@ -130,4 +146,17 @@ class WebTools {
         .replaceAll('&nbsp;', ' ');
     return text;
   }
+}
+
+/// Структурированный результат поиска.
+class WebSearchHit {
+  final String title;
+  final String url;
+  final String snippet;
+
+  const WebSearchHit({
+    required this.title,
+    required this.url,
+    required this.snippet,
+  });
 }

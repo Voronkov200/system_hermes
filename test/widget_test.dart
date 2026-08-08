@@ -14,6 +14,7 @@ import 'package:system_hermes/data/models.dart';
 import 'package:system_hermes/services/journal_service.dart';
 import 'package:system_hermes/services/settings_service.dart';
 import 'package:system_hermes/services/tasks_service.dart';
+import 'package:system_hermes/services/plan/docs_service.dart';
 
 void main() {
   setUpAll(() async {
@@ -30,6 +31,7 @@ void main() {
     await Hive.openBox<ChatMessage>(BoxNames.companionChat);
     await Hive.openBox<HermesTask>(BoxNames.tasks);
     await Hive.openBox<JournalEntry>(BoxNames.journal);
+    await Hive.openBox<SourceDoc>(BoxNames.docs);
 
     SharedPreferences.setMockInitialValues({});
   });

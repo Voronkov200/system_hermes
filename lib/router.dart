@@ -11,8 +11,13 @@ import 'features/life/life_screen.dart';
 import 'features/mining/mining_screen.dart';
 import 'features/mining/pc_builder_screen.dart';
 import 'features/obsidian/note_screen.dart';
-import 'features/plan/plan_screen.dart';
 import 'features/obsidian/obsidian_screen.dart';
+import 'features/plan/docs_screen.dart';
+import 'features/plan/plan_screen.dart';
+import 'features/plan/record_screen.dart';
+import 'features/plan/search_screen.dart';
+import 'features/plan/tasks_screen.dart';
+import 'features/plan/web_view_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell.dart';
 
@@ -34,6 +39,15 @@ final appRouter = GoRouter(
     ),
     // Полноэкранные экраны.
     GoRoute(path: '/pc_builder', builder: (context, state) => const PcBuilderScreen()),
+    GoRoute(path: '/plan_tasks', builder: (context, state) => const TasksScreen()),
+    GoRoute(path: '/plan_search', builder: (context, state) => const SearchScreen()),
+    GoRoute(path: '/plan_docs', builder: (context, state) => const DocsScreen()),
+    GoRoute(path: '/plan_record', builder: (context, state) => const RecordScreen()),
+    GoRoute(
+      path: '/web',
+      builder: (context, state) =>
+          WebViewScreen(url: state.extra as String? ?? 'https://example.com'),
+    ),
     GoRoute(path: '/obsidian', builder: (context, state) => const ObsidianScreen()),
     GoRoute(path: '/journal', builder: (context, state) => const JournalScreen()),
     GoRoute(
