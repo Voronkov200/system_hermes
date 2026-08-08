@@ -1,13 +1,13 @@
 // Экран "Поиск" (в стиле Morphic/NotebookLM Research):
 // вопрос → интернет → ответ с цитатами источников.
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../core/utils.dart';
-import '../../services/agent/file_tools.dart';
 import '../../services/plan/article_service.dart';
 import '../../services/plan/search_service.dart';
 
@@ -199,44 +199,35 @@ class _AnswerView extends ConsumerStatefulWidget {
 }
 
 class _AnswerViewState extends ConsumerState<_AnswerView> {
-  bool _savingArticle = false;
-  bool _savingPdf = false;
+  bool _saving = false;
 
-  Future<void> _makeArticle() async {
-    if (_savingArticle) return;
-    setState(() => _savingArticle = true);
+  Future<void> _chooseSave() async {
+    final choice = await showDialog<({String format, String folder})>(
+      context: context,
+      builder: (context) => const _SaveDialog(),
+    );
+    if (choice == null || !mounted) return;
+    setState(() => _saving = true);
     try {
-      final path = await ArticleService.saveArticle(
+      final path = await ArticleService.save(
         ref,
         title: widget.query,
         text: widget.answer.text,
         sources: widget.answer.sources,
+        format: choice.format,
+        folder: choice.folder,
       );
       if (!mounted) return;
-      context.push('/web', extra: path);
+      if (choice.format == 'article') {
+        context.push('/web', extra: path);
+      } else {
+        toast(context, 'Сохранено: $path');
+      }
     } catch (e) {
       if (!mounted) return;
-      toast(context, 'Не удалось создать статью: $e');
+      toast(context, 'Не удалось сохранить: $e');
     } finally {
-      if (mounted) setState(() => _savingArticle = false);
-    }
-  }
-
-  Future<void> _makePdf() async {
-    if (_savingPdf) return;
-    setState(() => _savingPdf = true);
-    try {
-      final msg = await FileTools.makePdf(
-        title: widget.query,
-        text: widget.answer.text,
-      );
-      if (!mounted) return;
-      toast(context, msg);
-    } catch (e) {
-      if (!mounted) return;
-      toast(context, 'Не удалось создать PDF: $e');
-    } finally {
-      if (mounted) setState(() => _savingPdf = false);
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -252,37 +243,37 @@ class _AnswerViewState extends ConsumerState<_AnswerView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(
-                  answer.text,
-                  style: const TextStyle(fontSize: 14, height: 1.5),
+                Text(
+                  widget.query,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
+                const SizedBox(height: 2),
+                Text(
+                  fmtDate(DateTime.now()),
+                  style: const TextStyle(
+                      color: AppColors.textDim, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                _AnswerText(text: answer.text, sources: answer.sources),
                 const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _savingArticle ? null : _makeArticle,
-                      icon: _savingArticle
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.article_outlined, size: 18),
-                      label: const Text('Оформить статью'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _savingPdf ? null : _makePdf,
-                      icon: _savingPdf
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                      label: const Text('PDF'),
-                    ),
-                  ],
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _saving ? null : _chooseSave,
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined, size: 18),
+                    label: const Text('Сохранить…'),
+                  ),
                 ),
               ],
             ),
@@ -300,6 +291,121 @@ class _AnswerViewState extends ConsumerState<_AnswerView> {
         const SizedBox(height: 8),
         for (var i = 0; i < answer.sources.length; i++)
           _SourceTile(index: i + 1, hit: answer.sources[i]),
+      ],
+    );
+  }
+}
+
+/// Ответ с кликабельными цитатами [1], [2]… — открывают источник.
+class _AnswerText extends StatelessWidget {
+  final String text;
+  final List<SearchHit> sources;
+
+  const _AnswerText({required this.text, required this.sources});
+
+  @override
+  Widget build(BuildContext context) {
+    final spans = <TextSpan>[];
+    var cursor = 0;
+    for (final m in RegExp(r'\[(\d{1,2})\]').allMatches(text)) {
+      if (m.start > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, m.start)));
+      }
+      final idx = int.tryParse(m.group(1) ?? '') ?? 0;
+      final url = (idx >= 1 && idx <= sources.length)
+          ? sources[idx - 1].url
+          : null;
+      spans.add(
+        url == null
+            ? TextSpan(text: m.group(0))
+            : TextSpan(
+                text: m.group(0),
+                style: const TextStyle(
+                  color: AppColors.cyan,
+                  fontWeight: FontWeight.w700,
+                ),
+                recognizer: TapGestureRecognizer()
+                  ..onTap = () => context.push('/web', extra: url),
+              ),
+      );
+      cursor = m.end;
+    }
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor)));
+    }
+    return Text.rich(
+      TextSpan(children: spans),
+      style: const TextStyle(fontSize: 14, height: 1.55),
+    );
+  }
+}
+
+/// Диалог: формат сохранения и папка назначения.
+class _SaveDialog extends StatefulWidget {
+  const _SaveDialog();
+
+  @override
+  State<_SaveDialog> createState() => _SaveDialogState();
+}
+
+class _SaveDialogState extends State<_SaveDialog> {
+  String _format = 'article';
+  String _folder = 'docs/статьи';
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Сохранить ответ'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Формат', style: TextStyle(fontSize: 13)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final e in ArticleService.formats.entries)
+                ChoiceChip(
+                  label: Text(e.value.$1),
+                  selected: _format == e.key,
+                  onSelected: (_) => setState(() => _format = e.key),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text('Куда сохранить', style: TextStyle(fontSize: 13)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final e in ArticleService.folders.entries)
+                ChoiceChip(
+                  label: Text(e.key),
+                  selected: _folder == e.value,
+                  onSelected: (_) => setState(() => _folder = e.value),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Файл попадёт в SystemHermes/'
+            '${_folder.isEmpty ? '(корень)' : _folder}/',
+            style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(
+            (format: _format, folder: _folder),
+          ),
+          child: const Text('Сохранить'),
+        ),
       ],
     );
   }

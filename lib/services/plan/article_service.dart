@@ -8,17 +8,34 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../agent/file_tools.dart';
 import 'docs_service.dart';
 import 'search_service.dart';
 
 class ArticleService {
-  /// Формирует HTML-статью из ответа и источников, сохраняет на диск
-  /// и добавляет в модуль «Документы». Возвращает путь к файлу.
-  static Future<String> saveArticle(
+  /// Папки для сохранения: название (для UI) → путь относительно корня.
+  static const folders = {
+    'Статьи (docs/статьи)': 'docs/статьи',
+    'Документы (docs)': 'docs',
+    'Корень SystemHermes': '',
+  };
+
+  /// Форматы сохранения: ключ → подпись и расширение.
+  static const formats = {
+    'article': ('Статья HTML', '.html'),
+    'pdf': ('PDF', '.pdf'),
+    'txt': ('Текст (.txt)', '.txt'),
+  };
+
+  /// Сохраняет ответ в выбранном формате и папке, добавляет в модуль
+  /// «Документы». Возвращает путь к файлу.
+  static Future<String> save(
     WidgetRef ref, {
     required String title,
     required String text,
     required List<SearchHit> sources,
+    String format = 'article',
+    String folder = 'docs/статьи',
   }) async {
     final now = DateTime.now();
     const months = [
@@ -27,27 +44,74 @@ class ArticleService {
     ];
     final dateStr = '${now.day} ${months[now.month - 1]} ${now.year}';
 
-    final html = _buildHtml(
-      title: title,
-      date: dateStr,
-      text: text,
-      sources: sources,
-    );
-
     final root = await _rootDir();
-    final dir = Directory('${root.path}/docs/статьи');
+    final dir = Directory(folder.isEmpty
+        ? root.path
+        : '${root.path}/${folder.replaceAll('\\', '/')}');
     await dir.create(recursive: true);
-    final file = File('${dir.path}/${_slug(title)}.html');
-    await file.writeAsString(html);
+    final slug = _slug(title);
+
+    String path;
+    switch (format) {
+      case 'pdf':
+        final rel = folder.isEmpty ? '$slug.pdf' : '$folder/$slug.pdf';
+        await FileTools.makePdf(title: title, text: text, outPath: rel);
+        path = '${dir.path}/$slug.pdf';
+      case 'txt':
+        path = '${dir.path}/$slug.txt';
+        await File(path).writeAsString(_buildTxt(
+          title: title,
+          date: dateStr,
+          text: text,
+          sources: sources,
+        ));
+      default:
+        path = '${dir.path}/$slug.html';
+        await File(path).writeAsString(_buildHtml(
+          title: title,
+          date: dateStr,
+          text: text,
+          sources: sources,
+        ));
+    }
 
     await ref.read(docsProvider.notifier).add(
           title: title,
-          sourceType: 'article',
-          content: text,
-          filePath: file.path,
+          sourceType: switch (format) {
+            'pdf' => 'pdf',
+            'txt' => 'text',
+            _ => 'article',
+          },
+          content: format == 'txt' ? _plainText(text, sources) : text,
+          filePath: path,
         );
 
-    return file.path;
+    return path;
+  }
+
+  static String _plainText(String text, List<SearchHit> sources) {
+    final sb = StringBuffer(text.trim());
+    if (sources.isNotEmpty) {
+      sb.write('\n\nИсточники:');
+      for (var i = 0; i < sources.length; i++) {
+        sb.write('\n[${i + 1}] ${sources[i].title}\n   ${sources[i].url}');
+      }
+    }
+    return sb.toString();
+  }
+
+  static String _buildTxt({
+    required String title,
+    required String date,
+    required String text,
+    required List<SearchHit> sources,
+  }) {
+    final sb = StringBuffer()
+      ..writeln(title)
+      ..writeln(date)
+      ..writeln()
+      ..writeln(_plainText(text, sources));
+    return sb.toString();
   }
 
   /// Корень файлов Hermes: внешнее хранилище, если доступно.
