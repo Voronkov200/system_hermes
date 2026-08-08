@@ -25,6 +25,12 @@ const _ua =
     'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) '
     'Chrome/125.0 Mobile Safari/537.36';
 
+/// Десктопный UA — нужен для провайдеров, отдающих мобильным капчу
+/// (Brave, Yahoo).
+const _uaDesktop =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/125.0 Safari/537.36';
+
 /// Результат поиска.
 class SearchHit {
   final String title;
@@ -47,8 +53,23 @@ class SearchAnswer {
 }
 
 class SearchService {
+  /// Последний провайдер, который реально отдал результаты. Многие
+  /// сервисы (DDG, SearXNG) периодически блокируют ботов капчей, поэтому
+  /// в начале следующего поиска пробуем то, что работало недавно.
+  static String? _lastGoodProvider;
+
+  /// Порядок HTML-провайдеров для перебора.
+  static const _providerOrder = [
+    'ddg', // DuckDuckGo HTML
+    'ddgLite', // DuckDuckGo lite
+    'bing', // Bing
+    'brave', // Brave Search
+    'yahoo', // Yahoo (со сниженным приоритетом из-за сущностей в заголовках)
+    'wiki', // Wikipedia API — доступна почти всегда
+  ];
+
   /// Поиск по всем провайдерам: свой SearXNG → публичные SearXNG →
-  /// DDG (HTML) → DDG lite → Bing → Wikipedia. Без LLM.
+  /// DDG (HTML) → DDG lite → Bing → Brave → Yahoo → Wikipedia. Без LLM.
   static Future<List<SearchHit>> searchWeb(
     String query, {
     String? searxngUrl,
@@ -62,6 +83,15 @@ class SearchService {
         if (hits.isNotEmpty) return hits;
       } catch (_) {}
     }
+    // 0.5. Последний рабочий HTML-провайдер — ускоряет повторные поиски
+    // и обходит временные блокировки.
+    final saved = _lastGoodProvider;
+    if (saved != null) {
+      try {
+        final hits = await _via(saved, query, limit);
+        if (hits.isNotEmpty) return hits;
+      } catch (_) {}
+    }
     // 1. Публичные SearXNG-инстансы: пока не получим JSON с результатами.
     for (final instance in _searxngInstances) {
       try {
@@ -71,28 +101,34 @@ class SearchService {
         // пробуем следующий инстанс
       }
     }
-    // 2. DuckDuckGo (парсинг HTML).
-    try {
-      final hits = await WebTools.searchDdgHtml(query, limit: limit);
-      if (hits.isNotEmpty) return _mapHits(hits);
-    } catch (_) {}
-    // 3. DuckDuckGo lite — чистая разметка, свежие новости.
-    try {
-      final hits = await _ddgLite(query, limit);
-      if (hits.isNotEmpty) return hits;
-    } catch (_) {}
-    // 4. Bing — второй крупный индексатор.
-    try {
-      final hits = await _bing(query, limit);
-      if (hits.isNotEmpty) return hits;
-    } catch (_) {}
-    // 5. Wikipedia API — доступна почти всегда.
-    try {
-      final hits = await WebTools.searchWikipedia(query, limit: limit);
-      if (hits.isNotEmpty) return _mapHits(hits);
-    } catch (_) {}
+    // 2-7. HTML-провайдеры по порядку.
+    for (final name in _providerOrder) {
+      try {
+        final hits = await _via(name, query, limit);
+        if (hits.isNotEmpty) {
+          _lastGoodProvider = name;
+          return hits;
+        }
+      } catch (_) {
+        // пробуем следующий
+      }
+    }
     throw Exception('Поисковые сервисы недоступны — проверь интернет '
         'и попробуй ещё раз.');
+  }
+
+  /// Запуск HTML-провайдера по имени.
+  static Future<List<SearchHit>> _via(
+      String name, String query, int limit) async {
+    return switch (name) {
+      'ddg' => _mapHits(await WebTools.searchDdgHtml(query, limit: limit)),
+      'ddgLite' => await _ddgLite(query, limit),
+      'bing' => await _bing(query, limit),
+      'brave' => await _brave(query, limit),
+      'yahoo' => await _yahoo(query, limit),
+      'wiki' => _mapHits(await WebTools.searchWikipedia(query, limit: limit)),
+      _ => throw Exception('Неизвестный провайдер: $name'),
+    };
   }
 
   static List<SearchHit> _mapHits(List<WebSearchHit> hits) => hits
@@ -219,6 +255,92 @@ class SearchService {
     return hits;
   }
 
+  /// Brave Search (HTML): блоки snippet, заголовок в title-атрибуте.
+  /// Отдаёт результаты даже с десктопным UA, когда DDG уже показывает капчу.
+  static Future<List<SearchHit>> _brave(String query, int limit) async {
+    final uri = Uri.parse('https://search.brave.com/search').replace(
+      queryParameters: {'q': query, 'source': 'web'},
+    );
+    final res = await http
+        .get(uri, headers: {'User-Agent': _uaDesktop})
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) {
+      throw Exception('HTTP ${res.statusCode}');
+    }
+    final html = utf8.decode(res.bodyBytes);
+    final hits = <SearchHit>[];
+    final starts = RegExp(
+      r'<div class="snippet svelte[^"]*" data-pos="\d+" data-type="web"',
+    ).allMatches(html).map((m) => m.start).toList();
+    for (var i = 0; i < starts.length && hits.length < limit; i++) {
+      final end =
+          i + 1 < starts.length ? starts[i + 1] : html.length;
+      final block = html.substring(starts[i], end);
+      final link = RegExp(r'<a href="(https?://[^"]+)"').firstMatch(block);
+      final title = RegExp(
+        r'class="title search-snippet-title[^"]*"[^>]*title="([^"]+)"',
+      ).firstMatch(block);
+      final snip = RegExp(
+        r'class="content desktop-default-regular[^"]*">(.*?)</div>',
+        dotAll: true,
+      ).firstMatch(block);
+      final url = link?.group(1) ?? '';
+      if (url.isEmpty) continue;
+      hits.add(SearchHit(
+        title: _stripTags(title?.group(1) ?? ''),
+        url: url,
+        snippet: _stripTags(snip?.group(1) ?? ''),
+      ));
+    }
+    return hits;
+  }
+
+  /// Yahoo (HTML): блоки compTitle, реальный URL спрятан в RU= параметре
+  /// редиректа r.search.yahoo.com. Заголовки местами в HTML-сущностях —
+  /// вырезаем их, при пустом заголовке берём домен.
+  static Future<List<SearchHit>> _yahoo(String query, int limit) async {
+    final uri = Uri.parse('https://search.yahoo.com/search').replace(
+      queryParameters: {'p': query, 'ei': 'UTF-8'},
+    );
+    final res = await http
+        .get(uri, headers: {'User-Agent': _uaDesktop})
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) {
+      throw Exception('HTTP ${res.statusCode}');
+    }
+    final html = utf8.decode(res.bodyBytes);
+    final hits = <SearchHit>[];
+    final blocks =
+        RegExp(r'<div class="compTitle[^"]*">.*?</li>', dotAll: true)
+            .allMatches(html);
+    for (final b in blocks) {
+      if (hits.length >= limit) break;
+      final block = b.group(0) ?? '';
+      final href = RegExp(r'href="(https://r\.search\.yahoo\.com/[^"]+)"')
+          .firstMatch(block);
+      final title = RegExp(r'<h3[^>]*>(.*?)</h3>', dotAll: true)
+          .firstMatch(block);
+      final snip = RegExp(r'class="compText[^"]*"[^>]*>(.*?)</div>',
+              dotAll: true)
+          .firstMatch(block);
+      if (href == null) continue;
+      final ru = RegExp(r'RU=([^/]+)').firstMatch(href.group(1) ?? '');
+      if (ru == null) continue;
+      final url = Uri.decodeComponent(ru.group(1)!);
+      var t = _stripTags(title?.group(1) ?? '');
+      // HTML-сущности вида &Lcy; не расшифровываем, а вырезаем —
+      // заголовок получится урезанным, но ссылка и сниппет остаются.
+      t = t.replaceAll(RegExp(r'&[a-zA-Z]+;'), '').trim();
+      if (t.isEmpty) t = Uri.tryParse(url)?.host ?? url;
+      hits.add(SearchHit(
+        title: t,
+        url: url,
+        snippet: _stripTags(snip?.group(1) ?? ''),
+      ));
+    }
+    return hits;
+  }
+
   static Future<List<SearchHit>> _searxng(
       String instance, String query, int limit) async {
     final uri = Uri.parse('$instance/search').replace(queryParameters: {
@@ -231,7 +353,7 @@ class SearchService {
           'User-Agent': _ua,
           'Accept': 'application/json',
         })
-        .timeout(const Duration(seconds: 8));
+        .timeout(const Duration(seconds: 6));
 
     if (res.statusCode != 200) {
       throw Exception('HTTP ${res.statusCode}');
@@ -254,4 +376,8 @@ class SearchService {
   }
 
   static String _clean(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  /// Удаление HTML-тегов и комментариев Svelte.
+  static String _stripTags(String s) =>
+      _clean(s.replaceAll(RegExp(r'<[^>]*>'), ''));
 }
