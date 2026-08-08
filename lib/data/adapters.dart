@@ -401,6 +401,10 @@ class MyPcStateAdapter extends TypeAdapter<MyPcState> {
       if (reader.availableBytes > 0) {
         state.bootPriority = reader.readString();
       }
+      // bottomBarHidden добавлен ещё позже — его может не быть в старых данных.
+      if (reader.availableBytes > 0) {
+        state.bottomBarHidden = reader.readBool();
+      }
     }
     return state;
   }
@@ -431,7 +435,8 @@ class MyPcStateAdapter extends TypeAdapter<MyPcState> {
       ..writeString(obj.wallpaperId)
       ..writeString(obj.computerName)
       ..writeString(obj.taskbarTheme)
-      ..writeString(obj.bootPriority);
+      ..writeString(obj.bootPriority)
+      ..writeBool(obj.bottomBarHidden);
   }
 }
 

@@ -300,6 +300,7 @@ class _MyPcScreenState extends ConsumerState<MyPcScreen> {
     final pc = ref.watch(myPcProvider);
     final phase = pc.state.phase;
     final isOff = phase == 'off';
+    final barHidden = pc.state.bottomBarHidden;
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -338,57 +339,97 @@ class _MyPcScreenState extends ConsumerState<MyPcScreen> {
                 ),
               ),
             ),
-            Container(
-              height: 58,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              color: AppColors.surface,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      switch (phase) {
-                        'off' => 'ПК выключен',
-                        'post' => 'Включение...',
-                        'bios_setup' => 'BIOS Setup',
-                        'setup' => 'Установка Windows',
-                        'reboot' => 'Перезагрузка...',
-                        _ => 'Windows 11 Pro — работает',
-                      },
-                      style: const TextStyle(
-                        color: AppColors.textDim,
-                        fontSize: 12,
+            if (barHidden)
+              _RevealStrip(
+                onReveal: () =>
+                    ref.read(myPcProvider.notifier).setBottomBarHidden(false),
+              )
+            else
+              Container(
+                height: 58,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                color: AppColors.surface,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        switch (phase) {
+                          'off' => 'ПК выключен',
+                          'post' => 'Включение...',
+                          'bios_setup' => 'BIOS Setup',
+                          'setup' => 'Установка Windows',
+                          'reboot' => 'Перезагрузка...',
+                          _ => 'Windows 11 Pro — работает',
+                        },
+                        style: const TextStyle(
+                          color: AppColors.textDim,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: isOff ? 'Включить' : 'Выключить',
-                    onPressed: () => isOff
-                        ? ref.read(myPcProvider.notifier).powerOn()
-                        : _shutdown(),
-                    icon: Icon(
-                      isOff ? Icons.power_settings_new : Icons.power_off,
-                      color: isOff ? AppColors.accent : AppColors.danger,
+                    IconButton(
+                      tooltip: isOff ? 'Включить' : 'Выключить',
+                      onPressed: () => isOff
+                          ? ref.read(myPcProvider.notifier).powerOn()
+                          : _shutdown(),
+                      icon: Icon(
+                        isOff ? Icons.power_settings_new : Icons.power_off,
+                        color: isOff ? AppColors.accent : AppColors.danger,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    tooltip: 'Перезагрузить',
-                    onPressed: isOff
-                        ? null
-                        : () {
-                            setState(() {
-                              _windows.clear();
-                              _startOpen = false;
-                            });
-                            ref.read(myPcProvider.notifier).reboot();
-                          },
-                    icon: const Icon(Icons.restart_alt,
-                        color: AppColors.warning),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    IconButton(
+                      tooltip: 'Перезагрузить',
+                      onPressed: isOff
+                          ? null
+                          : () {
+                              setState(() {
+                                _windows.clear();
+                                _startOpen = false;
+                              });
+                              ref.read(myPcProvider.notifier).reboot();
+                            },
+                      icon: const Icon(Icons.restart_alt,
+                          color: AppColors.warning),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Тонкая полоска под монитором: свайп вверх или тап возвращают нижнюю панель
+/// (аналог автоскрытия панели задач Windows).
+class _RevealStrip extends StatelessWidget {
+  final VoidCallback onReveal;
+
+  const _RevealStrip({required this.onReveal});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onReveal,
+      onVerticalDragEnd: (details) {
+        final v = details.primaryVelocity;
+        if (v != null && v < -100) onReveal();
+      },
+      child: SizedBox(
+        height: 22,
+        width: double.infinity,
+        child: Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
         ),
       ),
     );
@@ -3219,6 +3260,30 @@ class _PersonalizeWindowState extends ConsumerState<_PersonalizeWindow> {
                   ),
                 ),
             ],
+          ),
+          Divider(height: 28, color: theme.divider),
+          Text(
+            'Панель задач',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: theme.text,
+            ),
+          ),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              'Скрывать нижнюю панель',
+              style: TextStyle(fontSize: 13, color: theme.text),
+            ),
+            subtitle: Text(
+              'Как автоскрытие в Windows: свайп вверх от нижнего края — показать',
+              style: TextStyle(fontSize: 11, color: theme.textDim),
+            ),
+            value: state.bottomBarHidden,
+            onChanged: (v) =>
+                ref.read(myPcProvider.notifier).setBottomBarHidden(v),
           ),
         ],
       ),

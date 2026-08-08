@@ -261,6 +261,13 @@ class MyPcController extends Notifier<MyPcStateView> {
     _save(s);
   }
 
+  /// Автоскрытие нижней панели приложения (как панель задач в Windows).
+  Future<void> setBottomBarHidden(bool hidden) async {
+    var s = _current();
+    s = _copyWith(s, bottomBarHidden: hidden);
+    _save(s);
+  }
+
   /// Приоритет загрузки BIOS: dvd | hdd | usb.
   Future<void> setBootPriority(String priority) async {
     var s = _current();
@@ -289,6 +296,7 @@ class MyPcController extends Notifier<MyPcStateView> {
       wallpaperId: s.wallpaperId,
       computerName: s.computerName,
       taskbarTheme: s.taskbarTheme,
+      bottomBarHidden: s.bottomBarHidden,
       bootPriority: s.bootPriority,
     );
     _save(next);
@@ -315,6 +323,7 @@ class MyPcController extends Notifier<MyPcStateView> {
       wallpaperId: s.wallpaperId,
       computerName: s.computerName,
       taskbarTheme: s.taskbarTheme,
+      bottomBarHidden: s.bottomBarHidden,
       bootPriority: s.bootPriority,
     );
     _save(next);
@@ -340,6 +349,7 @@ class MyPcController extends Notifier<MyPcStateView> {
       wallpaperId: s.wallpaperId,
       computerName: s.computerName,
       taskbarTheme: s.taskbarTheme,
+      bottomBarHidden: s.bottomBarHidden,
       bootPriority: s.bootPriority,
     );
     _save(next);
@@ -365,6 +375,7 @@ class MyPcController extends Notifier<MyPcStateView> {
       wallpaperId: s.wallpaperId,
       computerName: s.computerName,
       taskbarTheme: s.taskbarTheme,
+      bottomBarHidden: s.bottomBarHidden,
       bootPriority: s.bootPriority,
     );
     _save(next);
@@ -389,6 +400,7 @@ class MyPcController extends Notifier<MyPcStateView> {
       wallpaperId: s.wallpaperId,
       computerName: s.computerName,
       taskbarTheme: s.taskbarTheme,
+      bottomBarHidden: s.bottomBarHidden,
       bootPriority: s.bootPriority,
     );
     _save(next);
@@ -492,6 +504,7 @@ class MyPcController extends Notifier<MyPcStateView> {
     String? wallpaperId,
     String? computerName,
     String? taskbarTheme,
+    bool? bottomBarHidden,
     String? bootPriority,
   }) =>
       MyPcState(
@@ -509,6 +522,7 @@ class MyPcController extends Notifier<MyPcStateView> {
         wallpaperId: wallpaperId ?? s.wallpaperId,
         computerName: computerName ?? s.computerName,
         taskbarTheme: taskbarTheme ?? s.taskbarTheme,
+        bottomBarHidden: bottomBarHidden ?? s.bottomBarHidden,
         bootPriority: bootPriority ?? s.bootPriority,
       );
 

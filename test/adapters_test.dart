@@ -108,6 +108,7 @@ void main() {
       computerName: 'MY-PC',
       taskbarTheme: 'blue',
       bootPriority: 'hdd',
+      bottomBarHidden: true,
     );
     await box.put('state', state);
     final loaded = box.get('state')!;
@@ -118,6 +119,7 @@ void main() {
     expect(loaded.computerName, 'MY-PC');
     expect(loaded.taskbarTheme, 'blue');
     expect(loaded.bootPriority, 'hdd');
+    expect(loaded.bottomBarHidden, true);
     expect(loaded.installedAt, DateTime(2026, 8, 7, 12, 1));
     await box.close();
   });
@@ -152,6 +154,7 @@ void main() {
     expect(loaded.computerName, 'HERMES-01');
     expect(loaded.taskbarTheme, 'light');
     expect(loaded.bootPriority, 'dvd');
+    expect(loaded.bottomBarHidden, false);
     await box2.close();
   });
 

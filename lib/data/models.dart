@@ -327,6 +327,7 @@ class MyPcState {
   String wallpaperId; // id обоев рабочего стола
   String computerName; // имя компьютера
   String taskbarTheme; // dark | light | blue
+  bool bottomBarHidden; // скрыта ли нижняя панель приложения (автоскрытие)
 
   /// Приоритет загрузки в BIOS: dvd | hdd | usb.
   String bootPriority;
@@ -346,6 +347,7 @@ class MyPcState {
     this.wallpaperId = 'bloom',
     this.computerName = 'HERMES-01',
     this.taskbarTheme = 'light',
+    this.bottomBarHidden = false,
     this.bootPriority = 'dvd',
   }) : tweaks = tweaks ?? [];
 
