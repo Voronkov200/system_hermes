@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
+import '../../core/utils.dart';
+import '../../services/agent/file_tools.dart';
+import '../../services/plan/article_service.dart';
 import '../../services/plan/search_service.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -22,6 +25,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   String _stage = '';
   String? _error;
   SearchAnswer? _answer;
+  String _lastQuery = '';
 
   @override
   void dispose() {
@@ -38,6 +42,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _stage = 'Ищу в интернете…';
       _error = null;
       _answer = null;
+      _lastQuery = q;
     });
     try {
       final answer = await SearchService.ask(
@@ -96,7 +101,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     ? _ErrorView(message: _error!)
                         : _answer == null
                             ? const _WelcomeView()
-                            : _AnswerView(answer: _answer!),
+                            : _AnswerView(
+                                answer: _answer!,
+                                query: _lastQuery,
+                              ),
           ),
         ],
       ),
@@ -180,22 +188,103 @@ class _WelcomeView extends StatelessWidget {
   }
 }
 
-class _AnswerView extends StatelessWidget {
+class _AnswerView extends ConsumerStatefulWidget {
   final SearchAnswer answer;
+  final String query;
 
-  const _AnswerView({required this.answer});
+  const _AnswerView({required this.answer, required this.query});
+
+  @override
+  ConsumerState<_AnswerView> createState() => _AnswerViewState();
+}
+
+class _AnswerViewState extends ConsumerState<_AnswerView> {
+  bool _savingArticle = false;
+  bool _savingPdf = false;
+
+  Future<void> _makeArticle() async {
+    if (_savingArticle) return;
+    setState(() => _savingArticle = true);
+    try {
+      final path = await ArticleService.saveArticle(
+        ref,
+        title: widget.query,
+        text: widget.answer.text,
+        sources: widget.answer.sources,
+      );
+      if (!mounted) return;
+      context.push('/web', extra: path);
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, 'Не удалось создать статью: $e');
+    } finally {
+      if (mounted) setState(() => _savingArticle = false);
+    }
+  }
+
+  Future<void> _makePdf() async {
+    if (_savingPdf) return;
+    setState(() => _savingPdf = true);
+    try {
+      final msg = await FileTools.makePdf(
+        title: widget.query,
+        text: widget.answer.text,
+      );
+      if (!mounted) return;
+      toast(context, msg);
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, 'Не удалось создать PDF: $e');
+    } finally {
+      if (mounted) setState(() => _savingPdf = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final answer = widget.answer;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: SelectableText(
-              answer.text,
-              style: const TextStyle(fontSize: 14, height: 1.5),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(
+                  answer.text,
+                  style: const TextStyle(fontSize: 14, height: 1.5),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _savingArticle ? null : _makeArticle,
+                      icon: _savingArticle
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.article_outlined, size: 18),
+                      label: const Text('Оформить статью'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _savingPdf ? null : _makePdf,
+                      icon: _savingPdf
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                      label: const Text('PDF'),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),

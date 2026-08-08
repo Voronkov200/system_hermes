@@ -161,7 +161,9 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
           const SizedBox(height: 8),
           const Text(
             'Запиши лекцию или объяснение — Whisper превратит речь в текст, '
-            'и он станет источником в «Документах» (вопросы и конспекты).',
+            'и он станет источником в «Документах» (вопросы и конспекты).\n'
+            'Записи дольше ~60 минут не влезают в лимит Whisper — разбей '
+            'лекцию на части.',
             style: TextStyle(color: AppColors.textDim, fontSize: 13),
           ),
           const SizedBox(height: 24),

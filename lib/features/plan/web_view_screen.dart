@@ -34,8 +34,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
             if (mounted) setState(() => _loading = false);
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
+      );
+    final uri = Uri.parse(widget.url);
+    if (uri.scheme == 'file') {
+      // Статья System: Hermes (HTML из «Поиска»).
+      _controller.loadFile(uri.toFilePath());
+    } else {
+      _controller.loadRequest(uri);
+    }
   }
 
   @override

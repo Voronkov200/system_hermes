@@ -38,7 +38,14 @@ class VoiceTranscriber {
     final dir = await getApplicationDocumentsDirectory();
     _filePath = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
     await _recorder.start(
-      const RecordConfig(encoder: AudioEncoder.aacLc, sampleRate: 16000),
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        sampleRate: 16000,
+        numChannels: 1,
+        // Низкий битрейт (48 кбит/с): ~6 КБ/с → 25 МБ (лимит Groq)
+        // хватает на ~70 минут записи лекции.
+        bitRate: 48000,
+      ),
       path: _filePath,
     );
     _recording = true;
@@ -69,17 +76,24 @@ class VoiceTranscriber {
       ..fields['language'] = 'ru'
       ..files.add(await http.MultipartFile.fromPath('file', file.path));
 
-    final streamed = await request.send().timeout(const Duration(seconds: 90));
+    // Длинные лекции Whisper распознаёт дольше: таймаут 10 минут.
+    final streamed = await request.send().timeout(const Duration(seconds: 600));
     final res = await http.Response.fromStream(streamed);
 
     if (res.statusCode != 200) {
+      var serverInfo = '';
+      try {
+        serverInfo = utf8.decode(res.bodyBytes).trim();
+        if (serverInfo.length > 200) serverInfo = serverInfo.substring(0, 200);
+      } catch (_) {}
       final reason = switch (res.statusCode) {
         401 => 'неверный API-ключ (401)',
-        413 => 'запись слишком большая (413)',
+        413 => 'запись слишком большая для Whisper (413): сократи лекцию '
+            'до ~60 минут или разбей на части',
         429 => 'превышен лимит запросов (429)',
         _ => 'ошибка сервера (HTTP ${res.statusCode})',
       };
-      throw Exception(reason);
+      throw Exception('$reason${serverInfo.isEmpty ? '' : ': $serverInfo'}');
     }
 
     final Map<String, dynamic> data;

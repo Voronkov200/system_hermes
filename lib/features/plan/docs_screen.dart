@@ -515,6 +515,7 @@ class _DocCard extends StatelessWidget {
         'pdf' => Icons.picture_as_pdf_outlined,
         'obsidian' => Icons.book_outlined,
         'transcribe' => Icons.mic_outlined,
+        'article' => Icons.article_outlined,
         _ => Icons.description_outlined,
       };
 
@@ -522,6 +523,7 @@ class _DocCard extends StatelessWidget {
         'pdf' => 'PDF',
         'obsidian' => 'Obsidian',
         'transcribe' => 'Лекция',
+        'article' => 'Статья',
         _ => 'Текст',
       };
 
