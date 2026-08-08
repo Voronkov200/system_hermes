@@ -148,9 +148,9 @@ void main() {
     expect(loaded.setupProgress, 42.5);
     expect(loaded.bootCount, 3);
     // Персонализация получает значения по умолчанию.
-    expect(loaded.wallpaperId, 'default');
+    expect(loaded.wallpaperId, 'bloom');
     expect(loaded.computerName, 'HERMES-01');
-    expect(loaded.taskbarTheme, 'dark');
+    expect(loaded.taskbarTheme, 'light');
     expect(loaded.bootPriority, 'dvd');
     await box2.close();
   });

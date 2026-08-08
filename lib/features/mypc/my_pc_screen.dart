@@ -7,6 +7,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -27,9 +28,21 @@ String _fmtDateTime(DateTime d) => '${_fmtDate(d)} ${_fmtTime(d)}';
 class WallpaperPresets {
   WallpaperPresets._();
 
-  static const ids = ['default', 'ocean', 'forest', 'sunset', 'matrix'];
+  static const ids = [
+    'bloom', 'clouds', 'default', 'ocean', 'forest', 'sunset', 'matrix',
+  ];
 
   static const List<({String id, String name, List<Color> colors})> all = [
+    (
+      id: 'bloom',
+      name: 'Bloom',
+      colors: [Color(0xFF5FA8D3), Color(0xFF3D7CC0), Color(0xFF23456F), Color(0xFF1B2B5E)],
+    ),
+    (
+      id: 'clouds',
+      name: 'Облака',
+      colors: [Color(0xFFEAF4FB), Color(0xFFD3E7F5), Color(0xFFA9CFF0), Color(0xFF7FB2E0)],
+    ),
     (
       id: 'default',
       name: 'Hermes Night',
@@ -70,6 +83,139 @@ class WallpaperPresets {
     }
     return all.first.name;
   }
+
+  /// Цвет подписи иконки под обои: тёмный текст на светлых обоях и наоборот.
+  static Color labelColorFor(String id) {
+    final c = colorsFor(id).first;
+    return c.computeLuminance() > 0.4 ? Colors.black87 : Colors.white;
+  }
+
+  /// Тень подписи: тёмная на светлом фоне и наоборот.
+  static Shadow labelShadowFor(String id) {
+    final light = labelColorFor(id).computeLuminance() > 0.5;
+    return light
+        ? const Shadow(color: Colors.white, blurRadius: 3)
+        : const Shadow(color: Colors.black87, blurRadius: 4);
+  }
+}
+
+/// Палитра темы «Мой ПК» — токены Win11 по HyperDroid: light / dark / blue.
+class _PcTheme {
+  /// Тёмная ли «хром»-панель (панель задач, заголовки окон).
+  final bool chromeDark;
+
+  final Color taskbar; // панель задач
+  final Color taskbarHover; // hover кнопок панели
+  final Color start; // меню Пуск
+  final Color startHover; // hover пунктов Пуска
+  final Color titlebar; // заголовок окна (в фокусе)
+  final Color titlebarDim; // заголовок окна (не в фокусе)
+  final Color surface; // тело окна
+  final Color dialog; // диалоги и панели
+  final Color border; // рамки
+  final Color divider; // разделители
+  final Color hover; // hover списков
+  final Color text;
+  final Color textDim;
+  final Color accent;
+  final Color danger;
+  final Color recycleBanner;
+  final Color recycleBannerText;
+
+  const _PcTheme({
+    required this.chromeDark,
+    required this.taskbar,
+    required this.taskbarHover,
+    required this.start,
+    required this.startHover,
+    required this.titlebar,
+    required this.titlebarDim,
+    required this.surface,
+    required this.dialog,
+    required this.border,
+    required this.divider,
+    required this.hover,
+    required this.text,
+    required this.textDim,
+    required this.accent,
+    required this.danger,
+    required this.recycleBanner,
+    required this.recycleBannerText,
+  });
+
+  Brightness get brightness => chromeDark ? Brightness.dark : Brightness.light;
+
+  Color get chromeText => chromeDark ? Colors.white : text;
+  Color get chromeDim => chromeDark ? Colors.white54 : const Color(0xFF9E9E9E);
+  Color get chromeIconDim => chromeDark ? Colors.white70 : textDim;
+
+  static _PcTheme of(String id) {
+    switch (id) {
+      case 'dark':
+        return const _PcTheme(
+          chromeDark: true,
+          taskbar: Color(0xFF1C1C1C),
+          taskbarHover: Color(0xFF2E2E2E),
+          start: Color(0xFF242424),
+          startHover: Color(0xFF383838),
+          titlebar: Color(0xFF202020),
+          titlebarDim: Color(0xFF2A2A2A),
+          surface: Color(0xFF191919),
+          dialog: Color(0xFF202020),
+          border: Color(0xFF3B3B3B),
+          divider: Color(0xFF262626),
+          hover: Color(0xFF383838),
+          text: Colors.white,
+          textDim: Color(0xFF9E9E9E),
+          accent: Color(0xFF60CDFF),
+          danger: Color(0xFFB3271C),
+          recycleBanner: Color(0xFF3D3A1E),
+          recycleBannerText: Color(0xFFE6C15C),
+        );
+      case 'blue':
+        return const _PcTheme(
+          chromeDark: true,
+          taskbar: Color(0xFF00458A),
+          taskbarHover: Color(0xFF005DA6),
+          start: Color(0xFF202020),
+          startHover: Color(0xFF3A3A3A),
+          titlebar: Color(0xFF00458A),
+          titlebarDim: Color(0xFF8A8A8A),
+          surface: Colors.white,
+          dialog: Color(0xFFF3F3F3),
+          border: Color(0xFFD6D6D6),
+          divider: Color(0xFFE8E5E9),
+          hover: Color(0xFFF0F0F0),
+          text: Color(0xFF1F1F1F),
+          textDim: Color(0xFF5D5D5D),
+          accent: Color(0xFF0078D7),
+          danger: Color(0xFFC73F30),
+          recycleBanner: Color(0xFFFFF8E1),
+          recycleBannerText: Color(0xFF8D6E00),
+        );
+      default: // light
+        return const _PcTheme(
+          chromeDark: false,
+          taskbar: Color(0xFFEEEEEE),
+          taskbarHover: Color(0xFFE0E0E0),
+          start: Color(0xFFF2F2F2),
+          startHover: Color(0xFFE5E5E5),
+          titlebar: Color(0xFFF9F9F9),
+          titlebarDim: Color(0xFFEDEDED),
+          surface: Colors.white,
+          dialog: Color(0xFFF3F3F3),
+          border: Color(0xFFD6D6D6),
+          divider: Color(0xFFE8E5E9),
+          hover: Color(0xFFF0F0F0),
+          text: Color(0xFF1F1F1F),
+          textDim: Color(0xFF5D5D5D),
+          accent: Color(0xFF0078D7),
+          danger: Color(0xFFC73F30),
+          recycleBanner: Color(0xFFFFF8E1),
+          recycleBannerText: Color(0xFF8D6E00),
+        );
+    }
+  }
 }
 
 class MyPcScreen extends ConsumerStatefulWidget {
@@ -89,6 +235,10 @@ class _MyPcScreenState extends ConsumerState<MyPcScreen> {
   @override
   void initState() {
     super.initState();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       ref.read(myPcProvider.notifier).tick();
       if (mounted) setState(() {});
@@ -98,6 +248,10 @@ class _MyPcScreenState extends ConsumerState<MyPcScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
     super.dispose();
   }
 
@@ -1004,118 +1158,138 @@ class _DesktopScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = WallpaperPresets.colorsFor(state.wallpaperId);
-    final theme = state.taskbarTheme;
-    return Column(
-      children: [
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final area = Size(
-                constraints.maxWidth,
-                constraints.maxHeight,
-              );
-              return Stack(
-                children: [
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: colors,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 8,
-                    top: 8,
-                    child: _DesktopIcons(
-                      state: state,
-                      files: files,
-                      onOpen: onOpen,
-                    ),
-                  ),
-                  for (final w in windows)
-                    Positioned(
-                      left: w.pos.dx.clamp(0.0, area.width - 120),
-                      top: w.pos.dy.clamp(0.0, area.height - 80),
-                      width: w.sizeFor().width.clamp(200.0, area.width - 20),
-                      height: w.sizeFor().height.clamp(180.0, area.height - 20),
-                      child: Offstage(
-                        offstage: w.minimized,
-                        child: _WindowFrame(
-                          win: w,
-                          isFocused: w.z == _maxZ(windows),
-                          onTap: () => onFocus(w),
-                          onDrag: (delta) {
-                            final size = w.sizeFor();
-                            final nx = (w.pos.dx + delta.dx)
-                                .clamp(0.0, area.width - size.width);
-                            final ny = (w.pos.dy + delta.dy)
-                                .clamp(0.0, area.height - size.height);
-                            w.pos = Offset(nx, ny);
-                          },
-                          onMinimize: () => onMinimize(w),
-                          onClose: () => onClose(w),
-                          content: _windowContent(w),
-                        ),
-                      ),
-                    ),
-                  if (startOpen)
+    final pcTheme = _PcTheme.of(state.taskbarTheme);
+    return Theme(
+      data: ThemeData(
+        useMaterial3: true,
+        brightness: pcTheme.brightness,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: pcTheme.accent,
+          brightness: pcTheme.brightness,
+          surface: pcTheme.dialog,
+        ),
+        scaffoldBackgroundColor: pcTheme.surface,
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final area = Size(
+                  constraints.maxWidth,
+                  constraints.maxHeight,
+                );
+                return Stack(
+                  children: [
                     Positioned.fill(
-                      child: GestureDetector(
-                        onTap: onStartToggle,
-                        child: Container(color: Colors.transparent),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: colors,
+                          ),
+                        ),
                       ),
                     ),
-                  if (startOpen)
                     Positioned(
-                      left: 6,
-                      bottom: 6,
-                      child: _StartMenu(
-                        theme: theme,
-                        onClose: onStartToggle,
-                        onOpen: (type, path, filePath) {
-                          onOpen(type, path: path, filePath: filePath);
-                        },
-                        onShutdown: onShutdown,
-                        onReboot: onReboot,
+                      left: 8,
+                      top: 8,
+                      child: _DesktopIcons(
+                        state: state,
+                        files: files,
+                        onOpen: onOpen,
                       ),
                     ),
-                ],
-              );
-            },
+                    for (final w in windows)
+                      Positioned(
+                        left: w.pos.dx.clamp(0.0, area.width - 120),
+                        top: w.pos.dy.clamp(0.0, area.height - 80),
+                        width: w.sizeFor().width.clamp(200.0, area.width - 20),
+                        height:
+                            w.sizeFor().height.clamp(180.0, area.height - 20),
+                        child: Offstage(
+                          offstage: w.minimized,
+                          child: _WindowFrame(
+                            win: w,
+                            theme: pcTheme,
+                            isFocused: w.z == _maxZ(windows),
+                            onTap: () => onFocus(w),
+                            onDrag: (delta) {
+                              final size = w.sizeFor();
+                              final nx = (w.pos.dx + delta.dx)
+                                  .clamp(0.0, area.width - size.width);
+                              final ny = (w.pos.dy + delta.dy)
+                                  .clamp(0.0, area.height - size.height);
+                              w.pos = Offset(nx, ny);
+                            },
+                            onMinimize: () => onMinimize(w),
+                            onClose: () => onClose(w),
+                            content: _windowContent(w, pcTheme),
+                          ),
+                        ),
+                      ),
+                    if (startOpen)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          onTap: onStartToggle,
+                          child: Container(color: Colors.transparent),
+                        ),
+                      ),
+                    if (startOpen)
+                      Positioned(
+                        left: 6,
+                        bottom: 6,
+                        child: _StartMenu(
+                          theme: pcTheme,
+                          onClose: onStartToggle,
+                          onOpen: (type, path, filePath) {
+                            onOpen(type, path: path, filePath: filePath);
+                          },
+                          onShutdown: onShutdown,
+                          onReboot: onReboot,
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
           ),
-        ),
-        _Taskbar(
-          theme: theme,
-          startMenuOpen: startOpen,
-          onStart: onStartToggle,
-          windows: windows,
-          onWindowTap: (w) =>
-              w.minimized ? onFocus(w) : onMinimize(w),
-        ),
-      ],
+          _Taskbar(
+            theme: pcTheme,
+            startMenuOpen: startOpen,
+            onStart: onStartToggle,
+            windows: windows,
+            onWindowTap: (w) =>
+                w.minimized ? onFocus(w) : onMinimize(w),
+          ),
+        ],
+      ),
     );
   }
 
   static int _maxZ(List<_Win> ws) =>
       ws.fold(0, (m, w) => w.z > m ? w.z : m);
 
-  Widget _windowContent(_Win w) {
+  Widget _windowContent(_Win w, _PcTheme theme) {
     switch (w.type) {
       case _WinType.notepad:
-        return _NotepadWindow(key: ValueKey('np${w.id}'), filePath: w.filePath);
+        return _NotepadWindow(
+          key: ValueKey('np${w.id}'),
+          theme: theme,
+          filePath: w.filePath,
+        );
       case _WinType.browser:
         return _BrowserWindow(
           key: ValueKey('br${w.id}'),
+          theme: theme,
           initialUrl: w.url,
           onUrlChange: (u) => w.url = u,
         );
       case _WinType.explorer:
         return _ExplorerWindow(
           key: ValueKey('ex${w.id}'),
+          theme: theme,
           path: w.path ?? r'C:\',
           onOpen: onOpen,
         );
@@ -1125,11 +1299,11 @@ class _DesktopScreen extends ConsumerWidget {
           onOpen: onOpen,
         );
       case _WinType.personalize:
-        return const _PersonalizeWindow();
+        return _PersonalizeWindow(theme: theme);
       case _WinType.about:
-        return const _AboutWindow();
+        return _AboutWindow(theme: theme);
       case _WinType.properties:
-        return _PropertiesWindow(path: w.path!);
+        return _PropertiesWindow(theme: theme, path: w.path!);
     }
   }
 }
@@ -1138,12 +1312,16 @@ class _DesktopIcon extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String label;
+  final Color labelColor;
+  final Shadow labelShadow;
   final VoidCallback onTap;
 
   const _DesktopIcon({
     required this.icon,
     required this.color,
     required this.label,
+    required this.labelColor,
+    required this.labelShadow,
     required this.onTap,
   });
 
@@ -1163,10 +1341,10 @@ class _DesktopIcon extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
-                color: Colors.white,
-                shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
+                color: labelColor,
+                shadows: [labelShadow],
               ),
             ),
           ],
@@ -1197,6 +1375,8 @@ class _DesktopIcons extends StatelessWidget {
         .where((f) =>
             f.parent == r'C:\Users\Hermes\Desktop' && !f.recycled)
         .toList();
+    final labelColor = WallpaperPresets.labelColorFor(state.wallpaperId);
+    final labelShadow = WallpaperPresets.labelShadowFor(state.wallpaperId);
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -1204,24 +1384,32 @@ class _DesktopIcons extends StatelessWidget {
             icon: Icons.public,
             color: const Color(0xFF64B5F6),
             label: 'Браузер',
+            labelColor: labelColor,
+            labelShadow: labelShadow,
             onTap: () => onOpen(_WinType.browser),
           ),
           _DesktopIcon(
             icon: Icons.folder,
             color: const Color(0xFFF2B33D),
             label: 'Компьютер',
+            labelColor: labelColor,
+            labelShadow: labelShadow,
             onTap: () => onOpen(_WinType.explorer),
           ),
           _DesktopIcon(
             icon: Icons.terminal,
             color: const Color(0xFF9E9E9E),
             label: 'Терминал',
+            labelColor: labelColor,
+            labelShadow: labelShadow,
             onTap: () => onOpen(_WinType.terminal),
           ),
           _DesktopIcon(
             icon: Icons.description_outlined,
             color: const Color(0xFF90A4AE),
             label: 'Блокнот',
+            labelColor: labelColor,
+            labelShadow: labelShadow,
             onTap: () {
               const path = r'C:\Users\Hermes\Desktop\Новый текстовый документ.txt';
               onOpen(_WinType.notepad, filePath: path);
@@ -1231,6 +1419,8 @@ class _DesktopIcons extends StatelessWidget {
             icon: Icons.delete_outline,
             color: const Color(0xFFB0BEC5),
             label: recycleCount > 0 ? 'Корзина ($recycleCount)' : 'Корзина',
+            labelColor: labelColor,
+            labelShadow: labelShadow,
             onTap: () => onOpen(
               _WinType.explorer,
               path: VirtualFsCatalog.recycleBinPath,
@@ -1240,12 +1430,16 @@ class _DesktopIcons extends StatelessWidget {
             icon: Icons.palette_outlined,
             color: const Color(0xFFCE93D8),
             label: 'Персонализация',
+            labelColor: labelColor,
+            labelShadow: labelShadow,
             onTap: () => onOpen(_WinType.personalize),
           ),
           _DesktopIcon(
             icon: Icons.info_outline,
             color: const Color(0xFF81C784),
             label: 'Об этом ПК',
+            labelColor: labelColor,
+            labelShadow: labelShadow,
             onTap: () => onOpen(_WinType.about),
           ),
           const SizedBox(height: 10),
@@ -1256,6 +1450,8 @@ class _DesktopIcons extends StatelessWidget {
                   ? const Color(0xFFF2B33D)
                   : Colors.blueGrey,
               label: f.name,
+              labelColor: labelColor,
+              labelShadow: labelShadow,
               onTap: () {
                 if (f.isFolder) {
                   onOpen(_WinType.explorer, path: f.path);
@@ -1289,6 +1485,7 @@ class _DesktopIcons extends StatelessWidget {
 
 class _WindowFrame extends StatelessWidget {
   final _Win win;
+  final _PcTheme theme;
   final bool isFocused;
   final VoidCallback onTap;
   final ValueChanged<Offset> onDrag;
@@ -1298,6 +1495,7 @@ class _WindowFrame extends StatelessWidget {
 
   const _WindowFrame({
     required this.win,
+    required this.theme,
     required this.isFocused,
     required this.onTap,
     required this.onDrag,
@@ -1308,12 +1506,15 @@ class _WindowFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final barBg = isFocused ? theme.titlebar : theme.titlebarDim;
+    final barFg = isFocused ? theme.chromeText : theme.chromeDim;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.surface,
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: theme.border, width: 0.7),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: isFocused ? 0.45 : 0.25),
@@ -1329,20 +1530,18 @@ class _WindowFrame extends StatelessWidget {
               onPanUpdate: (d) => onDrag(d.delta),
               child: Container(
                 height: 30,
-                color: isFocused
-                    ? const Color(0xFF00458A)
-                    : const Color(0xFF8A8A8A),
+                color: barBg,
                 padding: const EdgeInsets.only(left: 8),
                 child: Row(
                   children: [
-                    Icon(_titleIcon(), size: 14, color: Colors.white70),
+                    Icon(_titleIcon(), size: 14, color: barFg),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         win.titleFor(),
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: barFg,
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1350,18 +1549,20 @@ class _WindowFrame extends StatelessWidget {
                     ),
                     InkWell(
                       onTap: onMinimize,
-                      child: const SizedBox(
+                      hoverColor: theme.hover.withValues(alpha: 0.6),
+                      child: SizedBox(
                         width: 30,
                         height: 30,
-                        child: Icon(Icons.remove, size: 16, color: Colors.white),
+                        child: Icon(Icons.remove, size: 16, color: barFg),
                       ),
                     ),
                     InkWell(
                       onTap: onClose,
-                      child: const SizedBox(
+                      hoverColor: theme.danger.withValues(alpha: 0.3),
+                      child: SizedBox(
                         width: 30,
                         height: 30,
-                        child: Icon(Icons.close, size: 15, color: Colors.white),
+                        child: Icon(Icons.close, size: 15, color: barFg),
                       ),
                     ),
                   ],
@@ -1394,9 +1595,10 @@ class _WindowFrame extends StatelessWidget {
 // =====================================================================
 
 class _NotepadWindow extends ConsumerStatefulWidget {
+  final _PcTheme theme;
   final String? filePath;
 
-  const _NotepadWindow({super.key, this.filePath});
+  const _NotepadWindow({super.key, required this.theme, this.filePath});
 
   @override
   ConsumerState<_NotepadWindow> createState() => _NotepadWindowState();
@@ -1434,17 +1636,18 @@ class _NotepadWindowState extends ConsumerState<_NotepadWindow> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: widget.theme.surface,
       child: TextField(
         controller: _ctrl,
         maxLines: null,
         expands: true,
         textAlignVertical: TextAlignVertical.top,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'monospace',
           fontSize: 13,
-          color: Colors.black87,
+          color: widget.theme.text,
         ),
+        cursorColor: widget.theme.accent,
         onChanged: _scheduleSave,
         decoration: const InputDecoration(
           border: InputBorder.none,
@@ -1460,11 +1663,13 @@ class _NotepadWindowState extends ConsumerState<_NotepadWindow> {
 // =====================================================================
 
 class _BrowserWindow extends StatefulWidget {
+  final _PcTheme theme;
   final String initialUrl;
   final ValueChanged<String> onUrlChange;
 
   const _BrowserWindow({
     super.key,
+    required this.theme,
     required this.initialUrl,
     required this.onUrlChange,
   });
@@ -1511,12 +1716,13 @@ class _BrowserWindowState extends State<_BrowserWindow> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = widget.theme;
     return Container(
-      color: const Color(0xFFF3F3F3),
+      color: theme.dialog,
       child: Column(
         children: [
           Container(
-            color: Colors.white,
+            color: theme.surface,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(
               children: [
@@ -1534,11 +1740,14 @@ class _BrowserWindowState extends State<_BrowserWindow> {
                   child: TextField(
                     controller: _urlCtrl,
                     onSubmitted: _go,
-                    style: const TextStyle(fontSize: 12, color: Colors.black87),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.text,
+                    ),
                     decoration: InputDecoration(
                       isDense: true,
                       filled: true,
-                      fillColor: const Color(0xFFF0F0F0),
+                      fillColor: theme.dialog,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide.none,
@@ -1573,10 +1782,16 @@ class _BrowserWindowState extends State<_BrowserWindow> {
 // =====================================================================
 
 class _ExplorerWindow extends ConsumerStatefulWidget {
+  final _PcTheme theme;
   final String path;
   final void Function(_WinType, {String? path, String? filePath}) onOpen;
 
-  const _ExplorerWindow({super.key, required this.path, required this.onOpen});
+  const _ExplorerWindow({
+    super.key,
+    required this.theme,
+    required this.path,
+    required this.onOpen,
+  });
 
   @override
   ConsumerState<_ExplorerWindow> createState() => _ExplorerWindowState();
@@ -1721,12 +1936,13 @@ class _ExplorerWindowState extends ConsumerState<_ExplorerWindow> {
     final ctrl = ref.watch(myPcProvider.notifier);
     final items = ctrl.listDir(_path);
     final isRoot = _path == r'C:\';
+    final theme = widget.theme;
     return Container(
-      color: Colors.white,
+      color: theme.surface,
       child: Column(
         children: [
           Container(
-            color: const Color(0xFFF5F5F5),
+            color: theme.dialog,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             child: Row(
               children: [
@@ -1747,9 +1963,9 @@ class _ExplorerWindowState extends ConsumerState<_ExplorerWindow> {
                   child: Text(
                     _path,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Colors.black87,
+                      color: theme.text,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -1774,19 +1990,22 @@ class _ExplorerWindowState extends ConsumerState<_ExplorerWindow> {
           if (_inRecycle)
             Container(
               width: double.infinity,
-              color: const Color(0xFFFFF8E1),
+              color: theme.recycleBanner,
               padding: const EdgeInsets.all(6),
-              child: const Text(
+              child: Text(
                 'Корзина: здесь лежат удалённые файлы. Восстановите или удалите навсегда.',
-                style: TextStyle(fontSize: 10, color: Color(0xFF8D6E00)),
+                style: TextStyle(fontSize: 10, color: theme.recycleBannerText),
               ),
             ),
           Expanded(
             child: items.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       'Папка пуста',
-                      style: TextStyle(fontSize: 12, color: Colors.black38),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.textDim.withValues(alpha: 0.7),
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -1815,15 +2034,17 @@ class _ExplorerWindowState extends ConsumerState<_ExplorerWindow> {
                                 child: Text(
                                   _inRecycle ? f.originalPath ?? f.name : f.name,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.black87,
+                                    color: theme.text,
                                   ),
                                 ),
                               ),
                               if (f.isFolder)
-                                const Icon(Icons.chevron_right,
-                                    size: 16, color: Colors.black26),
+                                Icon(Icons.chevron_right,
+                                    size: 16,
+                                    color: theme.textDim
+                                        .withValues(alpha: 0.5)),
                             ],
                           ),
                         ),
@@ -2338,7 +2559,9 @@ class _TerminalWindowState extends ConsumerState<_TerminalWindow> {
 // =====================================================================
 
 class _AboutWindow extends ConsumerWidget {
-  const _AboutWindow();
+  final _PcTheme theme;
+
+  const _AboutWindow({required this.theme});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2359,22 +2582,23 @@ class _AboutWindow extends ConsumerWidget {
           : _fmtDateTime(state.installedAt!)),
       ('Включений', '${state.bootCount}'),
     ];
+    final theme = this.theme;
     return Container(
-      color: const Color(0xFFF0F0F0),
+      color: theme.dialog,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              _WindowsLogo(size: 28),
-              SizedBox(width: 10),
+              const _WindowsLogo(size: 28),
+              const SizedBox(width: 10),
               Text(
                 'Windows 11 Pro',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+                  color: theme.text,
                 ),
               ),
             ],
@@ -2392,18 +2616,18 @@ class _AboutWindow extends ConsumerWidget {
                           width: 110,
                           child: Text(
                             k,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black54,
+                              color: theme.textDim,
                             ),
                           ),
                         ),
                         Expanded(
                           child: Text(
                             v,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black87,
+                              color: theme.text,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -2411,13 +2635,13 @@ class _AboutWindow extends ConsumerWidget {
                       ],
                     ),
                   ),
-                const Divider(height: 20),
-                const Text(
+                Divider(height: 20, color: theme.divider),
+                Text(
                   'Сборка Hermes OS:',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                    color: theme.text,
                   ),
                 ),
                 for (final t in MyPcController.buildTweaks)
@@ -2426,14 +2650,16 @@ class _AboutWindow extends ConsumerWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('•  ',
-                            style: TextStyle(fontSize: 12, color: Colors.black54)),
+                        Text(
+                          '•  ',
+                          style: TextStyle(fontSize: 12, color: theme.textDim),
+                        ),
                         Expanded(
                           child: Text(
                             t,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black54,
+                              color: theme.textDim,
                             ),
                           ),
                         ),
@@ -2454,22 +2680,27 @@ class _AboutWindow extends ConsumerWidget {
 // =====================================================================
 
 class _PropertiesWindow extends ConsumerWidget {
+  final _PcTheme theme;
   final String path;
 
-  const _PropertiesWindow({required this.path});
+  const _PropertiesWindow({required this.theme, required this.path});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ctrl = ref.watch(myPcProvider.notifier);
     final f = ctrl.fileAt(path);
+    final theme = this.theme;
     if (f == null) {
-      return const Center(
-        child: Text('Файл не найден', style: TextStyle(color: Colors.black45)),
+      return Center(
+        child: Text(
+          'Файл не найден',
+          style: TextStyle(color: theme.textDim),
+        ),
       );
     }
     final props = ctrl.propsOf(path);
     return Container(
-      color: const Color(0xFFF0F0F0),
+      color: theme.dialog,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2485,16 +2716,16 @@ class _PropertiesWindow extends ConsumerWidget {
               Expanded(
                 child: Text(
                   f.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                    color: theme.text,
                   ),
                 ),
               ),
             ],
           ),
-          const Divider(height: 24),
+          Divider(height: 24, color: theme.divider),
           for (final (k, v) in [
             ('Тип', f.isFolder ? 'Папка' : 'Файл'),
             ('Расположение', f.parent),
@@ -2510,15 +2741,15 @@ class _PropertiesWindow extends ConsumerWidget {
                     width: 90,
                     child: Text(
                       k,
-                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                      style: TextStyle(fontSize: 12, color: theme.textDim),
                     ),
                   ),
                   Expanded(
                     child: Text(
                       v,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Colors.black87,
+                        color: theme.text,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -2537,7 +2768,7 @@ class _PropertiesWindow extends ConsumerWidget {
 // =====================================================================
 
 class _Taskbar extends StatelessWidget {
-  final String theme;
+  final _PcTheme theme;
   final bool startMenuOpen;
   final VoidCallback onStart;
   final List<_Win> windows;
@@ -2551,35 +2782,26 @@ class _Taskbar extends StatelessWidget {
     required this.onWindowTap,
   });
 
-  Color get _barColor => switch (theme) {
-        'light' => const Color(0xFFE9E9E9),
-        'blue' => const Color(0xFF00458A),
-        _ => const Color(0xFF1C1C1C),
-      };
-
-  Color get _buttonColor => switch (theme) {
-        'light' => const Color(0xFFD4D4D4),
-        'blue' => const Color(0xFF005DA6),
-        _ => const Color(0xFF3A3A3A),
-      };
-
-  Color get _textColor => theme == 'light' ? Colors.black87 : Colors.white;
-
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 42,
-      color: _barColor,
+      color: theme.taskbar,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
           InkWell(
             onTap: onStart,
+            hoverColor: theme.taskbarHover,
+            borderRadius: BorderRadius.circular(4),
             child: Container(
               width: 42,
-              height: 36,
-              color: startMenuOpen ? _buttonColor : null,
-              child: const Center(child: _WindowsLogo(size: 20)),
+              height: 32,
+              decoration: BoxDecoration(
+                color: startMenuOpen ? theme.taskbarHover : null,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Center(child: _WindowsLogo(size: 18)),
             ),
           ),
           const SizedBox(width: 6),
@@ -2590,25 +2812,32 @@ class _Taskbar extends StatelessWidget {
                 children: [
                   for (final w in windows)
                     Padding(
-                      padding: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.only(right: 4),
                       child: InkWell(
                         onTap: () => onWindowTap(w),
+                        hoverColor: theme.taskbarHover,
+                        borderRadius: BorderRadius.circular(4),
                         child: Container(
                           height: 32,
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           decoration: BoxDecoration(
                             color: w.minimized
-                                ? _buttonColor.withValues(alpha: 0.6)
-                                : _buttonColor,
+                                ? Colors.transparent
+                                : theme.taskbarHover,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 w.titleFor(),
                                 style: TextStyle(
-                                  color: _textColor,
+                                  color: w.minimized
+                                      ? theme.chromeText.withValues(alpha: 0.5)
+                                      : theme.chromeText,
                                   fontSize: 11,
+                                  fontWeight:
+                                      w.minimized ? null : FontWeight.w500,
                                 ),
                               ),
                             ],
@@ -2620,12 +2849,11 @@ class _Taskbar extends StatelessWidget {
               ),
             ),
           ),
-          Icon(Icons.wifi, size: 14, color: _textColor.withValues(alpha: 0.7)),
+          Icon(Icons.wifi, size: 14, color: theme.chromeIconDim),
           const SizedBox(width: 8),
-          Icon(Icons.volume_up,
-              size: 14, color: _textColor.withValues(alpha: 0.7)),
+          Icon(Icons.volume_up, size: 14, color: theme.chromeIconDim),
           const SizedBox(width: 10),
-          _Clock(textColor: _textColor),
+          _Clock(textColor: theme.chromeText),
           const SizedBox(width: 6),
         ],
       ),
@@ -2673,7 +2901,7 @@ class _ClockState extends State<_Clock> {
 // =====================================================================
 
 class _StartMenu extends StatelessWidget {
-  final String theme;
+  final _PcTheme theme;
   final VoidCallback onClose;
   final void Function(_WinType, String?, String?) onOpen;
   final VoidCallback onShutdown;
@@ -2689,15 +2917,12 @@ class _StartMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = theme == 'light';
-    final bg = isLight ? const Color(0xFFF0F0F0) : const Color(0xFF202020);
-    final textColor = isLight ? Colors.black87 : Colors.white;
-    final iconColor = isLight ? Colors.black54 : Colors.white70;
-    final dividerColor = isLight ? const Color(0xFFD0D0D0) : const Color(0xFF3A3A3A);
+    final textColor = theme.chromeText;
+    final iconColor = theme.chromeIconDim;
     return Material(
-      color: bg,
+      color: theme.start,
       elevation: 8,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
         width: 200,
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -2710,6 +2935,7 @@ class _StartMenu extends StatelessWidget {
               label: 'Hermes',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Hermes: система готова. Протокол активен.'),
@@ -2722,6 +2948,7 @@ class _StartMenu extends StatelessWidget {
               label: 'Браузер',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () => onOpen(_WinType.browser, null, null),
             ),
             _StartMenuItem(
@@ -2729,6 +2956,7 @@ class _StartMenu extends StatelessWidget {
               label: 'Компьютер',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () => onOpen(_WinType.explorer, null, null),
             ),
             _StartMenuItem(
@@ -2736,6 +2964,7 @@ class _StartMenu extends StatelessWidget {
               label: 'Терминал',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () => onOpen(_WinType.terminal, null, null),
             ),
             _StartMenuItem(
@@ -2743,6 +2972,7 @@ class _StartMenu extends StatelessWidget {
               label: 'Корзина',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () => onOpen(
                 _WinType.explorer,
                 VirtualFsCatalog.recycleBinPath,
@@ -2754,6 +2984,7 @@ class _StartMenu extends StatelessWidget {
               label: 'Персонализация',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () => onOpen(_WinType.personalize, null, null),
             ),
             _StartMenuItem(
@@ -2761,14 +2992,16 @@ class _StartMenu extends StatelessWidget {
               label: 'Об этом ПК',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () => onOpen(_WinType.about, null, null),
             ),
-            Divider(color: dividerColor, height: 12),
+            Divider(color: theme.divider, height: 12),
             _StartMenuItem(
               icon: Icons.restart_alt,
               label: 'Перезагрузка',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () {
                 onClose();
                 onReboot();
@@ -2779,6 +3012,7 @@ class _StartMenu extends StatelessWidget {
               label: 'Выключение',
               iconColor: iconColor,
               textColor: textColor,
+              hoverColor: theme.startHover,
               onTap: () {
                 onClose();
                 onShutdown();
@@ -2796,6 +3030,7 @@ class _StartMenuItem extends StatelessWidget {
   final String label;
   final Color iconColor;
   final Color textColor;
+  final Color hoverColor;
   final VoidCallback onTap;
 
   const _StartMenuItem({
@@ -2803,6 +3038,7 @@ class _StartMenuItem extends StatelessWidget {
     required this.label,
     required this.iconColor,
     required this.textColor,
+    required this.hoverColor,
     required this.onTap,
   });
 
@@ -2810,6 +3046,7 @@ class _StartMenuItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
+      hoverColor: hoverColor,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
@@ -2832,7 +3069,9 @@ class _StartMenuItem extends StatelessWidget {
 // =====================================================================
 
 class _PersonalizeWindow extends ConsumerStatefulWidget {
-  const _PersonalizeWindow();
+  final _PcTheme theme;
+
+  const _PersonalizeWindow({required this.theme});
 
   @override
   ConsumerState<_PersonalizeWindow> createState() => _PersonalizeWindowState();
@@ -2857,17 +3096,18 @@ class _PersonalizeWindowState extends ConsumerState<_PersonalizeWindow> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(myPcProvider).state;
+    final theme = widget.theme;
     return Container(
-      color: const Color(0xFFF0F0F0),
+      color: theme.dialog,
       padding: const EdgeInsets.all(14),
       child: ListView(
         children: [
-          const Text(
+          Text(
             'Обои рабочего стола',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
+              color: theme.text,
             ),
           ),
           const SizedBox(height: 10),
@@ -2894,7 +3134,7 @@ class _PersonalizeWindowState extends ConsumerState<_PersonalizeWindow> {
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
                         color: state.wallpaperId == p.id
-                            ? AppColors.accent
+                            ? theme.accent
                             : Colors.transparent,
                         width: 3,
                       ),
@@ -2902,11 +3142,11 @@ class _PersonalizeWindowState extends ConsumerState<_PersonalizeWindow> {
                     child: Center(
                       child: Text(
                         p.name,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: WallpaperPresets.labelColorFor(p.id),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
-                          shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
+                          shadows: [WallpaperPresets.labelShadowFor(p.id)],
                         ),
                       ),
                     ),
@@ -2914,25 +3154,25 @@ class _PersonalizeWindowState extends ConsumerState<_PersonalizeWindow> {
                 ),
             ],
           ),
-          const Divider(height: 28),
-          const Text(
+          Divider(height: 28, color: theme.divider),
+          Text(
             'Имя компьютера',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
+              color: theme.text,
             ),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _nameCtrl,
-            style: const TextStyle(color: Colors.black87, fontSize: 13),
+            style: TextStyle(color: theme.text, fontSize: 13),
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.white,
+              fillColor: theme.surface,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
-                borderSide: BorderSide(color: Colors.grey.shade400),
+                borderSide: BorderSide(color: theme.border),
               ),
               hintText: 'HERMES-01',
               isDense: true,
@@ -2945,17 +3185,17 @@ class _PersonalizeWindowState extends ConsumerState<_PersonalizeWindow> {
             },
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'А-Z, 0-9, «-» и «_», до 15 символов. Нажмите Enter.',
-            style: TextStyle(fontSize: 11, color: Colors.black45),
+            style: TextStyle(fontSize: 11, color: theme.textDim),
           ),
-          const Divider(height: 28),
-          const Text(
-            'Тема панели задач',
+          Divider(height: 28, color: theme.divider),
+          Text(
+            'Тема Windows',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
+              color: theme.text,
             ),
           ),
           const SizedBox(height: 8),

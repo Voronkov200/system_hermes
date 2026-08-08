@@ -343,9 +343,9 @@ class MyPcState {
     this.sourceEditions = 6,
     List<String>? tweaks,
     this.bootCount = 0,
-    this.wallpaperId = 'default',
+    this.wallpaperId = 'bloom',
     this.computerName = 'HERMES-01',
-    this.taskbarTheme = 'dark',
+    this.taskbarTheme = 'light',
     this.bootPriority = 'dvd',
   }) : tweaks = tweaks ?? [];
 
