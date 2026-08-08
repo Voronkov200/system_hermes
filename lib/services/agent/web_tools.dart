@@ -18,9 +18,15 @@ class WebTools {
       String query, {int limit = 5}) async {
     final hits = await _ddgSearch(query, limit);
     if (hits.isEmpty) {
-      return _wikipediaHits(query, limit);
+      return searchWikipedia(query, limit: limit);
     }
     return hits;
+  }
+
+  /// Поиск по Wikipedia API (работает там, где остальное заблокировано).
+  static Future<List<WebSearchHit>> searchWikipedia(
+      String query, {int limit = 5}) async {
+    return _wikipediaHits(query, limit);
   }
 
   /// Поиск в интернете, возвращает текст со ссылками и сниппетами.
@@ -41,7 +47,7 @@ class WebTools {
           headers: {'User-Agent': _ua},
           body: {'q': query},
         )
-        .timeout(const Duration(seconds: 25));
+        .timeout(const Duration(seconds: 12));
 
     if (res.statusCode != 200) {
       throw Exception('Поиск недоступен: HTTP ${res.statusCode}');

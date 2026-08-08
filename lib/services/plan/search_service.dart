@@ -46,8 +46,9 @@ class SearchAnswer {
 }
 
 class SearchService {
-  /// Поиск по всем провайдерам (SearXNG → DDG/Wikipedia), без LLM.
+  /// Поиск по всем провайдерам (SearXNG → DDG → Wikipedia), без LLM.
   static Future<List<SearchHit>> searchWeb(String query, {int limit = 6}) async {
+    // 1. SearXNG-инстансы: пробуем, пока не получим JSON с результатами.
     for (final instance in _searxngInstances) {
       try {
         final hits = await _searxng(instance, query, limit);
@@ -56,15 +57,23 @@ class SearchService {
         // пробуем следующий инстанс
       }
     }
-    // Фолбэк: DuckDuckGo + Wikipedia (как в агенте Hermes).
-    final hits = await WebTools.searchStructured(query, limit: limit);
-    if (hits.isEmpty) {
-      throw Exception('Поиск ничего не нашёл по запросу «$query».');
-    }
-    return hits
-        .map((h) => SearchHit(title: h.title, url: h.url, snippet: h.snippet))
-        .toList();
+    // 2. Фолбэк: DuckDuckGo (парсинг HTML).
+    try {
+      final hits = await WebTools.searchStructured(query, limit: limit);
+      if (hits.isNotEmpty) return _mapHits(hits);
+    } catch (_) {}
+    // 3. Фолбэк: Wikipedia API — доступна почти всегда.
+    try {
+      final hits = await WebTools.searchWikipedia(query, limit: limit);
+      if (hits.isNotEmpty) return _mapHits(hits);
+    } catch (_) {}
+    throw Exception('Поисковые сервисы недоступны — проверь интернет '
+        'и попробуй ещё раз.');
   }
+
+  static List<SearchHit> _mapHits(List<WebSearchHit> hits) => hits
+      .map((h) => SearchHit(title: h.title, url: h.url, snippet: h.snippet))
+      .toList();
 
   /// Полный цикл: поиск + ответ LLM с цитатами.
   static Future<SearchAnswer> ask(
@@ -109,11 +118,20 @@ class SearchService {
       'language': 'ru-RU',
     });
     final res = await http
-        .get(uri, headers: {'User-Agent': _ua})
-        .timeout(const Duration(seconds: 12));
+        .get(uri, headers: {
+          'User-Agent': _ua,
+          'Accept': 'application/json',
+        })
+        .timeout(const Duration(seconds: 8));
 
     if (res.statusCode != 200) {
       throw Exception('HTTP ${res.statusCode}');
+    }
+    // Некоторые инстансы отвечают HTML-заглушкой (капча/редирект) —
+    // считаем это провалом и идём дальше.
+    final contentType = res.headers['content-type'] ?? '';
+    if (!contentType.contains('json')) {
+      throw Exception('не JSON-ответ');
     }
     final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     final raw = (data['results'] as List? ?? const []).cast<Map>();
