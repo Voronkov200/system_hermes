@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../agent/file_tools.dart';
+import '../journal_service.dart';
 import 'docs_service.dart';
 import 'search_service.dart';
 
@@ -84,6 +85,15 @@ class ArticleService {
           },
           content: format == 'txt' ? _plainText(text, sources) : text,
           filePath: path,
+        );
+
+    // Журнал: короткая запись о сохранённой статье.
+    final plain = _plainText(text, sources);
+    ref.read(journalProvider.notifier).add(
+          type: 'article',
+          source: 'search',
+          title: 'Статья «$title»',
+          text: plain.length > 3000 ? '${plain.substring(0, 3000)}…' : plain,
         );
 
     return path;

@@ -282,6 +282,15 @@ class SettingsScreen extends ConsumerWidget {
             onSave: (v) =>
                 ref.read(settingsProvider.notifier).setSearchSearxngUrl(v),
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.wifi_off),
+            title: const Text('Не искать в интернете'),
+            subtitle: const Text('Отвечать из знаний модели без веб-поиска'),
+            value: s.searchOffline,
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setSearchOffline(v),
+          ),
           const ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(

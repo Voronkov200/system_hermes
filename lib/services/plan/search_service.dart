@@ -1,15 +1,22 @@
 // Модуль «Поиск» (в стиле Morphic/NotebookLM Research):
-// вопрос → поиск в интернете (SearXNG-инстансы, фолбэк DuckDuckGo/Wikipedia)
-// → LLM (Groq) составляет ответ с цитатами источников.
+// вопрос → (Стадия −1: погода/валюты без LLM) → переформулировка запроса →
+// поиск (SearXNG/DDG/Bing/Brave/Yahoo/Wikipedia) → фильтрация стоп-доменов +
+// ранжирование → LLM составляет ответ с цитатами [n].
+//
+// Спецификация: разделы 2 (пять стадий), 3 (доработки), 6 (задачи 1–8).
 
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/constants.dart';
 import '../agent/web_tools.dart';
+import '../nbrb_api.dart';
 import '../settings_service.dart';
+import 'concurrency.dart';
 import 'llm.dart';
+import 'source_filter.dart';
 
 /// Публичные SearXNG-инстансы: пробуем по очереди, пока не получим ответ.
 const _searxngInstances = [
@@ -52,6 +59,20 @@ class SearchAnswer {
   const SearchAnswer({required this.text, required this.sources});
 }
 
+/// Обмен «вопрос — ответ» для контекста переформулировки (3.2, задача 6).
+typedef ChatTurn = ({String q, String a});
+
+/// Тип кэша (3.3, задача 1): Поиск — 5 минут, Исследование — 24 часа,
+/// Стадия −1 (погода/валюты) — 15 минут.
+enum _CacheKind { search, research, quick }
+
+class _CacheEntry {
+  final DateTime at;
+  final SearchAnswer answer;
+
+  _CacheEntry(this.at, this.answer);
+}
+
 class SearchService {
   /// Последний провайдер, который реально отдал результаты. Многие
   /// сервисы (DDG, SearXNG) периодически блокируют ботов капчей, поэтому
@@ -68,6 +89,53 @@ class SearchService {
         '${now.minute.toString().padLeft(2, '0')}';
     log.add('$t $line');
     if (log.length > 40) log.removeAt(0);
+  }
+
+  // ===================================================================
+  // Пул конкурентности (раздел 6, задача 2)
+  // ===================================================================
+
+  /// Ограничитель поисковых вызовов (аналог MAX_CONCURRENT_TAVILY = 4).
+  static final ConcurrencyLimiter searchLimiter =
+      ConcurrencyLimiter(AppConstants.maxConcurrentSearches);
+
+  /// Ограничитель вызовов LLM (аналог MAX_CONCURRENT_OPENCODE = 2).
+  static final ConcurrencyLimiter llmLimiter =
+      ConcurrencyLimiter(AppConstants.maxConcurrentLlm);
+
+  // ===================================================================
+  // Кэш результатов (3.3, задача 1)
+  // ===================================================================
+
+  static final Map<String, _CacheEntry> _cache = {};
+
+  static String _cacheKey(String q) =>
+      q.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  static Duration _ttlOf(_CacheKind kind) => switch (kind) {
+        _CacheKind.search => AppConstants.searchCacheTtl,
+        _CacheKind.research =>
+          const Duration(hours: AppConstants.researchCacheTtlHours),
+        _CacheKind.quick => AppConstants.stageMinusOneCacheTtl,
+      };
+
+  static SearchAnswer? _cacheGet(String key, _CacheKind kind) {
+    final e = _cache[key];
+    if (e == null) return null;
+    if (DateTime.now().difference(e.at) > _ttlOf(kind)) {
+      _cache.remove(key);
+      return null;
+    }
+    return e.answer;
+  }
+
+  static void _cachePut(String key, SearchAnswer answer, _CacheKind kind) {
+    _cache[key] = _CacheEntry(DateTime.now(), answer);
+    if (_cache.length > 100) {
+      final oldest = _cache.entries
+          .reduce((a, b) => a.value.at.isBefore(b.value.at) ? a : b);
+      _cache.remove(oldest.key);
+    }
   }
 
   /// Порядок HTML-провайдеров для перебора.
@@ -104,6 +172,7 @@ class SearchService {
 
   /// Поиск по всем провайдерам: свой SearXNG → публичные SearXNG →
   /// DDG (HTML) → DDG lite → Bing → Brave → Yahoo → Wikipedia. Без LLM.
+  /// Стоп-домены (2.3) отсекаются сразу, до отправки на LLM.
   static Future<List<SearchHit>> searchWeb(
     String query, {
     String? searxngUrl,
@@ -113,10 +182,11 @@ class SearchService {
     final custom = (searxngUrl ?? '').trim();
     if (custom.isNotEmpty) {
       try {
-        final hits = await _searxng(custom, query, limit);
-        if (hits.isNotEmpty) {
-          _log('Провайдер: свой SearXNG (${hits.length})');
-          return hits;
+        final clean = removeStops(
+            await _searxng(custom, query, limit));
+        if (clean.isNotEmpty) {
+          _log('Провайдер: свой SearXNG (${clean.length})');
+          return clean;
         }
       } catch (_) {}
     }
@@ -125,20 +195,21 @@ class SearchService {
     final saved = _lastGoodProvider;
     if (saved != null) {
       try {
-        final hits = await _via(saved, query, limit);
-        if (hits.isNotEmpty) {
-          _log('Провайдер: $saved (кэш, ${hits.length})');
-          return hits;
+        final clean = removeStops(await _via(saved, query, limit));
+        if (clean.isNotEmpty) {
+          _log('Провайдер: $saved (кэш, ${clean.length})');
+          return clean;
         }
       } catch (_) {}
     }
     // 1. Публичные SearXNG-инстансы: пока не получим JSON с результатами.
     for (final instance in _searxngInstances) {
       try {
-        final hits = await _searxng(instance, query, limit);
-        if (hits.isNotEmpty) {
-          _log('Провайдер: $instance (${hits.length})');
-          return hits;
+        final clean =
+            removeStops(await _searxng(instance, query, limit));
+        if (clean.isNotEmpty) {
+          _log('Провайдер: $instance (${clean.length})');
+          return clean;
         }
       } catch (_) {
         // пробуем следующий инстанс
@@ -147,11 +218,11 @@ class SearchService {
     // 2-7. HTML-провайдеры по порядку.
     for (final name in _providerOrder) {
       try {
-        final hits = await _via(name, query, limit);
-        if (hits.isNotEmpty) {
+        final clean = removeStops(await _via(name, query, limit));
+        if (clean.isNotEmpty) {
           _lastGoodProvider = name;
-          _log('Провайдер: $name (${hits.length})');
-          return hits;
+          _log('Провайдер: $name (${clean.length})');
+          return clean;
         }
       } catch (_) {
         // пробуем следующий
@@ -163,15 +234,21 @@ class SearchService {
 
   /// Поиск с переписыванием запроса: LLM превращает человеческий вопрос
   /// в 2-3 коротких поисковых запроса, каждый ищется отдельно, дубли
-  /// убираются. Если переписывание упало — ищем как есть.
+  /// убираются. Затем — фильтрация, ранжирование и топ-[limit] (2.3, 3.7).
+  /// Если переписывание упало — ищем как есть.
   static Future<List<SearchHit>> searchWebRewritten(
     WidgetRef ref,
     String query, {
     void Function(String stage)? onStage,
     int limit = 6,
+    List<ChatTurn> history = const [],
   }) async {
     final searxngUrl = ref.read(settingsProvider).searchSearxngUrl;
-    final queries = await _rewriteQueries(ref, query);
+    // 3.7: длинный вставленный текст обрезаем до ~200 символов
+    // перед переформулировкой.
+    final trimmed =
+        query.trim().length > 200 ? query.trim().substring(0, 200) : query.trim();
+    final queries = await _rewriteQueries(ref, trimmed, history: history);
     _log('Переписанные запросы: ${queries.join(' | ')}');
     final all = <SearchHit>[];
     final seen = <String>{};
@@ -190,8 +267,8 @@ class SearchService {
       onStage?.call('Ищу: "$query"');
       _log('Переписывание не дало результатов — ищу исходную фразу.');
       try {
-        final hits = await searchWeb(query, searxngUrl: searxngUrl,
-            limit: limit);
+        final hits =
+            await searchWeb(query, searxngUrl: searxngUrl, limit: limit);
         for (final h in hits) {
           if (seen.add(h.url)) all.add(h);
         }
@@ -200,27 +277,54 @@ class SearchService {
         rethrow;
       }
     }
-    final out = all.take(limit).toList();
-    _log('Итого источников: ${out.length}');
-    return out;
+    // Фильтрация и ранжирование перед синтезом (2.3, 2.5, 3.7):
+    // стоп-домены убраны, дубли схлопнуты по URL, остаются только
+    // релевантные, максимум [limit].
+    final before = all.length;
+    final filtered = filterAndRank(all, query, limit: limit);
+    _log('Ранжирование: $before → ${filtered.length} '
+        '(стопы/дубли убраны)');
+    return filtered;
   }
 
-  /// LLM переписывает вопрос в короткие поисковые запросы.
+  /// LLM переписывает вопрос в короткие поисковые запросы (2.3, 3.2,
+  /// задача 6): дата, язык вопроса, год/месяц для актуальных тем,
+  /// без уточнений и рассуждений; температура ≈0.1; резерв — исходный
+  /// вопрос.
   static Future<List<String>> _rewriteQueries(
-      WidgetRef ref, String query) async {
+    WidgetRef ref,
+    String query, {
+    List<ChatTurn> history = const [],
+  }) async {
     final today = _todayStr();
+    var historyText = '';
+    if (history.isNotEmpty) {
+      historyText = '\n\nПоследние обмены в этой сессии:\n' +
+          history.take(3).map((e) => 'Вопрос: ${e.q}\nОтвет: ${e.a}').join(
+              '\n\n') +
+          '\n\nЕсли текущий вопрос ссылается на предыдущий контекст '
+          '(местоимения, сокращённые уточнения) — учти это при '
+          'формулировке поисковых запросов.';
+    }
     try {
-      final raw = await llmComplete(
-        ref,
-        system: 'Ты — эксперт по поисковым запросам. Сегодня $today. '
-            'Преврати вопрос пользователя в 2-3 коротких поисковых запроса, '
-            'по одному на строку, без нумерации и кавычек. Каждый запрос — '
-            'отдельный ракурс темы, 3-8 слов, фактологичный. Если вопрос '
-            'уже короткий и чёткий — верни его одним запросом.',
-        user: 'Вопрос: $query',
-        maxTokens: 300,
-        timeoutSeconds: 60,
-      );
+      final raw = await llmLimiter.run(() => retry(
+            () => llmComplete(
+              ref,
+              system: 'Ты — эксперт по поисковым запросам. Сегодня $today. '
+                  'Преврати вопрос пользователя в 1-3 конкретных поисковых '
+                  'запроса на языке вопроса, по одному на строку, без '
+                  'нумерации и кавычек. Каждый запрос — отдельный ракурс '
+                  'темы, 3-8 слов, фактологичный. Для актуальных тем '
+                  '(погода, новости, курсы валют) добавляй текущий год/'
+                  'месяц. Запрещено: уточняющие вопросы, пояснения, '
+                  'рассуждения. Ответ — только сами запросы.$historyText',
+              user: 'Вопрос: $query',
+              maxTokens: 200,
+              temperature: 0.1,
+              timeoutSeconds: 60,
+            ),
+            onRetry: (a, e) => _log('Retry переформулировки ($a): $e'),
+          ));
       final qs = raw
           .split('\n')
           .map((l) => l.trim().replaceAll(RegExp(r'^[-*\d.)\s]+'), ''))
@@ -251,50 +355,181 @@ class SearchService {
       .map((h) => SearchHit(title: h.title, url: h.url, snippet: h.snippet))
       .toList();
 
-  /// Полный цикл: поиск + ответ LLM с цитатами.
+  // ===================================================================
+  // Полный цикл «Поиска» (пять стадий + Стадия −1)
+  // ===================================================================
+
+  /// Полный цикл: Стадия −1 → переформулировка → веб-поиск → фильтрация →
+  /// синтез с цитатами. При отсутствии источников LLM не вызывается.
   static Future<SearchAnswer> ask(
     WidgetRef ref,
     String query, {
     void Function(String stage)? onStage,
+    List<ChatTurn> history = const [],
   }) async {
     _gateInput(query);
+    final q = query.trim();
+    final cacheKey = _cacheKey(q);
+
+    // Стадия −1 (3.6, задача 8): погода/курсы валют — прямые API без LLM.
+    onStage?.call('Проверяю типовые запросы…');
+    final cachedQuick = _cacheGet(cacheKey, _CacheKind.quick);
+    if (cachedQuick != null) {
+      _log('Стадия −1: из кэша (${_ttlOf(_CacheKind.quick).inMinutes} мин).');
+      return cachedQuick;
+    }
+    final quick = await _stageMinusOne(ref, q);
+    if (quick != null) {
+      _log('Стадия −1: быстрый ответ без LLM.');
+      _cachePut(cacheKey, quick, _CacheKind.quick);
+      return quick;
+    }
+
+    // Кэш идентичных запросов (3.3).
+    final cached = _cacheGet(cacheKey, _CacheKind.search);
+    if (cached != null) {
+      _log('Кэш Поиска: мгновенный ответ '
+          '(${cached.sources.length} источников).');
+      return cached;
+    }
+
+    // Тумблер «Не искать в интернете» (3.12, 5.1.9).
+    if (ref.read(settingsProvider).searchOffline) {
+      _log('Офлайн-режим: веб-поиск пропущен, отвечаю сам.');
+      onStage?.call('Отвечаю без интернета…');
+      return SearchAnswer(text: await _offlineAnswer(ref, q), sources: const []);
+    }
+
+    // Стадии 1–3.
+    final t0 = DateTime.now();
     onStage?.call('Планирую поиск…');
     final hits = await searchWebRewritten(
       ref,
-      query,
+      q,
       onStage: onStage,
+      history: history,
     );
+    _log('Поиск: ${DateTime.now().difference(t0).inSeconds}с.');
 
+    // Критическое правило (2.5): ноль источников — без вызова LLM.
+    if (hits.isEmpty) {
+      _log('Источников после фильтрации: 0 — LLM не вызывается.');
+      final answer = const SearchAnswer(
+        text: 'Не удалось найти релевантные источники по вашему запросу. '
+            'Попробуйте переформулировать вопрос или уточнить детали.',
+        sources: [],
+      );
+      _cachePut(cacheKey, answer, _CacheKind.search);
+      return answer;
+    }
+
+    // Стадия 4: синтез с защитой от пустого ответа (2.6).
     onStage?.call('Составляю ответ…');
-    final numbered = hits.asMap().entries.map((e) {
-      final i = e.key + 1;
-      final h = e.value;
-      final snippet = h.snippet.trim().isEmpty
+    final t1 = DateTime.now();
+    final text = await _synthesize(ref, q, hits);
+    if (text == _fallbackPrefix) {
+      _log('Синтез упал — резервный ответ из сниппетов.');
+    }
+    _log('Синтез: ${DateTime.now().difference(t1).inSeconds}с.');
+
+    final answer = SearchAnswer(text: text, sources: hits);
+    _cachePut(cacheKey, answer, _CacheKind.search);
+    return answer;
+  }
+
+  static const _fallbackPrefix = 'По запросу';
+
+  /// Стадия 4: LLM отвечает только по источникам с цитатами [n];
+  /// retry на 429/5xx; при неудаче — резервный ответ из сниппетов.
+  static Future<String> _synthesize(
+      WidgetRef ref, String query, List<SearchHit> hits) async {
+    final today = _todayStr();
+    final numbered = _numbered(hits);
+    try {
+      return await llmLimiter.run(() => retry(
+            () => llmComplete(
+              ref,
+              system: 'Ты — исследовательский ассистент в стиле NotebookLM. '
+                  'Сегодня $today. Отвечай на вопрос пользователя ПО РУССКИ, '
+                  'опираясь ТОЛЬКО на приведённые результаты поиска. '
+                  'Оформляй ответ структурированно: 1-й абзац — суть в 2-3 '
+                  'предложениях, затем тезисы с тире, при списках — маркеры '
+                  '"-". Пиши кратко и по делу. В нужных местах указывай '
+                  'источники в квадратных скобках: [1], [2]. Если вопрос '
+                  'касается текущих событий, а результаты устаревшие или '
+                  'не отвечают на вопрос — честно скажи об этом и не '
+                  'выдумывай, не выдавай старые данные за актуальные. '
+                  'Не упоминай, что у тебя есть список результатов.',
+              user: 'Вопрос: $query\n\nРезультаты поиска:\n$numbered',
+              maxTokens: 1200,
+              timeoutSeconds: 120,
+            ),
+            onRetry: (a, e) => _log('Retry синтеза ($a): $e'),
+          ));
+    } catch (e) {
+      _log('Синтез не удался: $e');
+      return _fallbackFromSnippets(query, hits);
+    }
+  }
+
+  /// Резервный ответ из сырых сниппетов (2.6, 2.8): показывается, если
+  /// LLM вернула пустую строку или упала.
+  static String _fallbackFromSnippets(String query, List<SearchHit> hits) {
+    final sb = StringBuffer();
+    sb.writeln(_fallbackPrefix);
+    sb.writeln(' «$query» нашлись следующие материалы (модель не ответила — '
+        'показаны сниппеты источников):');
+    for (var i = 0; i < hits.length; i++) {
+      final h = hits[i];
+      final s = h.snippet.trim().isEmpty ? h.title : h.snippet.trim();
+      sb.writeln('\n[${i + 1}] ${h.title.trim()}');
+      sb.writeln(s);
+      sb.writeln(h.url);
+    }
+    return sb.toString();
+  }
+
+  /// Офлайн-ответ: LLM без поиска (3.12).
+  static Future<String> _offlineAnswer(WidgetRef ref, String query) async {
+    final today = _todayStr();
+    try {
+      return await llmLimiter.run(() => retry(
+            () => llmComplete(
+              ref,
+              system: 'Ты — ассистент Hermes. Сегодня $today. Отвечай на '
+                  'русском, кратко и по делу. Интернет-поиск отключён '
+                  'пользователем: отвечай из своих знаний; если не знаешь — '
+                  'честно скажи, что не можешь проверить информацию.',
+              user: query,
+              maxTokens: 800,
+              timeoutSeconds: 90,
+            ),
+            onRetry: (a, e) => _log('Retry офлайн-ответа ($a): $e'),
+          ));
+    } catch (e) {
+      _log('Офлайн-ответ не удался: $e');
+      return 'Интернет-поиск отключён, а модель сейчас не отвечает. '
+          'Попробуй ещё раз или включи поиск в настройках.';
+    }
+  }
+
+  /// Форматирование источников для промпта: [n], заголовок, URL, сниппет
+  /// (до [maxChars] символов на источник, 2.6).
+  static String _numbered(List<SearchHit> hits, {int maxChars = 1000}) {
+    final sb = StringBuffer();
+    for (var i = 0; i < hits.length; i++) {
+      final h = hits[i];
+      var snippet = h.snippet.trim().isEmpty
           ? h.title
           : h.snippet.trim().replaceAll('\n', ' ');
-      return '[$i] ${h.title.trim()}\nURL: ${h.url}\n$snippet';
-    }).join('\n\n');
-
-    final today = _todayStr();
-
-    final text = await llmComplete(
-      ref,
-      system: 'Ты — исследовательский ассистент в стиле NotebookLM. '
-          'Сегодня $today. Отвечай на вопрос пользователя ПО РУССКИ, '
-          'опираясь ТОЛЬКО на приведённые результаты поиска. Оформляй ответ '
-          'структурированно: 1-й абзац — суть в 2-3 предложениях, затем '
-          'тезисы с тире, при списках — маркеры "-". Пиши кратко и по делу. '
-          'В нужных местах указывай источники в квадратных скобках: [1], [2]. '
-          'Если вопрос касается текущих событий, а результаты устаревшие '
-          'или не отвечают на вопрос — честно скажи об этом и не выдумывай, '
-          'не выдавай старые данные за актуальные. Не упоминай, что у тебя '
-          'есть список результатов.',
-      user: 'Вопрос: $query\n\nРезультаты поиска:\n$numbered',
-      maxTokens: 1200,
-      timeoutSeconds: 120,
-    );
-
-    return SearchAnswer(text: text, sources: hits);
+      if (snippet.length > maxChars) {
+        snippet = '${snippet.substring(0, maxChars)}…';
+      }
+      sb.writeln('[${i + 1}] ${h.title.trim()}');
+      sb.writeln('URL: ${h.url}');
+      sb.writeln(snippet);
+    }
+    return sb.toString();
   }
 
   /// Проверка входного текста: если похоже на сбой распознавания речи —
@@ -308,105 +543,440 @@ class SearchService {
     }
   }
 
-  /// Глубокое исследование (стиль Deep Research): тема → подвопросы →
-  /// поиск по каждому → подробный отчёт с цитатами [n] на все источники.
+  // ===================================================================
+  // Стадия −1: погода и курсы валют (3.6, задача 8)
+  // ===================================================================
+
+  /// Эвристика по ключевым словам: «погода/прогноз/градус» + топоним →
+  /// Open-Meteo; «курс/доллар/евро/BYN» → API Нацбанка РБ. При
+  /// срабатывании конвейер завершается, минуя переформулировку, поиск
+  /// и синтез. При неудаче — возвращает null, поиск идёт как обычно.
+  static Future<SearchAnswer?> _stageMinusOne(
+      WidgetRef ref, String query) async {
+    final q = query.toLowerCase();
+    final isWeather = [
+      'погод', 'прогноз', 'градус', 'температур', 'дожд', 'снег',
+      'ветер', 'пасмурн', 'солнечн', 'осадк', 'гроз', 'туман',
+    ].any(q.contains);
+    final isCurrency = [
+      'курс', 'доллар', 'евро', 'валют', 'рубль', 'byn', 'usd',
+      'eur', 'юан', 'гривн',
+    ].any(q.contains);
+    if (isCurrency && !isWeather) {
+      try {
+        return await _quickCurrency(ref, query);
+      } catch (e) {
+        _log('Стадия −1 (валюты) не сработала: $e');
+        return null;
+      }
+    }
+    if (isWeather) {
+      try {
+        return await _quickWeather(query);
+      } catch (e) {
+        _log('Стадия −1 (погода) не сработала: $e');
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /// Курсы валют через API Нацбанка РБ (кэш Стадии −1 — 15 минут).
+  static Future<SearchAnswer> _quickCurrency(
+      WidgetRef ref, String query) async {
+    final rates = await retry(() => NbrbApi().fetchRates());
+    final usd = NbrbApi.rateOf(rates, 'USD');
+    final eur = NbrbApi.rateOf(rates, 'EUR');
+    final date = rates.isNotEmpty ? rates.first.date : DateTime.now();
+    final sb = StringBuffer();
+    sb.writeln(
+        'Официальный курс Национального банка Республики Беларусь '
+        'на ${_fmtDate(date)}:');
+    if (usd != null) sb.writeln('- USD: ${usd.toStringAsFixed(3)} BYN');
+    if (eur != null) sb.writeln('- EUR: ${eur.toStringAsFixed(3)} BYN');
+    sb.writeln();
+    sb.writeln('Это официальные курсы НБ РБ; коммерческий курс в банках '
+        'и обменниках может отличаться.');
+    return SearchAnswer(
+      text: sb.toString().trim(),
+      sources: const [
+        SearchHit(
+          title: 'Национальный банк Республики Беларусь — официальные '
+              'курсы валют',
+          url: 'https://www.nbrb.by/statistics/rates/ratesdaily.asp',
+          snippet: 'Официальные курсы белорусского рубля',
+        ),
+      ],
+    );
+  }
+
+  /// Погода через Open-Meteo: геокодинг города + прогноз на 3 дня.
+  /// Без города (или при сбое) — null, и поиск идёт обычным путём.
+  static Future<SearchAnswer?> _quickWeather(String query) async {
+    final m = RegExp(r'\bв\s+([А-ЯЁ][а-яё]+)\b').firstMatch(query);
+    if (m == null) return null;
+    final city = m.group(1);
+    if (city == null) return null;
+    // Слова-ловушки: «в среду», «в марте», «в этом году»…
+    const traps = {
+      'понедельник', 'вторник', 'среду', 'среды', 'четверг', 'пятницу',
+      'субботу', 'воскресенье', 'январе', 'феврале', 'марте', 'апреле',
+      'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре',
+      'декабре', 'этом', 'этой', 'таком', 'нашем', 'этих',
+    };
+    if (traps.contains(city.toLowerCase())) return null;
+
+    // Геокодинг (таймаут подключения ~10с).
+    final geo = await http
+        .get(
+          Uri.parse('https://geocoding-api.open-meteo.com/v1/search').replace(
+            queryParameters: {
+              'name': city,
+              'count': '1',
+              'language': 'ru',
+              'format': 'json',
+            },
+          ),
+          headers: {'User-Agent': _ua},
+        )
+        .timeout(const Duration(seconds: 10));
+    if (geo.statusCode != 200) throw Exception('HTTP ${geo.statusCode}');
+    final geoData =
+        jsonDecode(utf8.decode(geo.bodyBytes)) as Map<String, dynamic>;
+    final geoResults = geoData['results'] as List? ?? const [];
+    if (geoResults.isEmpty) return null;
+    final first = (geoResults.first as Map).cast<String, dynamic>();
+    final lat = (first['latitude'] as num).toDouble();
+    final lon = (first['longitude'] as num).toDouble();
+    final geoName = first['name'] as String? ?? city;
+
+    // Прогноз (таймаут ответа ~15с).
+    final res = await http
+        .get(
+          Uri.parse('https://api.open-meteo.com/v1/forecast').replace(
+            queryParameters: {
+              'latitude': '$lat',
+              'longitude': '$lon',
+              'current': 'temperature_2m,weather_code,wind_speed_10m',
+              'daily': 'weather_code,temperature_2m_max,temperature_2m_min',
+              'timezone': 'auto',
+              'forecast_days': '3',
+            },
+          ),
+          headers: {'User-Agent': _ua},
+        )
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
+    final data =
+        jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final current =
+        (data['current'] as Map? ?? const {}).cast<String, dynamic>();
+    final daily =
+        (data['daily'] as Map? ?? const {}).cast<String, dynamic>();
+    final times = (daily['time'] as List? ?? const []).cast<String>();
+    final codes = (daily['weather_code'] as List? ?? const []).cast<num>();
+    final maxT =
+        (daily['temperature_2m_max'] as List? ?? const []).cast<num>();
+    final minT =
+        (daily['temperature_2m_min'] as List? ?? const []).cast<num>();
+
+    final sb = StringBuffer();
+    sb.writeln('Погода в $geoName (Open-Meteo):');
+
+    final curTemp = current['temperature_2m'];
+    if (curTemp is num) {
+      final wc = (current['weather_code'] as num?)?.toInt() ?? 0;
+      final wind = (current['wind_speed_10m'] as num?)?.toDouble();
+      sb.writeln('- Сейчас: ${_weatherDesc(wc)}, '
+          '${curTemp.toStringAsFixed(1)}°C'
+          '${wind == null ? '' : ', ветер ${wind.round()} км/ч'}');
+    }
+
+    const dayLabels = {
+      0: 'Сегодня',
+      1: 'Завтра',
+      2: 'Послезавтра',
+    };
+    for (var i = 0; i < times.length && i < 3; i++) {
+      final wc = i < codes.length ? codes[i].toInt() : 0;
+      final tmax = i < maxT.length ? maxT[i].toDouble() : null;
+      final tmin = i < minT.length ? minT[i].toDouble() : null;
+      final label = dayLabels[i] ?? '${times[i]}';
+      sb.writeln('- $label: ${_weatherDesc(wc)}'
+          '${tmin == null || tmax == null ? '' : ' '
+          '${tmin.toStringAsFixed(0)}…${tmax.toStringAsFixed(0)}°'}');
+    }
+    sb.writeln();
+    sb.writeln('Прогноз автоматический, по данным Open-Meteo. Для '
+        'почасового прогноза открой источник.');
+
+    return SearchAnswer(
+      text: sb.toString().trim(),
+      sources: [
+        SearchHit(
+          title: 'Open-Meteo — прогноз погоды в $geoName',
+          url: 'https://open-meteo.com/',
+          snippet: 'Бесплатный прогноз погоды без ограничений',
+        ),
+      ],
+    );
+  }
+
+  /// Описание кода погоды WMO на русском.
+  static String _weatherDesc(int code) {
+    const map = {
+      0: 'ясно',
+      1: 'преимущественно ясно',
+      2: 'переменная облачность',
+      3: 'пасмурно',
+      45: 'туман',
+      48: 'изморозь',
+      51: 'лёгкая морось',
+      53: 'морось',
+      55: 'сильная морось',
+      56: 'лёгкая ледяная морось',
+      57: 'ледяная морось',
+      61: 'небольшой дождь',
+      63: 'дождь',
+      65: 'сильный дождь',
+      66: 'лёгкий ледяной дождь',
+      67: 'ледяной дождь',
+      71: 'небольшой снег',
+      73: 'снег',
+      75: 'сильный снег',
+      77: 'снежная крупа',
+      80: 'небольшой ливень',
+      81: 'ливень',
+      82: 'сильный ливень',
+      85: 'снегопад',
+      86: 'сильный снегопад',
+      95: 'гроза',
+      96: 'гроза с градом',
+      99: 'сильная гроза с градом',
+    };
+    return map[code] ?? 'облачно';
+  }
+
+  // ===================================================================
+  // Глубокое исследование (раздел 4): тема → подвопросы → параллельный
+  // поиск → резюме → отчёт с цитатами [n].
+  // ===================================================================
+
+  /// Глубокое исследование (стиль Deep Research): декомпозиция на 3-7
+  /// подвопросов → параллельный поиск через пул конкурентности → сжатые
+  /// резюме → финальный отчёт с пометкой достоверности (задачи 2-4).
   static Future<SearchAnswer> deepResearch(
     WidgetRef ref,
     String query, {
     void Function(String stage)? onStage,
+    List<ChatTurn> history = const [],
   }) async {
     _gateInput(query);
+    final q = query.trim();
+    final cacheKey = _cacheKey(q);
+
+    // Задача 1: единый TTL кэша исследований (24 часа).
+    final cached = _cacheGet(cacheKey, _CacheKind.research);
+    if (cached != null) {
+      _log('Кэш Исследования (TTL ${AppConstants.researchCacheTtlHours}ч): '
+          'мгновенный отчёт.');
+      return cached;
+    }
+
     final today = _todayStr();
 
-    // 1. План: уточняющие подвопросы.
+    // Стадия 1: декомпозиция (задача 3 — дедуп подвопросов).
     onStage?.call('Планирую исследование…');
-    final plan = await llmComplete(
-      ref,
-      system: 'Ты — планировщик исследования. Сегодня $today. '
-          'Составь 4-5 уточняющих подвопросов по теме пользователя, '
-          'по одному на строку, без нумерации и кавычек. Подвопросы должны '
-          'покрывать: текущее состояние, причины и контекст, конкретные '
-          'примеры и цифры, перспективы и критику.',
-      user: 'Тема исследования: $query',
-      maxTokens: 400,
-      timeoutSeconds: 60,
-    );
-    final subqs = plan
+    final plan = await llmLimiter.run(() => retry(
+          () => llmComplete(
+            ref,
+            system: 'Ты — планировщик исследования. Сегодня $today. '
+                'Составь 3-7 уточняющих подвопросов по теме пользователя, '
+                'по одному на строку, без нумерации и кавычек. Подвопросы '
+                'должны покрывать: текущее состояние, причины и контекст, '
+                'конкретные примеры и цифры, перспективы и критику. '
+                'ВАЖНО: подвопросы не должны пересекаться по содержанию.',
+            user: 'Тема исследования: $q',
+            maxTokens: 400,
+            temperature: 0.2,
+            timeoutSeconds: 60,
+          ),
+          onRetry: (a, e) => _log('Retry декомпозиции ($a): $e'),
+        ));
+    var subqs = plan
         .split('\n')
         .map((l) => l.trim().replaceAll(RegExp(r'^[-*\d.)\s]+'), ''))
         .where((l) => l.length > 8)
-        .take(5)
+        .take(7)
         .toList();
+    subqs = _dedupSubquestions(subqs);
     if (subqs.isEmpty) {
       throw Exception('Не удалось составить план исследования.');
     }
+    _log('Подвопросы после дедупликации: ${subqs.length}');
 
-    // 2. Поиск по каждому подвопросу, сквозная нумерация источников.
+    // Стадия 2: параллельный поиск через пул (задача 2), лимит 5
+    // источников на подвопрос после фильтрации.
+    final results = await Future.wait([
+      for (var i = 0; i < subqs.length; i++)
+        searchLimiter.run(() async {
+          onStage?.call('Изучаю подвопрос ${i + 1} из ${subqs.length}…');
+          try {
+            final hits = await retry(
+              () => searchWebRewritten(
+                ref,
+                subqs[i],
+                onStage: onStage,
+                limit: AppConstants.maxSources,
+              ),
+              onRetry: (a, e) =>
+                  _log('Retry поиска по подвопросу ${i + 1} ($a): $e'),
+            );
+            // Стадия 3: сжатие в резюме (4.2, 4.6).
+            final summary = await _summarizeSubquestion(ref, subqs[i], hits);
+            return (i: i, hits: hits, summary: summary);
+          } catch (e) {
+            _log('Подвопрос ${i + 1} не обработан: $e');
+            return (i: i, hits: <SearchHit>[], summary: '(данные отсутствуют)');
+          }
+        }),
+    ]);
+    results.sort((a, b) => a.i.compareTo(b.i));
+
     final allHits = <SearchHit>[];
     final seen = <String>{};
     final blocks = StringBuffer();
-    var globalIdx = 0;
-    for (var i = 0; i < subqs.length; i++) {
-      onStage?.call('Изучаю подвопрос ${i + 1} из ${subqs.length}…');
-      List<SearchHit> hits = const [];
-      try {
-        hits = await searchWebRewritten(
-          ref,
-          subqs[i],
-          onStage: onStage,
-          limit: 5,
-        );
-      } catch (_) {}
-      if (hits.isEmpty) {
-        blocks.writeln('Подвопрос: ${subqs[i]}\n(результатов не найдено)');
-        continue;
-      }
-      blocks.writeln('Подвопрос: ${subqs[i]}');
-      for (final h in hits) {
-        if (!seen.add(h.url)) continue;
-        globalIdx++;
-        final snippet = h.snippet.trim().isEmpty
-            ? h.title
-            : h.snippet.trim().replaceAll('\n', ' ');
-        blocks.writeln(
-            '[$globalIdx] ${h.title.trim()}\nURL: ${h.url}\n$snippet');
-        allHits.add(h);
-      }
+    for (final r in results) {
+      blocks.writeln('Подвопрос: ${subqs[r.i]}');
+      blocks.writeln(r.summary);
       blocks.writeln();
+      for (final h in r.hits) {
+        if (seen.add(h.url)) allHits.add(h);
+      }
     }
     if (allHits.isEmpty) {
       throw Exception('Поисковые сервисы недоступны — нечего анализировать.');
     }
 
-    // 3. Сводный отчёт.
+    // Стадии 4-5: финальный отчёт + пометка достоверности (задача 4).
     onStage?.call('Составляю отчёт…');
-    final text = await llmComplete(
-      ref,
-      system: 'Ты — аналитик-исследователь (стиль NotebookLM Deep Research). '
-          'Сегодня $today. Напиши ПОДРОБНЫЙ структурированный отчёт по теме '
-          'пользователя на русском, используя только результаты поиска, '
-          'сгруппированные по подвопросам. Структура отчёта: '
-          '1) «Суть» — 2-3 предложения; 2) раздел по каждому подвопросу с '
-          'фактами, цифрами и примерами; 3) «Выводы» — итог и перспективы. '
-          'Каждый факт подкрепляй источником в квадратных скобках: [1], [2]. '
-          'Не выдумывай данные; если информации не хватает — честно скажи. '
-          'Не упоминай, что у тебя есть список результатов.',
-      user: 'Тема: $query\n\nРезультаты по подвопросам:\n$blocks',
-      maxTokens: 4000,
-      timeoutSeconds: 300,
-    );
+    final report = await llmLimiter.run(() => retry(
+          () => llmComplete(
+            ref,
+            system: 'Ты — аналитик-исследователь (стиль NotebookLM Deep '
+                'Research). Сегодня $today. Напиши ПОДРОБНЫЙ '
+                'структурированный отчёт по теме пользователя на русском, '
+                'используя только приведённые промежуточные резюме по '
+                'подвопросам. Структура отчёта: 1) «Суть» — 2-3 предложения; '
+                '2) раздел по каждому подвопросу с фактами, цифрами и '
+                'примерами; 3) «Выводы» — итог и перспективы. Каждый факт '
+                'подкрепляй источником в квадратных скобках: [1], [2] — '
+                'номера берутся из списка «Все источники» в конце. '
+                'Не выдумывай данные; если информации не хватает — честно '
+                'скажи. Не упоминай, что у тебя есть список результатов.',
+            user: 'Тема: $q\n\nПромежуточные резюме по подвопросам:\n'
+                '$blocks\n\nВсе источники (глобальная нумерация):\n'
+                '${_numbered(allHits)}',
+            maxTokens: 4000,
+            timeoutSeconds: 300,
+          ),
+          onRetry: (a, e) => _log('Retry финального отчёта ($a): $e'),
+        ));
 
-    return SearchAnswer(text: text, sources: allHits);
+    // Задача 4: явная пометка предварительности кросс-валидации.
+    final text = '$report\n\n'
+        '*Предварительная автоматическая проверка на противоречия. '
+        'Не является гарантией фактической точности.*';
+
+    final answer = SearchAnswer(text: text, sources: allHits);
+    _cachePut(cacheKey, answer, _CacheKind.research);
+    return answer;
   }
+
+  /// Стадия 3 «Исследования»: сжатие источников подвопроса в резюме
+  /// 3-5 предложений (4.2). В резюме без [n] — глобальная нумерация
+  /// выдаётся в финальном отчёте.
+  static Future<String> _summarizeSubquestion(
+      WidgetRef ref, String subq, List<SearchHit> hits) async {
+    if (hits.isEmpty) return '(данные отсутствуют)';
+    final numbered = _numbered(hits, maxChars: 600);
+    try {
+      return await llmLimiter.run(() => retry(
+            () => llmComplete(
+              ref,
+              system: 'Ты — исследователь. Сожми результаты поиска по '
+                  'подвопросу в резюме 3-5 предложений на русском. '
+                  'Используй только данные из результатов, не выдумывай. '
+                  'Без ссылок и цитат в тексте резюме.',
+              user: 'Подвопрос: $subq\n\nРезультаты:\n$numbered',
+              maxTokens: 400,
+              temperature: 0.2,
+              timeoutSeconds: 90,
+            ),
+            onRetry: (a, e) => _log('Retry резюме ($a): $e'),
+          ));
+    } catch (e) {
+      _log('Резюме не получено: $e — отдаю сниппеты.');
+      return _fallbackFromSnippets(subq, hits);
+    }
+  }
+
+  /// Задача 3: дедупликация подвопросов — точное совпадение после
+  /// нормализации и близкое (пересечение ключевых слов > 60%).
+  static List<String> _dedupSubquestions(List<String> subs) {
+    String key(String s) {
+      final words = s
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^а-яёa-z0-9 ]'), ' ')
+          .split(RegExp(r'\s+'))
+          .where((w) => w.length > 3)
+          .toSet();
+      return words.join(' ');
+    }
+
+    final out = <String>[];
+    for (final sub in subs) {
+      final k = key(sub);
+      if (k.isEmpty) continue;
+      var dup = false;
+      for (final existing in out) {
+        final ek = key(existing);
+        if (ek.isEmpty) continue;
+        if (k == ek) {
+          dup = true;
+          break;
+        }
+        final a = k.split(' ').toSet();
+        final b = ek.split(' ').toSet();
+        final inter = a.intersection(b).length;
+        final union = a.union(b).length;
+        if (union > 0 && inter / union > 0.6) {
+          dup = true;
+          break;
+        }
+      }
+      if (!dup) out.add(sub);
+    }
+    return out.isEmpty ? subs.take(1).toList() : out;
+  }
+
+  // ===================================================================
+  // Вспомогательное
+  // ===================================================================
 
   static String _todayStr() {
     final now = DateTime.now();
-    const months = [
-      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-    ];
-    return '${now.day} ${months[now.month - 1]} ${now.year} года';
+    return '${now.day} ${_months[now.month - 1]} ${now.year} года';
   }
+
+  static String _fmtDate(DateTime d) {
+    return '${d.day} ${_months[d.month - 1]} ${d.year}';
+  }
+
+  static const _months = [
+    'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+  ];
 
   /// DuckDuckGo lite: чистая табличная разметка, свежие результаты.
   static Future<List<SearchHit>> _ddgLite(String query, int limit) async {

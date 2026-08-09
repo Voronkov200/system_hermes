@@ -30,6 +30,7 @@ class SettingsState {
   String companionApiKey;
   String companionModel;
   String searchSearxngUrl; // свой SearXNG-инстанс для модуля «Поиск»
+  bool searchOffline; // «Не искать в интернете» (3.12, 5.1.9): пропускать поиск
 
   SettingsState({
     this.themeMode = ThemeMode.dark,
@@ -49,6 +50,7 @@ class SettingsState {
     this.companionApiKey = '',
     this.companionModel = AppConstants.companionDefaultModel,
     this.searchSearxngUrl = '',
+    this.searchOffline = false,
   });
 
   /// Ключ для LLM Hermes: свой ключ, либо ключ Насти, либо пусто.
@@ -79,6 +81,7 @@ class SettingsState {
     String? companionApiKey,
     String? companionModel,
     String? searchSearxngUrl,
+    bool? searchOffline,
   }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
@@ -98,6 +101,7 @@ class SettingsState {
       companionApiKey: companionApiKey ?? this.companionApiKey,
       companionModel: companionModel ?? this.companionModel,
       searchSearxngUrl: searchSearxngUrl ?? this.searchSearxngUrl,
+      searchOffline: searchOffline ?? this.searchOffline,
     );
   }
 }
@@ -133,6 +137,7 @@ class SettingsController extends Notifier<SettingsState> {
       companionModel: prefs.getString(PrefKeys.companionModel) ??
           AppConstants.companionDefaultModel,
       searchSearxngUrl: prefs.getString(PrefKeys.searchSearxngUrl) ?? '',
+      searchOffline: prefs.getBool(PrefKeys.searchOffline) ?? false,
     );
   }
 
@@ -158,6 +163,7 @@ class SettingsController extends Notifier<SettingsState> {
       companionApiKey: s.companionApiKey,
       companionModel: s.companionModel,
       searchSearxngUrl: s.searchSearxngUrl,
+      searchOffline: s.searchOffline,
     );
     apply(next);
     state = next;
@@ -179,6 +185,7 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.companionApiKey, next.companionApiKey);
     await prefs.setString(PrefKeys.companionModel, next.companionModel);
     await prefs.setString(PrefKeys.searchSearxngUrl, next.searchSearxngUrl);
+    await prefs.setBool(PrefKeys.searchOffline, next.searchOffline);
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
@@ -242,6 +249,12 @@ class SettingsController extends Notifier<SettingsState> {
 
   Future<void> setSearchSearxngUrl(String url) async {
     await _save((n) => n.searchSearxngUrl = url.trim());
+  }
+
+  /// «Не искать в интернете» (3.12, 5.1.9): если включено — модуль
+  /// «Поиск» пропускает веб-поиск и сразу идёт в LLM-диалог.
+  Future<void> setSearchOffline(bool value) async {
+    await _save((n) => n.searchOffline = value);
   }
 
   Future<void> ensureProtocolStart() async {

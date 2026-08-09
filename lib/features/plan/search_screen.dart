@@ -146,6 +146,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final offline = ref.watch(settingsProvider).searchOffline;
     return Scaffold(
       appBar: AppBar(title: const Text('Поиск')),
       body: Column(
@@ -159,11 +160,23 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     controller: _controller,
                     textInputAction: TextInputAction.search,
                     onSubmitted: _run,
+                    maxLength: 500,
                     decoration: const InputDecoration(
                       hintText: 'Спроси что угодно…',
                       prefixIcon: Icon(Icons.travel_explore),
+                      counterText: '',
                     ),
                   ),
+                ),
+                const SizedBox(width: 10),
+                IconButton.filledTonal(
+                  onPressed: () => ref
+                      .read(settingsProvider.notifier)
+                      .setSearchOffline(!offline),
+                  icon: Icon(offline ? Icons.wifi_off : Icons.wifi),
+                  tooltip: offline
+                      ? 'Офлайн-режим включён — поиск отключён'
+                      : 'Офлайн-режим: отвечать без интернета',
                 ),
                 const SizedBox(width: 10),
                 IconButton.filled(

@@ -8,6 +8,18 @@ import 'package:http/http.dart' as http;
 
 import '../settings_service.dart';
 
+/// Ошибка HTTP от LLM-провайдера с кодом ответа — retry (раздел 6,
+/// задача 2) повторяет вызовы с 429/5xx.
+class LlmHttpException implements Exception {
+  final int statusCode;
+  final String message;
+
+  const LlmHttpException(this.statusCode, this.message);
+
+  @override
+  String toString() => message;
+}
+
 /// Простой вызов chat/completions (без stream и инструментов).
 /// Возвращает текст ответа или бросает Exception с понятной причиной.
 Future<String> llmComplete(
@@ -16,6 +28,8 @@ Future<String> llmComplete(
   required String user,
   int maxTokens = 1500,
   int timeoutSeconds = 90,
+  double temperature = 0.4,
+  String? model,
 }) async {
   final s = ref.read(settingsProvider);
   final apiKey = s.llmKey.trim();
@@ -26,9 +40,11 @@ Future<String> llmComplete(
   final apiUrl = s.companionApiUrl.trim().isNotEmpty
       ? s.companionApiUrl.trim()
       : 'https://api.groq.com/openai/v1/chat/completions';
-  final model = s.companionModel.trim().isNotEmpty
-      ? s.companionModel.trim()
-      : 'llama-3.3-70b-versatile';
+  final usedModel = model?.trim().isNotEmpty == true
+      ? model!.trim()
+      : s.companionModel.trim().isNotEmpty
+          ? s.companionModel.trim()
+          : 'llama-3.3-70b-versatile';
 
   final res = await http
       .post(
@@ -38,12 +54,12 @@ Future<String> llmComplete(
           'Authorization': 'Bearer $apiKey',
         },
         body: jsonEncode({
-          'model': model,
+          'model': usedModel,
           'messages': [
             {'role': 'system', 'content': system},
             {'role': 'user', 'content': user},
           ],
-          'temperature': 0.4,
+          'temperature': temperature,
           'max_tokens': maxTokens,
         }),
       )
@@ -56,7 +72,7 @@ Future<String> llmComplete(
       429 => 'превышен лимит запросов (429)',
       _ => 'ошибка сервера ИИ (HTTP ${res.statusCode})',
     };
-    throw Exception(reason);
+    throw LlmHttpException(res.statusCode, reason);
   }
 
   final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
