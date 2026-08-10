@@ -299,9 +299,8 @@ class SearchService {
     final today = _todayStr();
     var historyText = '';
     if (history.isNotEmpty) {
-      historyText = '\n\nПоследние обмены в этой сессии:\n' +
-          history.take(3).map((e) => 'Вопрос: ${e.q}\nОтвет: ${e.a}').join(
-              '\n\n') +
+      historyText = '\n\nПоследние обмены в этой сессии:\n'
+          '${history.take(3).map((e) => 'Вопрос: ${e.q}\nОтвет: ${e.a}').join('\n\n')}'
           '\n\nЕсли текущий вопрос ссылается на предыдущий контекст '
           '(местоимения, сокращённые уточнения) — учти это при '
           'формулировке поисковых запросов.';
@@ -414,7 +413,7 @@ class SearchService {
     // Критическое правило (2.5): ноль источников — без вызова LLM.
     if (hits.isEmpty) {
       _log('Источников после фильтрации: 0 — LLM не вызывается.');
-      final answer = const SearchAnswer(
+      const answer = SearchAnswer(
         text: 'Не удалось найти релевантные источники по вашему запросу. '
             'Попробуйте переформулировать вопрос или уточнить детали.',
         sources: [],
@@ -701,7 +700,7 @@ class SearchService {
       final wc = i < codes.length ? codes[i].toInt() : 0;
       final tmax = i < maxT.length ? maxT[i].toDouble() : null;
       final tmin = i < minT.length ? minT[i].toDouble() : null;
-      final label = dayLabels[i] ?? '${times[i]}';
+      final label = dayLabels[i] ?? times[i];
       sb.writeln('- $label: ${_weatherDesc(wc)}'
           '${tmin == null || tmax == null ? '' : ' '
           '${tmin.toStringAsFixed(0)}…${tmax.toStringAsFixed(0)}°'}');
