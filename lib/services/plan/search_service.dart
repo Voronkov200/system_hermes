@@ -323,7 +323,7 @@ class SearchService {
   /// убираются. Затем — фильтрация, ранжирование и топ-[limit] (2.3, 3.7).
   /// Если переписывание упало — ищем как есть.
   static Future<List<SearchHit>> searchWebRewritten(
-    WidgetRef ref,
+    Ref ref,
     String query, {
     void Function(String stage)? onStage,
     SearchReporter? reporter,
@@ -421,7 +421,7 @@ class SearchService {
   /// без уточнений и рассуждений; температура ≈0.1; резерв — исходный
   /// вопрос.
   static Future<List<String>> _rewriteQueries(
-    WidgetRef ref,
+    Ref ref,
     String query, {
     List<ChatTurn> history = const [],
   }) async {
@@ -491,7 +491,7 @@ class SearchService {
   /// веб-поиск → фильтрация → чтение страниц → синтез → проверка ответа.
   /// При отсутствии источников LLM не вызывается.
   static Future<SearchAnswer> ask(
-    WidgetRef ref,
+    Ref ref,
     String query, {
     void Function(String stage)? onStage,
     List<ChatTurn> history = const [],
@@ -632,7 +632,7 @@ class SearchService {
   /// Намерение запроса (раздел 4 спецификации): тип, свежесть, нужна ли
   /// проверка по нескольким источникам — и план поиска (раздел 5).
   static Future<SearchIntent> _analyzeIntent(
-    WidgetRef ref,
+    Ref ref,
     String query, {
     List<ChatTurn> history = const [],
   }) async {
@@ -714,7 +714,7 @@ class SearchService {
   /// Проверка ответа (раздел 17): каждый [n] указывает на реальный
   /// источник. При битых цитатах — один вызов на исправление.
   static Future<String> _verifyCitations(
-    WidgetRef ref, {
+    Ref ref, {
     required String query,
     required List<SearchHit> hits,
     required String text,
@@ -756,7 +756,7 @@ class SearchService {
   /// [n] в стиле ChatGPT: суть → рассуждение по пунктам → вывод;
   /// retry на 429/5xx; при неудаче — резервный ответ из сниппетов.
   static Future<String> _synthesize(
-    WidgetRef ref,
+    Ref ref,
     String query,
     List<SearchHit> hits, {
     String? content,
@@ -813,7 +813,7 @@ class SearchService {
   }
 
   /// Офлайн-ответ: LLM без поиска (3.12).
-  static Future<String> _offlineAnswer(WidgetRef ref, String query) async {
+  static Future<String> _offlineAnswer(Ref ref, String query) async {
     final today = _todayStr();
     try {
       return await llmLimiter.run(() => retry(
@@ -875,7 +875,7 @@ class SearchService {
   /// срабатывании конвейер завершается, минуя переформулировку, поиск
   /// и синтез. При неудаче — возвращает null, поиск идёт как обычно.
   static Future<SearchAnswer?> _stageMinusOne(
-      WidgetRef ref, String query) async {
+      Ref ref, String query) async {
     final q = query.toLowerCase();
     final isWeather = [
       'погод', 'прогноз', 'градус', 'температур', 'дожд', 'снег',
@@ -906,7 +906,7 @@ class SearchService {
 
   /// Курсы валют через API Нацбанка РБ (кэш Стадии −1 — 15 минут).
   static Future<SearchAnswer> _quickCurrency(
-      WidgetRef ref, String query) async {
+      Ref ref, String query) async {
     final rates = await retry(() => NbrbApi().fetchRates());
     final usd = NbrbApi.rateOf(rates, 'USD');
     final eur = NbrbApi.rateOf(rates, 'EUR');
@@ -1089,7 +1089,7 @@ class SearchService {
   /// подвопросов → параллельный поиск через пул конкурентности → сжатые
   /// резюме → финальный отчёт с пометкой достоверности (задачи 2-4).
   static Future<SearchAnswer> deepResearch(
-    WidgetRef ref,
+    Ref ref,
     String query, {
     void Function(String stage)? onStage,
     List<ChatTurn> history = const [],
@@ -1323,7 +1323,7 @@ class SearchService {
   /// 4-6 предложений (4.2). В резюме без [n] — глобальная нумерация
   /// выдаётся в финальном отчёте.
   static Future<String> _summarizeSubquestion(
-      WidgetRef ref, String subq, String content) async {
+      Ref ref, String subq, String content) async {
     if (content.trim().isEmpty) return '(данные отсутствуют)';
     try {
       return await llmLimiter.run(() => retry(
@@ -1351,7 +1351,7 @@ class SearchService {
   /// собранные резюме и возвращает 1-3 коротких поисковых запроса на
   /// недостающие аспекты; если информации достаточно — пустой список.
   static Future<List<String>> _findGaps(
-      WidgetRef ref, String theme, String summaries) async {
+      Ref ref, String theme, String summaries) async {
     try {
       final raw = await llmLimiter.run(() => retry(
             () => llmComplete(

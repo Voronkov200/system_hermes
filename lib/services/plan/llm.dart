@@ -23,7 +23,7 @@ class LlmHttpException implements Exception {
 /// Простой вызов chat/completions (без stream и инструментов).
 /// Возвращает текст ответа или бросает Exception с понятной причиной.
 Future<String> llmComplete(
-  WidgetRef ref, {
+  Ref ref, {
   required String system,
   required String user,
   int maxTokens = 1500,

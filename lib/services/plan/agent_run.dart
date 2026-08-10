@@ -239,10 +239,16 @@ class SearchRunController extends Notifier<AgentRunState> {
   bool _running = false;
 
   @override
-  AgentRunState build() => const AgentRunState(
-        query: '',
-        deep: false,
-      );
+  AgentRunState build() {
+    ref.onDispose(() {
+      _ticker?.cancel();
+      _ticker = null;
+    });
+    return const AgentRunState(
+      query: '',
+      deep: false,
+    );
+  }
 
   bool get isRunning => _running;
 
@@ -346,12 +352,6 @@ class SearchRunController extends Notifier<AgentRunState> {
     _running = false;
     _ticker?.cancel();
     _ticker = null;
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
   }
 }
 
