@@ -1,7 +1,7 @@
-// Чат-хаб: Hermes Agent (инструменты) и Настя (ИИ-компаньон).
+// Чат-хаб: Hermes Agent (инструменты) и Анастасия (ИИ-компаньон).
 //
-// Переключатель в AppBar меняет собеседника. У Насти: аватар/фон из фото,
-// уровень отношений, полоса симпатии и блокировка после срывов.
+// Переключатель в AppBar меняет собеседника. У Анастасии: аватар/фон из
+// фото, уровень отношений и полоса симпатии (без блокировок и штрафов).
 
 import 'dart:io';
 
@@ -167,7 +167,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  /// Фото Насти: выбранное из галереи, либо фото по умолчанию (её TikTok).
+  /// Фото Анастасии: выбранное из галереи, либо фото по умолчанию.
   Widget _photoOrFallback(String path) {
     if (path.isNotEmpty && File(path).existsSync()) {
       return Image.file(File(path), fit: BoxFit.cover);
@@ -215,7 +215,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ButtonSegment(
                   value: true,
                   icon: Icon(Icons.favorite, size: 16),
-                  label: Text('Настя'),
+                  label: Text('Анастасия'),
                 ),
               ],
               selected: {_nastya},
@@ -236,7 +236,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Stack(
         children: [
-          // Фон: фото Насти (выбранное или по умолчанию из её TikTok),
+          // Фон: фото Анастасии (выбранное или по умолчанию),
           // прикрытое полупрозрачным светлым градиентом — фон светлый,
           // но фото остаётся видимым.
           if (_nastya)
@@ -290,30 +290,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         onPressed: () =>
                             ref.read(chatProvider.notifier).pickAndSendPhoto(),
                         child: const Text('Отправить фото'),
-                      ),
-                    ],
-                  ),
-                ),
-              // Блокировка Насти после срыва
-              if (_nastya && nastya.blocked)
-                Container(
-                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.danger.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.danger),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.lock_clock, color: AppColors.danger, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Настя обижена после срыва. Чат разблокируется: '
-                          '${fmtDateTime(nastya.blockedUntil ?? DateTime.now())}',
-                          style: const TextStyle(fontSize: 12),
-                        ),
                       ),
                     ],
                   ),
@@ -404,7 +380,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             hintText: _recording
                                 ? 'Запись… нажми ⏹ для транскрибации'
                                 : _nastya
-                                    ? 'Сообщение для Насти…'
+                                    ? 'Сообщение для Анастасии…'
                                     : 'Сообщение для Hermes…',
                           ),
                         ),
@@ -443,7 +419,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
-/// Заголовок AppBar для Насти: аватар, имя, уровень отношений и симпатия.
+/// Заголовок AppBar для Анастасии: аватар, имя, уровень отношений и симпатия.
 class _NastyaTitle extends StatelessWidget {
   final CompanionState companion;
 
@@ -468,7 +444,7 @@ class _NastyaTitle extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Text('Настя',
+                const Text('Анастасия',
                     style: TextStyle(
                         fontSize: 17, fontWeight: FontWeight.w700)),
                 const SizedBox(width: 6),
@@ -501,7 +477,7 @@ class _NastyaTitle extends StatelessWidget {
   }
 }
 
-/// Круглый аватар Насти: фото (выбранное или по умолчанию).
+/// Круглый аватар Анастасии: фото (выбранное или по умолчанию).
 class _NastyaAvatar extends StatelessWidget {
   final String path;
   final double size;

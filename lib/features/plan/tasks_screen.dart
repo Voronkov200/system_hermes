@@ -1,5 +1,5 @@
 // Экран "Задачи": список дел, создание, выполнение, удаление.
-// Задачи ставят Hermes и Настя (tasksProvider) + свои.
+// Задачи ставят Hermes и Анастасия (tasksProvider) + свои.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,7 +77,7 @@ class _EmptyTasks extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Попроси Hermes или Настю в чате поставить задачу — '
+              'Попроси Hermes или Анастасию в чате поставить задачу — '
               'она появится здесь. Или добавь свою.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textDim, fontSize: 13),

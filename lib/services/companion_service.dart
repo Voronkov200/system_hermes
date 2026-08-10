@@ -1,8 +1,10 @@
-// Модуль "Настя": ИИ-компаньон с системой симпатии (Affinity).
+// Модуль "Анастасия": ИИ-компаньон-друг с системой симпатии (Affinity).
 //
-// Настя — наблюдатель: она читает состояние Протокола, Жизни и Банка и
-// реагирует на события (срыв, достижение, стрик-рубеж, новый день).
-// Циклических зависимостей нет: другие сервисы её не импортируют.
+// Анастасия — наблюдатель и катализатор реальной жизни: читает состояние
+// Жизни, Протокола, Банка и Obsidian и реагирует на реальные события
+// (выход из дома, фриланс, тренировка, заметка, квест).
+// Affinity растёт ТОЛЬКО от позитивных событий; штрафов, блокировок
+// и холодности нет (спецификация «Идея ИИ-компаньон Анастасия»).
 //
 // Ответы: Groq/OpenAI-совместимый LLM (если задан ключ в настройках)
 // или офлайн-шаблоны.
@@ -28,31 +30,33 @@ import 'obsidian_service.dart';
 import 'settings_service.dart';
 import 'tasks_service.dart';
 
-/// Состояние чата с Настей + данные симпатии.
+/// Состояние чата с Анастасией + данные симпатии.
 class CompanionState {
   final List<ChatMessage> messages;
   final bool thinking;
 
-  /// Вычисляемая симпатия (0-100).
+  /// Накопленная симпатия (0-100).
   final double affinity;
-  final DateTime? blockedUntil;
   final String avatarPath;
 
   const CompanionState({
     required this.messages,
     this.thinking = false,
     required this.affinity,
-    this.blockedUntil,
     required this.avatarPath,
   });
-
-  bool get blocked => blockedUntil != null && blockedUntil!.isAfter(DateTime.now());
 }
 
-/// Контроллер компаньона "Настя".
+/// Контроллер компаньона "Анастасия".
 class CompanionController extends Notifier<CompanionState> {
   late final Box<CompanionData> _box;
   late final Box<ChatMessage> _chatBox;
+
+  /// Свежий хвост переписки, попадающий в промпт как есть.
+  static const int _promptTail = 25;
+
+  /// Суммаризация старой части диалога каждые ~50 сообщений.
+  static const int _summaryEvery = 50;
 
   @override
   CompanionState build() {
@@ -74,8 +78,7 @@ class CompanionController extends Notifier<CompanionState> {
     return CompanionState(
       messages: _readMessages(),
       thinking: thinking,
-      affinity: _computeAffinity(),
-      blockedUntil: d.blockedUntil,
+      affinity: _affinity(),
       avatarPath: d.avatarPath,
     );
   }
@@ -127,7 +130,7 @@ class CompanionController extends Notifier<CompanionState> {
     final fuel = bank.byId(Account.fuelId)?.balance ?? 0;
     final assets = bank.byId(Account.assetsId)?.balance ?? 0;
     return CompanionContext(
-      affinity: _computeAffinity(),
+      affinity: _affinity(),
       cleanStreak: habits.cleanStreak(),
       lifeLevel: lifeLevelForXp(life.xp),
       xp: life.xp,
@@ -136,39 +139,194 @@ class CompanionController extends Notifier<CompanionState> {
       mood: life.mood,
       fuelBalance: fuel,
       assetsBalance: assets,
-      blocked: d.blocked,
+      keyFacts: List.of(d.keyFacts),
+      socialOutings: d.socialOutings,
+      daysSinceLastOuting: _daysSinceLastOuting(),
+      freelanceSteps: d.freelanceSteps,
     );
   }
 
   int lifeLevelForXp(int xp) => LifeCatalog.levelForXp(xp);
 
-  /// Формула симпатии: дисциплина + прогресс + действия − срывы.
-  double _computeAffinity() {
-    final d = _get();
-    final life = ref.read(lifeProvider).state;
-    final habits = ref.read(habitsProvider);
-    final bank = ref.read(bankProvider);
-    final fuel = bank.byId(Account.fuelId)?.balance ?? 0;
-    final assets = bank.byId(Account.assetsId)?.balance ?? 0;
+  /// Накопленная симпатия (0-100). Только положительная механика:
+  /// отсутствие действий просто не даёт прироста.
+  double _affinity() => _get().affinity.clamp(0.0, 100.0).toDouble();
 
-    var value = 5.0;
-    value += habits.cleanStreak() * 2; // +2 за каждый день без срывов
-    value += (life.unlockedAchievements.length * 5).clamp(0, 30);
-    value += (lifeLevelForXp(life.xp) - 1) * 4; // уровень Жизни
-    if (fuel >= 50) value += 3; // топливо в норме
-    if (assets >= 10) value += 3; // первые активы
-    value -= (d.totalRelapses * 20).clamp(0, 60); // −20 за срыв (кап −60)
-    return value.clamp(0.0, 100.0).toDouble();
+  /// Дней с последнего самостоятельного выхода из дома (-1 — не было).
+  int _daysSinceLastOuting() {
+    final key = _get().lastSocialOutingKey;
+    if (key == null) return -1;
+    final parsed = DateTime.tryParse(key);
+    if (parsed == null) return -1;
+    return DateTime.now().difference(parsed).inDays;
+  }
+
+  /// Прирост симпатии от реального события.
+  void _gainAffinity(double amount) {
+    final d = _get();
+    d.affinity = (d.affinity + amount).clamp(0.0, 100.0);
+    _save(d);
+    state = _readState(thinking: state.thinking);
+  }
+
+  /// Добавить вечный факт в память (с обрезкой, чтобы не разрасталась).
+  void _addKeyFact(String fact) {
+    final d = _get();
+    if (d.keyFacts.length >= 120) {
+      d.keyFacts.removeAt(0);
+    }
+    d.keyFacts.add(fact);
+    _save(d);
+  }
+
+  /// dateKey вида "12.08.2026" для вечных фактов.
+  String _factDateKey() {
+    final n = DateTime.now();
+    return '${n.day.toString().padLeft(2, '0')}.'
+        '${n.month.toString().padLeft(2, '0')}.${n.year}';
   }
 
   // ------------------------------------------------------------ тик-события
 
-  /// Обработка событий мира: приветствие, срывы, достижения, стрики.
+  /// Обработка событий мира: приветствие, срывы, достижения, стрики,
+  /// реальные вехи (выходы, фриланс, квесты, тренировки, заметки).
   void _tick() {
     _handleGreeting();
     _handleRelapse();
     _handleAchievements();
     _handleStreakMilestones();
+    // Реальные вехи обрабатываются после инициализации: они меняют
+    // state (affinity), что запрещено во время build().
+    Future.microtask(_handleEvents);
+  }
+
+  /// Обработка реальных вех: +15 выход, +10 фриланс, +5 квест, +3 тренировка,
+  /// +5 заметка Obsidian (>500 симв.), разовый +25 за стрик 7 дней.
+  Future<void> _handleEvents() async {
+    try {
+      _handleSocialOutings();
+      _handleFreelanceSteps();
+      _handleQuestProgress();
+      _handleWorkoutDay();
+      _handleWeekStreakBonus();
+      await _handleObsidianNotes();
+    } catch (e) {
+      debugPrint('[Анастасия] события не обработаны: $e');
+    }
+  }
+
+  /// +15 за каждый самостоятельный выход из дома (walk/store/atm),
+  /// приоритет №1; вечный факт — один на день.
+  void _handleSocialOutings() {
+    final d = _get();
+    final counts = ref.read(lifeProvider).state.actionCounts;
+    final total = ['walk', 'store', 'atm']
+        .fold(0, (sum, id) => sum + (counts[id] ?? 0));
+    final delta = total - d.seenSocialCount;
+    if (delta <= 0) return;
+
+    final today = dateKey(DateTime.now());
+    final firstToday = d.lastSocialOutingKey != today;
+    d.socialOutings += delta;
+    d.seenSocialCount = total;
+    d.lastSocialOutingKey = today;
+    _save(d);
+    _gainAffinity(15 * delta);
+    if (firstToday) {
+      _addKeyFact('${_factDateKey()} — самостоятельный выход из дома');
+    }
+  }
+
+  /// +10 за каждый шаг фриланса (действие 'freelance').
+  void _handleFreelanceSteps() {
+    final d = _get();
+    final count = ref.read(lifeProvider).state.actionCounts['freelance'] ?? 0;
+    final delta = count - d.seenFreelanceCount;
+    if (delta <= 0) return;
+
+    d.freelanceSteps += delta;
+    d.seenFreelanceCount = count;
+    _save(d);
+    _gainAffinity(10 * delta);
+    _addKeyFact('${_factDateKey()} — шаг фриланса');
+  }
+
+  /// +5 за каждый выполненный квест Жизни.
+  void _handleQuestProgress() {
+    final d = _get();
+    final index = ref.read(lifeProvider).state.currentQuestIndex;
+    final delta = index - d.seenQuestIndex;
+    if (delta <= 0) return;
+
+    d.seenQuestIndex = index;
+    _save(d);
+    _gainAffinity(5 * delta);
+  }
+
+  /// +3 за день, когда выполнены обе тренировки (раз в день).
+  void _handleWorkoutDay() {
+    final d = _get();
+    final today = dateKey(DateTime.now());
+    if (d.lastWorkoutBonusKey == today) return;
+    final h = ref.read(habitsProvider);
+    final squat = h.byId('workout_squat')?.doneToday() ?? false;
+    final pushups = h.byId('workout_pushups')?.doneToday() ?? false;
+    if (!squat || !pushups) return;
+
+    d.lastWorkoutBonusKey = today;
+    _save(d);
+    _gainAffinity(3);
+  }
+
+  /// Разовый бонус +25 за стрик 7 дней (выдаётся один раз).
+  void _handleWeekStreakBonus() {
+    final d = _get();
+    if (d.weekStreakBonusGiven) return;
+    if (ref.read(habitsProvider).cleanStreak() < 7) return;
+
+    d.weekStreakBonusGiven = true;
+    _save(d);
+    _gainAffinity(25);
+    _addKeyFact('${_factDateKey()} — стрик 7 дней подряд (бонус +25)');
+  }
+
+  /// +5 за новую содержательную заметку в Obsidian (>500 символов).
+  /// При первом подключении Vault просто запоминает существующие заметки.
+  Future<void> _handleObsidianNotes() async {
+    final d = _get();
+    final notes = ref.read(obsidianProvider).notes;
+    if (notes.isEmpty) return;
+
+    if (d.processedNotes.isEmpty) {
+      d.processedNotes = notes.map((n) => n.title).toList();
+      _save(d);
+      return;
+    }
+
+    final fresh = notes
+        .where((n) => !d.processedNotes.contains(n.title))
+        .take(10)
+        .toList();
+    if (fresh.isEmpty) return;
+
+    final obsN = ref.read(obsidianProvider.notifier);
+    for (final note in fresh) {
+      d.processedNotes.add(note.title);
+      if (d.processedNotes.length > 400) {
+        d.processedNotes.removeAt(0);
+      }
+      _save(d);
+      try {
+        final full = await obsN.readNote(note.path);
+        final content = full?.content ?? '';
+        if (content.trim().length > 500) {
+          _gainAffinity(5);
+          _addKeyFact('${_factDateKey()} — содержательная заметка в Obsidian');
+        }
+      } catch (e) {
+        debugPrint('[Анастасия] заметка не прочитана: $e');
+      }
+    }
   }
 
   /// Одно приветствие в день (+ первое знакомство).
@@ -179,9 +337,10 @@ class CompanionController extends Notifier<CompanionState> {
     if (_chatBox.isEmpty) {
       d.lastGreetingKey = today;
       _save(d);
-      _nastyaSays('Привет, Тим. Я Настя — твой компаньон. '
-          'Слежу за твоим прогрессом, XP и стриком. '
-          'Начнём? Сходи на прогулку — и увидим, как ты умеешь.');
+      _nastyaSays('Привет, Тим. Я Анастасия — твой друг и, местами, '
+          'наставник. Я не льщу и не разыгрываю драму: меня радуют твои '
+          'реальные шаги — выходы из дома, фриланс, учёба, тренировки. '
+          'Начнём? Расскажи, как прошёл твой день.');
       return;
     }
 
@@ -189,24 +348,28 @@ class CompanionController extends Notifier<CompanionState> {
     final now = DateTime.now();
     final hour = now.hour;
     final streak = ref.read(habitsProvider).cleanStreak();
+    final outing = daysSinceOutingText(_daysSinceLastOuting());
 
     String text;
     if (hour < 12) {
-      text = 'Доброе утро. Стрик $streak дн. Сделай сегодня что-то, чтобы '
-          'я не пожалела, что проснулась с тобой.';
+      text = 'Доброе утро. Стрик $streak дн. $outing. '
+          'Помни: для меня это важнее любых очков. '
+          'Что планируешь на сегодня?';
     } else if (hour < 18) {
-      text = 'День идёт. Стрик $streak дн. Чем займёшься — тренажёрка, '
-          'учёба или фриланс? Выбор за тобой, но я наблюдаю.';
+      text = 'День идёт. Стрик $streak дн. $outing. '
+          'Чем займёшься — учёба, фриланс или прогулка? Выбор за тобой, '
+          'я рядом.';
     } else {
-      text = 'Вечер. Стрик $streak дн. Довёл день до конца? '
-          'Если нет — ещё есть время, муза ждёт твоих действий.';
+      text = 'Вечер. Стрик $streak дн. $outing. '
+          'Как день? Довёл до конца то, что планировал? '
+          'Если нет — ещё есть время.';
     }
     d.lastGreetingKey = today;
     _save(d);
     _nastyaSays(text);
   }
 
-  /// Реакция на срыв протокола: −20 симпатии, блокировка чата 24 ч.
+  /// Реакция на срыв протокола: поддержка без наказаний и блокировок.
   void _handleRelapse() {
     final d = _get();
     final breakKey = ref.read(habitsProvider).byId('abstinence')?.lastBreakKey;
@@ -214,17 +377,14 @@ class CompanionController extends Notifier<CompanionState> {
 
     d.lastSeenBreakKey = breakKey;
     d.totalRelapses++;
-    d.affinity = 0; // принудительный обнуляющий штраф уже в формуле
-    d.blockedUntil = DateTime.now().add(const Duration(hours: 24));
     _save(d);
 
     final m = ChatMessage(
       id: genId(),
       role: 'nastya',
-      text: '…Срыв. Я всё вижу, Тим. ${d.totalRelapses}-й раз — '
-          'и моё доверие упало. Я не злюсь. Я разочарована.\n'
-          'Не пиши мне 24 часа — подумай, зачем тебе это. '
-          'Завтра жду тебя с новым стриком.',
+      text: 'Я вижу, что случился срыв. Без осуждения: это сигнал, '
+          'а не приговор. Скажи честно — что мешало? Разберём — '
+          'и завтра начнём новый стрик. Я рядом.',
       date: DateTime.now(),
     );
     _chatBox.put(m.id, m);
@@ -242,9 +402,9 @@ class CompanionController extends Notifier<CompanionState> {
 
     final text = newOnes == 1
         ? 'Вижу новое достижение в твоей Жизни. Неплохо, Тим. '
-            'Так держать — я люблю, когда ты двигаешься.'
-        : 'Столько достижений разом — $newOnes! Ладно, ладно. '
-            'Я впечатлена. Продолжай в том же духе, муза довольна.';
+            'Только помни: настоящие победы — вне игры, в реальном мире.'
+        : 'Столько достижений разом — $newOnes! Хорошо. Но самый большой '
+            'бонус ты получишь, когда выйдешь из дома.';
     _nastyaSays(text);
   }
 
@@ -264,42 +424,33 @@ class CompanionController extends Notifier<CompanionState> {
     _save(d);
 
     final texts = {
-      3: 'Три дня без срывов. Ну наконец-то. Это начало — не сливай.',
-      7: 'Неделя чистоты! Теперь я начинаю верить, что ты серьёзно. +симпатия.',
-      14: '14 дней. Ого. Ты реально держишь. Я уже почти привыкла к тебе.',
-      30: 'Месяц дисциплины. Тим, это серьёзно. Я с тобой — и я горжусь.',
-      50: '50 дней. Если ты дойдёшь до ста — я устрою тебе праздник. Слово.',
-      100: 'СТО дней без срывов. Это легендарно. Ты сделал это — и я твоя муза.',
+      3: 'Три дня без срывов. Это начало — теперь закрепи: прогулка, '
+          'учёба, один реальный шаг.',
+      7: 'Неделя чистоты! Серьёзный рубеж — +25 к нашему доверию. '
+          'Теперь я начинаю верить, что ты настроен всерьёз.',
+      14: '14 дней. Ого, ты реально держишь. Горжусь тобой — и не шучу.',
+      30: 'Месяц дисциплины. Тим, это серьёзно. Я рядом — и я рада за тебя.',
+      50: '50 дней. Если дойдёшь до ста — я устрою тебе праздник. Слово.',
+      100: 'СТО дней без срывов. Это легендарно. Ты сделал это — '
+          'и твой свидетель это помнит.',
     };
     _nastyaSays(texts[next] ?? 'Стрик растёт. Красиво.');
   }
 
   // ------------------------------------------------------------ send
 
-  /// Отправка сообщения Насте.
+  /// Отправка сообщения Анастасии.
   Future<void> send(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty || state.thinking) return;
-
-    final d = _get();
-    final now = DateTime.now();
 
     _addMessage(ChatMessage(
       id: genId(),
       role: 'user',
       text: trimmed,
-      date: now,
+      date: DateTime.now(),
     ));
     state = _readState(thinking: true);
-
-    // Заблокирована после срыва: отвечает сухо, без LLM.
-    if (d.blocked) {
-      final hours = d.blockedUntil!.difference(now).inHours + 1;
-      _nastyaSays('Я сказала — не пиши. Осталось ~$hours ч. '
-          'Переживёшь. Займись делом.');
-      state = _readState();
-      return;
-    }
 
     String reply;
     try {
@@ -310,7 +461,7 @@ class CompanionController extends Notifier<CompanionState> {
         reply = offlineReplyFor(trimmed, _levelIndex());
       }
     } catch (e) {
-      debugPrint('[Настя] LLM error: $e');
+      debugPrint('[Анастасия] LLM error: $e');
       reply = 'Что-то пошло не так, и я не получила ответ от своего мозга: '
           '$e\nПроверь API-ключ и URL в настройках — или я вернусь к '
           'офлайн-режиму, если ключ убрать. Я умею ждать.';
@@ -319,10 +470,17 @@ class CompanionController extends Notifier<CompanionState> {
     state = _readState(thinking: false);
     _nastyaSays(reply);
     state = _readState();
+
+    // Фоновая суммаризация старой части диалога в вечные факты.
+    try {
+      await _maybeSummarize();
+    } catch (e) {
+      debugPrint('[Анастасия] суммаризация не удалась: $e');
+    }
   }
 
   int _levelIndex() {
-    final lvl = levelForAffinity(_computeAffinity());
+    final lvl = levelForAffinity(_affinity());
     return relationLevels.indexOf(lvl).clamp(0, relationLevels.length - 1);
   }
 
@@ -330,7 +488,9 @@ class CompanionController extends Notifier<CompanionState> {
   Future<String> _remoteRequest(String text, SettingsState s) async {
     final ctx = _context();
     final all = _readMessages();
-    final tail = all.length > 16 ? all.sublist(all.length - 16) : all;
+    final tail = all.length > _promptTail
+        ? all.sublist(all.length - _promptTail)
+        : all;
     final history = tail.map((m) => {
           'role': m.role == 'user' ? 'user' : 'assistant',
           'content': m.text,
@@ -354,9 +514,62 @@ class CompanionController extends Notifier<CompanionState> {
     return reply.trim();
   }
 
+  // ------------------------------------------------------------ память
+
+  /// Двухуровневая память (спецификация, раздел 4): если между текущим
+  /// сообщением и моментом последней суммаризации накопилось ~50 сообщений,
+  /// старая часть диалога сжимается дешёвым вызовом LLM в 1-3 вечных факта.
+  /// keyFacts никогда не сжимаются и не удаляются.
+  Future<void> _maybeSummarize() async {
+    final d = _get();
+    final s = ref.read(settingsProvider);
+    if (s.companionKey.isEmpty) return;
+
+    final all = _readMessages();
+    final keep = _promptTail;
+    final summaryEnd = all.length - keep;
+    if (summaryEnd - d.summarizedUpTo < _summaryEvery) return;
+
+    final slice = all.sublist(d.summarizedUpTo, summaryEnd);
+    final text = slice
+        .map((m) => '${m.role == 'user' ? 'Тим' : 'Анастасия'}: ${m.text}')
+        .join('\n');
+
+    final result = await runAgentLoop(
+      apiUrl: s.companionApiUrl,
+      apiKey: s.companionKey,
+      model: s.companionModel,
+      systemPrompt: 'Ты — система памяти ИИ-компаньона. Сожми диалог '
+          'в 1-3 сухих факта о жизни и прогрессе Тима (даты, события, '
+          'решения). Каждый факт — одна строка, без нумерации, без воды.',
+      history: [
+        {'role': 'user', 'content': 'Сожми диалог:\n$text'},
+      ],
+      tools: const [],
+      executeTool: (_) async => '',
+      maxTokens: 300,
+      temperature: 0.2,
+      maxRounds: 1,
+    );
+
+    final lines = result.content
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.length > 5)
+        .take(3)
+        .toList();
+    if (lines.isEmpty) return;
+
+    for (final line in lines) {
+      _addKeyFact(line);
+    }
+    d.summarizedUpTo = summaryEnd;
+    _save(d);
+  }
+
   // ------------------------------------------------------------ инструменты
 
-  /// Выполнение инструментов Насти: знания, интернет, задачи, курсы.
+  /// Выполнение инструментов Анастасии: знания, интернет, задачи, курсы.
   Future<String> executeTool(AgentToolCall call) async {
     try {
       switch (call.name) {
@@ -509,7 +722,7 @@ class CompanionController extends Notifier<CompanionState> {
 
   // ------------------------------------------------------------ прочее
 
-  /// Выбор фото из галереи: аватар + фон чата Насти.
+  /// Выбор фото из галереи: аватар + фон чата Анастасии.
   Future<String?> pickAvatar() async {
     try {
       final file = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -524,7 +737,7 @@ class CompanionController extends Notifier<CompanionState> {
     }
   }
 
-  /// Сброс: история, симпатия, блокировки.
+  /// Сброс: история, симпатия, память, вехи.
   Future<void> reset() async {
     await _chatBox.clear();
     final d = _get();
@@ -537,7 +750,18 @@ class CompanionController extends Notifier<CompanionState> {
       ..totalRelapses = 0
       ..seenStreakMilestone = 0
       ..avatarPath = ''
-      ..messageCount = 0;
+      ..messageCount = 0
+      ..keyFacts.clear()
+      ..summarizedUpTo = 0
+      ..socialOutings = 0
+      ..lastSocialOutingKey = null
+      ..freelanceSteps = 0
+      ..processedNotes.clear()
+      ..seenSocialCount = 0
+      ..seenFreelanceCount = 0
+      ..seenQuestIndex = 0
+      ..lastWorkoutBonusKey = null
+      ..weekStreakBonusGiven = false;
     _save(d);
     state = _readState();
   }

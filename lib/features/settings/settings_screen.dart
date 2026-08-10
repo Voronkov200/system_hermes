@@ -179,7 +179,7 @@ class SettingsScreen extends ConsumerWidget {
           const Padding(
             padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
             child: Text(
-              'Ключ Hermes используется и Настей, если её собственный ключ не задан.',
+              'Ключ Hermes используется и Анастасией, если её собственный ключ не задан.',
               style: TextStyle(color: AppColors.textDim, fontSize: 11),
             ),
           ),
@@ -200,7 +200,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
 
-          const _SectionTitle('Настя (ИИ-компаньон)'),
+          const _SectionTitle('Анастасия (ИИ-компаньон)'),
           const Padding(
             padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
             child: Text(
@@ -234,7 +234,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           ListTile(
             leading: _AvatarPreview(path: ref.watch(companionProvider).avatarPath),
-            title: const Text('Фото Насти'),
+            title: const Text('Фото Анастасии'),
             subtitle: const Text('Аватар и фон в чате. '
                 'По умолчанию — фото с её TikTok'),
             trailing: FilledButton.tonal(
@@ -244,7 +244,7 @@ class SettingsScreen extends ConsumerWidget {
                     .pickAvatar();
                 if (context.mounted) {
                   toast(context,
-                      path == null ? 'Фото не выбрано' : 'Фото Насти обновлено');
+                      path == null ? 'Фото не выбрано' : 'Фото Анастасии обновлено');
                 }
               },
               child: const Text('Выбрать'),
@@ -360,7 +360,7 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// Кружок-превью фото Насти (выбранное или по умолчанию).
+/// Кружок-превью фото Анастасии (выбранное или по умолчанию).
 class _AvatarPreview extends StatelessWidget {
   final String path;
 

@@ -268,22 +268,64 @@ class LifeState {
 }
 
 // =====================================================================
-// КОМПАНЬОН "НАСТЯ"
+// КОМПАНЬОН "АНАСТАСИЯ"
 // =====================================================================
 
-/// Состояние ИИ-компаньона "Настя": симпатия, блокировки, фото.
+/// Состояние ИИ-компаньона "Анастасия": симпатия, память, вехи реальных
+/// действий. Affinity растёт ТОЛЬКО от позитивных событий; штрафов,
+/// блокировок и «холодных» уровней нет (спецификация «Идея ИИ-компаньон»).
 @HiveType(typeId: 9)
 class CompanionData {
-  double affinity; // 0-100, кэш формулы от прогресса
-  DateTime? blockedUntil; // чат недоступен до этого момента (после срыва)
+  /// 0-100, накопленная симпатия (не формула — сумма реальных событий).
+  double affinity;
+
+  /// Оставлено для совместимости со старыми данными; больше не используется.
+  DateTime? blockedUntil;
   String? lastGreetingKey; // dateKey последнего приветствия (раз в день)
   String? lastSeenBreakKey; // последний обработанный срыв протокола
   int seenAchievementCount; // сколько достижений Жизни обработано
-  int totalRelapses; // всего срывов за всё время
+  int totalRelapses; // всего срывов за всё время (счётчик, не штраф)
   int seenStreakMilestone; // последний пройденный рубеж стрика
   String avatarPath; // фото из галереи (аватар/фон чата)
   DateTime? createdAt;
-  int messageCount; // всего сообщений от Насти
+  int messageCount; // всего сообщений от Анастасии
+
+  // ---- Память (двухуровневая: keyFacts + свежий хвост + суммаризация) ----
+
+  /// Вечные факты: никогда не сжимаются и не удаляются.
+  List<String> keyFacts;
+
+  /// Сколько сообщений из начала истории уже ушло в keyFacts.
+  int summarizedUpTo;
+
+  // ---- Вехи реальных действий (только положительные события) ----
+
+  /// Самостоятельные выходы из дома (walk/store/atm) — приоритет №1.
+  int socialOutings;
+
+  /// dateKey последнего самостоятельного выхода из дома.
+  String? lastSocialOutingKey;
+
+  /// Шаги фриланса (действие 'freelance' / коммиты).
+  int freelanceSteps;
+
+  /// Заголовки заметок Obsidian, уже учтённых в affinity.
+  List<String> processedNotes;
+
+  /// Сумма счётчиков действий walk+store+atm на момент последней проверки.
+  int seenSocialCount;
+
+  /// Счётчик действия 'freelance' на момент последней проверки.
+  int seenFreelanceCount;
+
+  /// Индекс квеста Жизни на момент последней проверки.
+  int seenQuestIndex;
+
+  /// dateKey последнего дня с бонусом за тренировку (+3).
+  String? lastWorkoutBonusKey;
+
+  /// Разовый бонус +25 за стрик 7 дней (выдаётся один раз).
+  bool weekStreakBonusGiven;
 
   CompanionData({
     this.affinity = 5,
@@ -296,11 +338,21 @@ class CompanionData {
     this.avatarPath = '',
     this.createdAt,
     this.messageCount = 0,
-  });
+    List<String>? keyFacts,
+    this.summarizedUpTo = 0,
+    this.socialOutings = 0,
+    this.lastSocialOutingKey,
+    this.freelanceSteps = 0,
+    List<String>? processedNotes,
+    this.seenSocialCount = 0,
+    this.seenFreelanceCount = 0,
+    this.seenQuestIndex = 0,
+    this.lastWorkoutBonusKey,
+    this.weekStreakBonusGiven = false,
+  })  : keyFacts = keyFacts ?? [],
+        processedNotes = processedNotes ?? [];
 
   factory CompanionData.empty() => CompanionData(createdAt: DateTime.now());
-
-  bool get blocked => blockedUntil != null && blockedUntil!.isAfter(DateTime.now());
 }
 
 // =====================================================================

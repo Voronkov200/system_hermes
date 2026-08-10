@@ -26,7 +26,7 @@ class SettingsState {
   String lastPensionMonth; // '2026-08' — месяц последнего начисления
   String protocolStart; // дата начала протокола (для стрика)
   String lastWorkoutBonusDay; // '2026-08-07' — день последнего бонуса за тренировки
-  String companionApiUrl; // LLM для Насти (Groq-совместимый)
+  String companionApiUrl; // LLM для Анастасии (Groq-совместимый)
   String companionApiKey;
   String companionModel;
   String searchSearxngUrl; // свой SearXNG-инстанс для модуля «Поиск»
@@ -53,12 +53,12 @@ class SettingsState {
     this.searchOffline = false,
   });
 
-  /// Ключ для LLM Hermes: свой ключ, либо ключ Насти, либо пусто.
+  /// Ключ для LLM Hermes: свой ключ, либо ключ Анастасии, либо пусто.
   String get llmKey => hermesApiKey.trim().isNotEmpty
       ? hermesApiKey.trim()
       : companionApiKey.trim();
 
-  /// Ключ для LLM Насти: свой ключ, либо ключ Hermes, либо пусто.
+  /// Ключ для LLM Анастасии: свой ключ, либо ключ Hermes, либо пусто.
   String get companionKey => companionApiKey.trim().isNotEmpty
       ? companionApiKey.trim()
       : hermesApiKey.trim();

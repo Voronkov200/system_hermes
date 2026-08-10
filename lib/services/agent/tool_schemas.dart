@@ -1,4 +1,4 @@
-// Схемы инструментов (function calling) для Hermes и Насти.
+// Схемы инструментов (function calling) для Hermes и Анастасии.
 
 import 'agent_loop.dart';
 
@@ -312,7 +312,7 @@ final List<ToolDefinition> hermesAgentTools = [
   updateProtocolStatusTool,
 ];
 
-/// Инструменты Насти (компаньон: база знаний + веб + задачи).
+/// Инструменты Анастасии (компаньон: база знаний + веб + задачи).
 final List<ToolDefinition> nastyaAgentTools = [
   searchKnowledgeTool,
   readNoteTool,

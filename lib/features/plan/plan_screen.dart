@@ -19,7 +19,7 @@ class PlanScreen extends StatelessWidget {
             icon: Icons.checklist,
             color: AppColors.accent,
             title: 'Задачи',
-            subtitle: 'Список дел от Hermes и Насти, свой план',
+            subtitle: 'Список дел от Hermes и Анастасии, свой план',
             onTap: () => context.go('/plan_tasks'),
           ),
           const SizedBox(height: 12),

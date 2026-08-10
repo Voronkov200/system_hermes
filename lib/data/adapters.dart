@@ -316,6 +316,24 @@ class CompanionDataAdapter extends TypeAdapter<CompanionData> {
             ? DateTime.fromMillisecondsSinceEpoch(reader.readInt())
             : null,
         messageCount: reader.readInt(),
+        // Новые поля дописываются в конец: старые записи (без них) читаются
+        // как есть — после messageCount данных не осталось (availableBytes 0).
+        keyFacts: reader.availableBytes == 0 ? [] : reader.readStringList(),
+        summarizedUpTo: reader.availableBytes == 0 ? 0 : reader.readInt(),
+        socialOutings: reader.availableBytes == 0 ? 0 : reader.readInt(),
+        lastSocialOutingKey: reader.availableBytes == 0
+            ? null
+            : (reader.readBool() ? reader.readString() : null),
+        freelanceSteps: reader.availableBytes == 0 ? 0 : reader.readInt(),
+        processedNotes: reader.availableBytes == 0 ? [] : reader.readStringList(),
+        seenSocialCount: reader.availableBytes == 0 ? 0 : reader.readInt(),
+        seenFreelanceCount: reader.availableBytes == 0 ? 0 : reader.readInt(),
+        seenQuestIndex: reader.availableBytes == 0 ? 0 : reader.readInt(),
+        lastWorkoutBonusKey: reader.availableBytes == 0
+            ? null
+            : (reader.readBool() ? reader.readString() : null),
+        weekStreakBonusGiven:
+            reader.availableBytes == 0 ? false : reader.readBool(),
       );
 
   @override
@@ -342,6 +360,25 @@ class CompanionDataAdapter extends TypeAdapter<CompanionData> {
       writer.writeInt(obj.createdAt!.millisecondsSinceEpoch);
     }
     writer.writeInt(obj.messageCount);
+    writer
+      ..writeStringList(obj.keyFacts)
+      ..writeInt(obj.summarizedUpTo)
+      ..writeInt(obj.socialOutings)
+      ..writeBool(obj.lastSocialOutingKey != null);
+    if (obj.lastSocialOutingKey != null) {
+      writer.writeString(obj.lastSocialOutingKey!);
+    }
+    writer
+      ..writeInt(obj.freelanceSteps)
+      ..writeStringList(obj.processedNotes)
+      ..writeInt(obj.seenSocialCount)
+      ..writeInt(obj.seenFreelanceCount)
+      ..writeInt(obj.seenQuestIndex)
+      ..writeBool(obj.lastWorkoutBonusKey != null);
+    if (obj.lastWorkoutBonusKey != null) {
+      writer.writeString(obj.lastWorkoutBonusKey!);
+    }
+    writer.writeBool(obj.weekStreakBonusGiven);
   }
 }
 

@@ -34,7 +34,7 @@ class AppConstants {
   /// Максимум секунд начисляемых за один "тик" (защита от читов по времени).
   static const Duration maxTickGap = Duration(hours: 12);
 
-  /// URL по умолчанию для LLM Насти и Hermes (Groq, OpenAI-совместимый).
+  /// URL по умолчанию для LLM Анастасии и Hermes (Groq, OpenAI-совместимый).
   /// Бесплатный ключ: https://console.groq.com/keys
   static const String companionDefaultUrl =
       'https://api.groq.com/openai/v1/chat/completions';
@@ -42,10 +42,7 @@ class AppConstants {
   /// Модель по умолчанию (бесплатная на Groq, хорошо знает русский).
   static const String companionDefaultModel = 'llama-3.3-70b-versatile';
 
-  /// Длительность блокировки чата Насти после срыва протокола.
-  static const Duration companionBlockDuration = Duration(hours: 24);
-
-  /// Фото Насти по умолчанию (из её TikTok @nastuyshkakristmas).
+  /// Фото Анастасии по умолчанию.
   /// Используется как аватар и фон чата, пока не выбрано своё фото.
   static const String nastyaDefaultPhoto = 'assets/nastya/avatar.webp';
 
