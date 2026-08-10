@@ -225,7 +225,7 @@ class _TaskCard extends ConsumerWidget {
             onPressed: () {
               Navigator.of(dialogContext).pop();
               ref.read(tasksProvider.notifier).removeTask(task.id);
-              toast(screenContext, 'Задача удалена');
+              if (screenContext.mounted) toast(screenContext, 'Задача удалена');
             },
             child: const Text('Удалить'),
           ),

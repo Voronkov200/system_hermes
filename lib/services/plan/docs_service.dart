@@ -342,9 +342,9 @@ List<String> chunkText(String text, {int size = 1600, int overlap = 120}) {
       end = clean.length;
     }
     chunks.add(clean.substring(start, end).trim());
+    if (end >= clean.length) break;
     start = end - overlap;
     if (start < 0) start = 0;
-    if (start >= clean.length) break;
   }
   return chunks.where((c) => c.isNotEmpty).toList();
 }

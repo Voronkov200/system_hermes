@@ -19,6 +19,7 @@ class WebViewScreen extends StatefulWidget {
 class _WebViewScreenState extends State<WebViewScreen> {
   late final WebViewController _controller;
   bool _loading = true;
+  String? _initError;
 
   @override
   void initState() {
@@ -35,12 +36,17 @@ class _WebViewScreenState extends State<WebViewScreen> {
           },
         ),
       );
-    final uri = Uri.parse(widget.url);
-    if (uri.scheme == 'file') {
-      // Статья System: Hermes (HTML из «Поиска»).
-      _controller.loadFile(uri.toFilePath());
-    } else {
-      _controller.loadRequest(uri);
+    try {
+      final uri = Uri.parse(widget.url);
+      if (uri.scheme == 'file') {
+        // Статья System: Hermes (HTML из «Поиска»).
+        _controller.loadFile(uri.toFilePath());
+      } else {
+        _controller.loadRequest(uri);
+      }
+    } catch (e) {
+      _initError = 'Некорректный адрес: $e';
+      _loading = false;
     }
   }
 
@@ -62,10 +68,21 @@ class _WebViewScreenState extends State<WebViewScreen> {
       ),
       body: Stack(
         children: [
-          WebViewWidget(controller: _controller),
+          if (_initError == null) WebViewWidget(controller: _controller),
           if (_loading)
             const Center(child: CircularProgressIndicator()),
-          if (_loading)
+          if (_initError != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _initError!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.danger),
+                ),
+              ),
+            ),
+          if (_loading && _initError == null)
             Positioned(
               bottom: 8,
               left: 16,

@@ -82,6 +82,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       try {
         await _voice.startRecording();
+        if (!mounted) return;
         setState(() => _recording = true);
         _snack('Запись идёт… Нажми ещё раз, чтобы закончить.');
       } catch (e) {
@@ -438,39 +439,49 @@ class _NastyaTitle extends StatelessWidget {
           size: 34,
         ),
         const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const Text('Анастасия',
-                    style: TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.w700)),
-                const SizedBox(width: 6),
-                Text(
-                  level.name,
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.violet),
-                ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            SizedBox(
-              width: 110,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 4,
-                  backgroundColor: isDark
-                      ? const Color(0xFF1E2836)
-                      : Colors.black12,
-                  valueColor: const AlwaysStoppedAnimation(AppColors.violet),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Flexible(
+                    child: Text('Анастасия',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w700)),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      level.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.violet),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              SizedBox(
+                width: 110,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: isDark
+                        ? const Color(0xFF1E2836)
+                        : Colors.black12,
+                    valueColor: const AlwaysStoppedAnimation(AppColors.violet),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );

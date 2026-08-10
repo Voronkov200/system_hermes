@@ -47,6 +47,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
 
   Future<void> _start() async {
     final status = await Permission.microphone.request();
+    if (!mounted) return;
     if (!status.isGranted) {
       setState(() => _error = 'Нет доступа к микрофону — разреши в настройках');
       return;

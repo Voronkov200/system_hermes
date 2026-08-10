@@ -414,8 +414,26 @@ class _TextFieldSettingState extends ConsumerState<_TextFieldSetting> {
   Timer? _debounce;
 
   @override
+  void didUpdateWidget(covariant _TextFieldSetting oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Пресет провайдера изменил настройку — синхронизируем поле,
+    // если пользователь в этот момент не редактирует его.
+    if (widget.initial != oldWidget.initial &&
+        !FocusScope.of(context).hasFocus) {
+      _controller.text = widget.initial;
+    }
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
+    // Уход с экрана раньше debounce-паузы — сохраняем последнее значение.
+    final pending = _controller.text.trim();
+    if (pending.isNotEmpty && pending != widget.initial) {
+      try {
+        widget.onSave(pending);
+      } catch (_) {}
+    }
     _controller.dispose();
     super.dispose();
   }

@@ -36,8 +36,11 @@ class _BankScreenState extends ConsumerState<BankScreen>
     super.dispose();
   }
 
+  DateTime? _flashShown;
+
   void _onFlashChange(DateTime? flash) {
-    if (flash != null && !_coinController.isAnimating) {
+    if (flash != null && flash != _flashShown && !_coinController.isAnimating) {
+      _flashShown = flash;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_coinController.isAnimating) {
           _coinController.forward(from: 0);

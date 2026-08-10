@@ -63,13 +63,17 @@ class _PcBuilderScreenState extends ConsumerState<PcBuilderScreen> {
 
   Future<void> _runInstall(List<String> steps, Future<void> Function() onDone) async {
     final lines = <String>[];
-    await showModalBottomSheet<void>(
+    final completed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.black,
       builder: (_) => TerminalSim(lines: lines, steps: steps),
     );
-    await onDone();
+    // Установка считается выполненной, только если терминал доработал
+    // до конца (сам закрылся); свайп вниз отменяет.
+    if (completed == true && mounted) {
+      await onDone();
+    }
   }
 
   @override
@@ -158,7 +162,7 @@ class _PcBuilderScreenState extends ConsumerState<PcBuilderScreen> {
                     await ref
                         .read(miningProvider.notifier)
                         .startBuild(_selected.toList());
-                    setState(() => _showOs = true);
+                    if (mounted) setState(() => _showOs = true);
                   },
             icon: const Icon(Icons.build_circle_outlined),
             label: Text(_selected.length < 4
@@ -286,7 +290,7 @@ class _TerminalSimState extends State<TerminalSim> {
       }
     }
     await Future.delayed(const Duration(milliseconds: 400));
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   @override
