@@ -437,7 +437,7 @@ class SearchService {
     try {
       final raw = await llmLimiter.run(() => retry(
             () => llmComplete(
-              ref,
+              ref.container,
               system: 'Ты — эксперт по поисковым запросам. Сегодня $today. '
                   'Преврати вопрос пользователя в 1-3 конкретных поисковых '
                   'запроса на языке вопроса, по одному на строку, без '
@@ -657,7 +657,7 @@ class SearchService {
     try {
       final raw = await llmLimiter.run(() => retry(
             () => llmComplete(
-              ref,
+              ref.container,
               system: 'Ты — планировщик поискового агента. Сегодня $today. '
                   'Проанализируй вопрос пользователя и верни СТРОГО один '
                   'JSON-объект без пояснений:\n'
@@ -730,7 +730,7 @@ class SearchService {
     try {
       final fixed = await llmLimiter.run(() => retry(
             () => llmComplete(
-              ref,
+              ref.container,
               system: 'Ты — редактор. В ответе ниже номера источников [n] '
                   'указывают на список из ${hits.length} источников. '
                   'Исправь битые номера ${broken.join(', ')}: замени их на '
@@ -767,7 +767,7 @@ class SearchService {
         : _numbered(hits);    try {
       return await llmLimiter.run(() => retry(
             () => llmComplete(
-              ref,
+              ref.container,
               system: 'Ты — исследовательский ассистент в стиле ChatGPT '
                   'Deep Research. Сегодня $today. Отвечай на вопрос '
                   'пользователя ПО РУССКИ, опираясь ТОЛЬКО на приведённые '
@@ -818,7 +818,7 @@ class SearchService {
     try {
       return await llmLimiter.run(() => retry(
             () => llmComplete(
-              ref,
+              ref.container,
               system: 'Ты — ассистент Hermes. Сегодня $today. Отвечай на '
                   'русском, кратко и по делу. Интернет-поиск отключён '
                   'пользователем: отвечай из своих знаний; если не знаешь — '
@@ -1119,7 +1119,7 @@ class SearchService {
     onStage?.call('Планирую исследование…');
     final plan = await llmLimiter.run(() => retry(
           () => llmComplete(
-            ref,
+            ref.container,
             system: 'Ты — планировщик исследования. Сегодня $today. '
                 'Составь 3-7 уточняющих подвопросов по теме пользователя, '
                 'по одному на строку, без нумерации и кавычек. Подвопросы '
@@ -1265,7 +1265,7 @@ class SearchService {
     onStage?.call('Составляю отчёт…');
     final report = await llmLimiter.run(() => retry(
           () => llmComplete(
-            ref,
+            ref.container,
             system: 'Ты — аналитик-исследователь в стиле ChatGPT Deep '
                 'Research. Сегодня $today. Напиши ПОДРОБНЫЙ '
                 'структурированный отчёт по теме пользователя на русском, '
@@ -1328,7 +1328,7 @@ class SearchService {
     try {
       return await llmLimiter.run(() => retry(
             () => llmComplete(
-              ref,
+              ref.container,
               system: 'Ты — исследователь. Сожми контент страниц по '
                   'подвопросу в резюме 4-6 предложений на русском: '
                   'ключевые факты, цифры, даты, имена. Используй только '
@@ -1355,7 +1355,7 @@ class SearchService {
     try {
       final raw = await llmLimiter.run(() => retry(
             () => llmComplete(
-              ref,
+              ref.container,
               system: 'Ты — критичный аналитик Deep Research. Изучи '
                   'собранные резюме по теме. Определи, какие 1-3 важных '
                   'аспекта не раскрыты или раскрыты слабо, и сформулируй '

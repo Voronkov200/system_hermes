@@ -22,9 +22,9 @@ class LlmHttpException implements Exception {
 
 /// Простой вызов chat/completions (без stream и инструментов).
 /// Возвращает текст ответа или бросает Exception с понятной причиной.
-/// Принимает и [WidgetRef], и [Ref] (через WidgetRefOr).
+/// Принимает [ProviderContainer] — совместим и с [WidgetRef], и с [Ref].
 Future<String> llmComplete(
-  WidgetRefOr ref, {
+  ProviderContainer container, {
   required String system,
   required String user,
   int maxTokens = 1500,
@@ -32,7 +32,7 @@ Future<String> llmComplete(
   double temperature = 0.4,
   String? model,
 }) async {
-  final s = ref.read(settingsProvider);
+  final s = container.read(settingsProvider);
   final apiKey = s.llmKey.trim();
   if (apiKey.isEmpty) {
     throw Exception('Не задан API-ключ LLM: вставь ключ Groq '
