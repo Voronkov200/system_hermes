@@ -100,14 +100,17 @@ class SearchService {
   static final Map<String, String> _pageCache = {};
 
   /// Читает страницу источника; при неудаче — сниппет как запасной
-  /// вариант. Результат кэшируется на сессию.
+  /// вариант. Результат кэшируется на сессию (максимум 60 страниц).
   static Future<String> _fetchPage(SearchHit hit, {int maxChars = 6000}) async {
     final cached = _pageCache[hit.url];
     if (cached != null) return cached;
     try {
       final text =
-          await searchLimiter.run(() => WebTools.getPage(hit.url, maxChars: maxChars));
+          await pageLimiter.run(() => WebTools.getPage(hit.url, maxChars: maxChars));
       _pageCache[hit.url] = text;
+      if (_pageCache.length > 60) {
+        _pageCache.remove(_pageCache.keys.first);
+      }
       return text;
     } catch (e) {
       _log('Страница не прочитана: ${hit.url} ($e)');
@@ -143,6 +146,11 @@ class SearchService {
   /// Ограничитель поисковых вызовов (аналог MAX_CONCURRENT_TAVILY = 4).
   static final ConcurrencyLimiter searchLimiter =
       ConcurrencyLimiter(AppConstants.maxConcurrentSearches);
+
+  /// Ограничитель чтения страниц-источников. Отдельный пул: чтение
+  /// вызывается и из обычного поиска, и внутри задач searchLimiter
+  /// (deep research), общий пул создал бы взаимоблокировку.
+  static final ConcurrencyLimiter pageLimiter = ConcurrencyLimiter(4);
 
   /// Ограничитель вызовов LLM (аналог MAX_CONCURRENT_OPENCODE = 2).
   static final ConcurrencyLimiter llmLimiter =
@@ -889,8 +897,10 @@ class SearchService {
               onRetry: (a, e) =>
                   _log('Retry поиска по подвопросу ${i + 1} ($a): $e'),
             );
-            // Стадия 3: чтение страниц и сжатие в резюме (4.2, 4.6).
-            final content = await _numberedWithContent(hits, maxChars: 5000);
+            // Стадия 3: чтение страниц (топ-3, чтобы не тянуть 35 страниц)
+            // и сжатие в резюме (4.2, 4.6).
+            final content =
+                await _numberedWithContent(hits.take(3).toList(), maxChars: 5000);
             final summary =
                 await _summarizeSubquestion(ref, subqs[i], content);
             return (i: i, hits: hits, summary: summary);
@@ -903,15 +913,12 @@ class SearchService {
     results.sort((a, b) => a.i.compareTo(b.i));
 
     final allHits = <SearchHit>[];
-    final seen = <String>{};
+    final indexOf = <String, int>{};
     final blocks = StringBuffer();
     for (final r in results) {
       blocks.writeln('Подвопрос: ${subqs[r.i]}');
       blocks.writeln(r.summary);
-      blocks.writeln();
-      for (final h in r.hits) {
-        if (seen.add(h.url)) allHits.add(h);
-      }
+      _appendSources(blocks, r.hits, allHits, indexOf);
     }
     if (allHits.isEmpty) {
       throw Exception('Поисковые сервисы недоступны — нечего анализировать.');
@@ -934,14 +941,12 @@ class SearchService {
           onRetry: (a, e) => _log('Retry добора ($a): $e'),
         );
         if (hits.isEmpty) continue;
-        final content = await _numberedWithContent(hits, maxChars: 5000);
+        final content =
+            await _numberedWithContent(hits.take(3).toList(), maxChars: 5000);
         final summary = await _summarizeSubquestion(ref, g, content);
         blocks.writeln('Подвопрос (добор): $g');
         blocks.writeln(summary);
-        blocks.writeln();
-        for (final h in hits) {
-          if (seen.add(h.url)) allHits.add(h);
-        }
+        _appendSources(blocks, hits, allHits, indexOf);
       } catch (e) {
         _log('Добор не удался: $g ($e)');
       }
@@ -1053,6 +1058,29 @@ class SearchService {
       _log('Выявление пробелов не удалось: $e');
       return const [];
     }
+  }
+
+  /// Добавляет источники в общий список (с глобальными номерами) и
+  /// печатает их в [blocks], чтобы финальный отчёт ссылался на
+  /// реальные номера [n], а не выдумывал их.
+  static void _appendSources(
+    StringBuffer blocks,
+    List<SearchHit> hits,
+    List<SearchHit> allHits,
+    Map<String, int> indexOf,
+  ) {
+    final local = <int>[];
+    for (final h in hits) {
+      var num = indexOf[h.url];
+      if (num == null) {
+        num = allHits.length + 1;
+        indexOf[h.url] = num;
+        allHits.add(h);
+      }
+      local.add(num);
+    }
+    blocks.writeln('Источники: ${local.map((n) => '[$n]').join(', ')}');
+    blocks.writeln();
   }
 
   /// Задача 3: дедупликация подвопросов — точное совпадение после
