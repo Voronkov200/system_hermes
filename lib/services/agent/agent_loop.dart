@@ -77,22 +77,27 @@ Future<AgentResult> runAgentLoop({
   var lastContent = '';
 
   for (var round = 0; round < maxRounds; round++) {
-    final res = await http
-        .post(
-          Uri.parse(apiUrl),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $apiKey',
-          },
-          body: jsonEncode({
-            'model': model,
-            'messages': messages,
-            'tools': tools.map((t) => t.toJson()).toList(),
-            'temperature': temperature,
-            'max_tokens': maxTokens,
-          }),
-        )
-        .timeout(Duration(seconds: timeoutSeconds));
+    late final http.Response res;
+    try {
+      res = await http
+          .post(
+            Uri.parse(apiUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $apiKey',
+            },
+            body: jsonEncode({
+              'model': model,
+              'messages': messages,
+              'tools': tools.map((t) => t.toJson()).toList(),
+              'temperature': temperature,
+              'max_tokens': maxTokens,
+            }),
+          )
+          .timeout(Duration(seconds: timeoutSeconds));
+    } on Exception catch (e) {
+      throw Exception('Не удалось связаться с сервером ИИ: $e');
+    }
 
     if (res.statusCode != 200) {
       final reason = switch (res.statusCode) {
@@ -104,29 +109,52 @@ Future<AgentResult> runAgentLoop({
       throw Exception(reason);
     }
 
-    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    final choices = data['choices'] as List? ?? const [];
-    if (choices.isEmpty) throw Exception('Пустой ответ API');
-    final message = (choices.first as Map)['message'] as Map<String, dynamic>;
-    final content = message['content'] as String? ?? '';
-    if (content.trim().isNotEmpty) lastContent = content.trim();
+    final Map<String, dynamic> data;
+    try {
+      data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    } catch (_) {
+      throw Exception('Некорректный ответ сервера ИИ');
+    }
+    final choices = data['choices'];
+    if (choices is! List || choices.isEmpty) throw Exception('Пустой ответ API');
+    final first = choices.first;
+    if (first is! Map || first['message'] is! Map) {
+      throw Exception('Некорректный ответ сервера ИИ');
+    }
+    final message = (first['message'] as Map).cast<String, dynamic>();
+    final content = message['content'];
+    if (content is String && content.trim().isNotEmpty) {
+      lastContent = content.trim();
+    }
     messages.add(message);
 
-    final rawCalls = message['tool_calls'] as List? ?? const [];
-    if (rawCalls.isEmpty) break;
+    final rawCalls = message['tool_calls'];
+    if (rawCalls is! List || rawCalls.isEmpty) break;
 
     for (final raw in rawCalls) {
       if (raw is! Map) continue;
-      final fn = (raw['function'] as Map?) ?? const <String, dynamic>{};
-      final name = (fn['name'] as String?) ?? '';
-      if (name.isEmpty) continue;
-      final rawArgs = (fn['arguments'] as String?) ?? '{}';
+      final fnRaw = raw['function'];
+      final fn = fnRaw is Map
+          ? fnRaw.cast<String, dynamic>()
+          : const <String, dynamic>{};
+      final name = fn['name'];
+      if (name is! String || name.isEmpty) continue;
+      final rawArgs = fn['arguments'];
       Map<String, dynamic> args = {};
+      if (rawArgs is String) {
+        try {
+          final decoded = jsonDecode(rawArgs);
+          if (decoded is Map) args = decoded.cast<String, dynamic>();
+        } catch (_) {}
+      }
+      final idRaw = raw['id'];
+      final callId = idRaw is String ? idRaw : '';
+      String result;
       try {
-        args = (jsonDecode(rawArgs) as Map).cast<String, dynamic>();
-      } catch (_) {}
-      final callId = (raw['id'] as String?) ?? '';
-      final result = await executeTool(AgentToolCall(name, args));
+        result = await executeTool(AgentToolCall(name, args));
+      } on Exception catch (e) {
+        result = 'Ошибка инструмента: $e';
+      }
       steps.add(AgentStep(name, result));
       messages.add({
         'role': 'tool',

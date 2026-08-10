@@ -56,7 +56,8 @@ class ObsidianController extends Notifier<ObsidianState> {
     ref.onDispose(() {
       _sub?.cancel();
       _debounce?.cancel();
-    });    _watching = false;
+    });
+    _watching = false;
     if (path.isNotEmpty) {
       _startWatcher(path);
       Future.microtask(refresh);
