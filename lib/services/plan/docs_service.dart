@@ -12,6 +12,7 @@ import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 import '../../core/constants.dart';
 import '../../data/models.dart';
+import '../settings_service.dart';
 import 'llm.dart';
 
 @HiveType(typeId: 14)
@@ -198,7 +199,7 @@ class SourcesController extends Notifier<SourcesState> {
     for (var i = 0; i < sections.length; i++) {
       onProgress?.call(i + 1, sections.length);
       final summary = await llmComplete(
-        ref.container,
+        ref.read(settingsProvider),
         system: 'Ты — ассистент для конспектирования учебных материалов. '
             'Составь сжатый конспект приведённого фрагмента: главные мысли '
             'тезисами, определения, формулы, даты, имена. Пиши по-русски, '
@@ -264,7 +265,7 @@ class SourcesController extends Notifier<SourcesState> {
     }).join('\n\n---\n\n');
 
     final answer = await llmComplete(
-      ref.container,
+      ref.read(settingsProvider),
       system: 'Ты — ассистент по работе с документами в стиле NotebookLM. '
           'Отвечай на вопрос ПО-РУССКИ, используя ТОЛЬКО приведённые '
           'фрагменты документов. Кратко и по делу. Указывай фрагменты так: '
