@@ -1,5 +1,6 @@
 // API Национального банка Республики Беларусь: курсы валют.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,8 +63,11 @@ final nbrbApiProvider = Provider<NbrbApi>((ref) => NbrbApi());
 
 /// Курсы валют с автоперезагрузкой (кэш 1 час).
 final ratesProvider = FutureProvider<List<CurrencyRate>>((ref) async {
+  final timer = Timer(const Duration(hours: 1), () {
+    ref.invalidate(ratesProvider);
+  });
+  ref.onDispose(timer.cancel);
   final rates = await ref.watch(nbrbApiProvider).fetchRates();
-  ref.self.invalidateAfter(const Duration(hours: 1));
   return rates;
 });
 
