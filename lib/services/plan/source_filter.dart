@@ -182,21 +182,72 @@ List<SearchHit> filterAndRank(
   String query, {
   int limit = 5,
 }) {
-  final scored = <({SearchHit hit, double score})>[];
+  return judgeSources(hits, query)
+      .where((v) => v.kept)
+      .take(limit)
+      .map((v) => v.hit)
+      .toList();
+}
+
+/// Вердикт по источнику: оценка, взят ли в работу, причина (раздел 9-10
+/// спецификации: relevance/authority/freshness → source_score).
+class SourceVerdict {
+  final SearchHit hit;
+  final double score;
+  final bool kept;
+  final String reason;
+
+  const SourceVerdict({
+    required this.hit,
+    required this.score,
+    required this.kept,
+    required this.reason,
+  });
+}
+
+/// Оценивает каждый источник (без лимита): стоп-домены, дедуп, очки,
+/// порог релевантности и понятная причина решения для журнала агента.
+List<SourceVerdict> judgeSources(List<SearchHit> hits, String query) {
+  final out = <SourceVerdict>[];
   final seen = <String>{};
   for (final h in hits) {
     if (isStopUrl(h.url)) {
+      out.add(SourceVerdict(
+        hit: h,
+        score: -1000,
+        kept: false,
+        reason: 'Стоп-домен — запрещён политикой поиска',
+      ));
       continue;
     }
     final key = normalizeUrl(h.url);
-    if (key.isEmpty || !seen.add(key)) continue;
-    scored.add((hit: h, score: rankScore(h, query)));
+    if (key.isEmpty) continue;
+    if (!seen.add(key)) {
+      out.add(SourceVerdict(
+        hit: h,
+        score: -1,
+        kept: false,
+        reason: 'Дублирует более качественный источник',
+      ));
+      continue;
+    }
+    final score = rankScore(h, query);
+    out.add(SourceVerdict(
+      hit: h,
+      score: score,
+      kept: score >= 5,
+      reason: _reasonOf(h, score),
+    ));
   }
-  scored.sort((a, b) => b.score.compareTo(a.score));
-  final out = scored
-      .where((s) => s.score >= 5)
-      .take(limit)
-      .map((s) => s.hit)
-      .toList();
+  out.sort((a, b) => b.score.compareTo(a.score));
   return out;
+}
+
+String _reasonOf(SearchHit h, double score) {
+  if (isPreferredUrl(h.url)) return 'Приоритетный белорусский источник';
+  if (isPositiveUrl(h.url)) return 'Авторитетный/официальный источник';
+  if (score >= 40) return 'Напрямую отвечает на запрос';
+  if (score >= 15) return 'Частично отвечает на запрос';
+  if (score >= 5) return 'Умеренная релевантность';
+  return 'Низкая релевантность запросу';
 }

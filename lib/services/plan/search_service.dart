@@ -18,6 +18,7 @@ import '../settings_service.dart';
 import 'concurrency.dart';
 import 'llm.dart';
 import 'source_filter.dart';
+import 'agent_run.dart';
 
 /// Публичные SearXNG-инстансы: пробуем по очереди, пока не получим ответ.
 const _searxngInstances = [
@@ -58,6 +59,22 @@ class SearchAnswer {
   final List<SearchHit> sources;
 
   const SearchAnswer({required this.text, required this.sources});
+}
+
+/// Намерение запроса (раздел 4 спецификации): что ищем, насколько свежие
+/// данные нужны, нужна ли кросс-проверка — и план исследования.
+class SearchIntent {
+  final String intent;
+  final String freshness; // low | medium | high
+  final bool needsMultipleSources;
+  final List<String> plan;
+
+  const SearchIntent({
+    required this.intent,
+    required this.freshness,
+    required this.needsMultipleSources,
+    required this.plan,
+  });
 }
 
 /// Обмен «вопрос — ответ» для контекста переформулировки (3.2, задача 6).
@@ -101,7 +118,11 @@ class SearchService {
 
   /// Читает страницу источника; при неудаче — сниппет как запасной
   /// вариант. Результат кэшируется на сессию (максимум 60 страниц).
-  static Future<String> _fetchPage(SearchHit hit, {int maxChars = 6000}) async {
+  static Future<String> _fetchPage(
+    SearchHit hit, {
+    int maxChars = 6000,
+    SearchReporter? reporter,
+  }) async {
     final cached = _pageCache[hit.url];
     if (cached != null) return cached;
     try {
@@ -111,9 +132,19 @@ class SearchService {
       if (_pageCache.length > 60) {
         _pageCache.remove(_pageCache.keys.first);
       }
+      reporter?.event(
+        AgentEventType.sourceOpened,
+        'Открываю: ${hit.title.isEmpty ? hit.url : hit.title}',
+        sourceUrl: hit.url,
+      );
       return text;
     } catch (e) {
       _log('Страница не прочитана: ${hit.url} ($e)');
+      reporter?.event(
+        AgentEventType.sourceOpened,
+        'Страница недоступна: ${hit.title.isEmpty ? hit.url : hit.title}',
+        sourceUrl: hit.url,
+      );
       final s = hit.snippet.trim().isEmpty ? hit.title.trim() : hit.snippet.trim();
       return 'Содержимое страницы недоступно. Сниппет из выдачи: $s';
     }
@@ -124,9 +155,11 @@ class SearchService {
   static Future<String> _numberedWithContent(
     List<SearchHit> hits, {
     int maxChars = 6000,
+    SearchReporter? reporter,
   }) async {
     final contents = await Future.wait([
-      for (final h in hits) _fetchPage(h, maxChars: maxChars),
+      for (final h in hits)
+        _fetchPage(h, maxChars: maxChars, reporter: reporter),
     ]);
     final sb = StringBuffer();
     for (var i = 0; i < hits.length; i++) {
@@ -293,6 +326,7 @@ class SearchService {
     WidgetRef ref,
     String query, {
     void Function(String stage)? onStage,
+    SearchReporter? reporter,
     int limit = 6,
     List<ChatTurn> history = const [],
   }) async {
@@ -307,6 +341,11 @@ class SearchService {
     final seen = <String>{};
     for (final q in queries) {
       onStage?.call('Ищу: "$q"');
+      reporter?.event(
+        AgentEventType.searchQueryStarted,
+        'Запрос: "$q"',
+        query: q,
+      );
       try {
         final hits = await searchWeb(q, searxngUrl: searxngUrl, limit: 5);
         for (final h in hits) {
@@ -318,6 +357,11 @@ class SearchService {
     if (all.isEmpty) {
       // Фолбэк: ищем исходную фразу целиком.
       onStage?.call('Ищу: "$query"');
+      reporter?.event(
+        AgentEventType.searchQueryStarted,
+        'Запрос: "$query"',
+        query: query,
+      );
       _log('Переписывание не дало результатов — ищу исходную фразу.');
       try {
         final hits =
@@ -330,13 +374,45 @@ class SearchService {
         rethrow;
       }
     }
+    reporter?.event(
+      AgentEventType.searchResultsReceived,
+      'Получено ${all.length} результатов',
+      description: all.take(8).map((h) => h.title).join('\n'),
+    );
     // Фильтрация и ранжирование перед синтезом (2.3, 2.5, 3.7):
     // стоп-домены убраны, дубли схлопнуты по URL, остаются только
-    // релевантные, максимум [limit].
+    // релевантные, максимум [limit]. Каждый источник получает вердикт
+    // с причиной — его видно в журнале агента (раздел 10).
     final before = all.length;
-    final filtered = filterAndRank(all, query, limit: limit);
+    final verdicts = judgeSources(all, query);
+    final filtered = verdicts
+        .where((v) => v.kept)
+        .take(limit)
+        .map((v) => v.hit)
+        .toList();
+    for (final v in verdicts) {
+      final source = AgentSource(
+        hit: v.hit,
+        status: v.kept ? SourceStatus.found : SourceStatus.rejected,
+        score: v.score,
+        reason: v.reason,
+      );
+      reporter?.source(source);
+      reporter?.event(
+        v.kept
+            ? AgentEventType.sourceSelected
+            : AgentEventType.sourceRejected,
+        v.kept ? 'Источник: ${v.hit.title}' : 'Отброшен: ${v.hit.title}',
+        description: v.reason,
+        sourceUrl: v.hit.url,
+      );
+    }
     _log('Ранжирование: $before → ${filtered.length} '
         '(стопы/дубли убраны)');
+    reporter?.event(
+      AgentEventType.searchResultsReceived,
+      'Отобрано ${filtered.length} из $before источников',
+    );
     return filtered;
   }
 
@@ -411,13 +487,15 @@ class SearchService {
   // Полный цикл «Поиска» (пять стадий + Стадия −1)
   // ===================================================================
 
-  /// Полный цикл: Стадия −1 → переформулировка → веб-поиск → фильтрация →
-  /// синтез с цитатами. При отсутствии источников LLM не вызывается.
+  /// Полный цикл: Стадия −1 → анализ намерения → план → переформулировка →
+  /// веб-поиск → фильтрация → чтение страниц → синтез → проверка ответа.
+  /// При отсутствии источников LLM не вызывается.
   static Future<SearchAnswer> ask(
     WidgetRef ref,
     String query, {
     void Function(String stage)? onStage,
     List<ChatTurn> history = const [],
+    SearchReporter? reporter,
   }) async {
     _gateInput(query);
     final q = query.trim();
@@ -452,13 +530,33 @@ class SearchService {
       return SearchAnswer(text: await _offlineAnswer(ref, q), sources: const []);
     }
 
-    // Стадии 1–3.
+    // Этап 1: анализ намерения + план поиска (разделы 4-5 спецификации).
     final t0 = DateTime.now();
+    reporter?.phase(AgentPhase.analyzing);
+    reporter?.event(
+      AgentEventType.searchPlanCreated,
+      'Анализирую запрос',
+      query: q,
+    );
+    onStage?.call('Анализирую запрос…');
+    final intent = await _analyzeIntent(ref, q, history: history);
+    final plan = intent.plan;
+    reporter?.phase(AgentPhase.planning);
+    reporter?.event(
+      AgentEventType.searchPlanCreated,
+      'План из ${plan.length} шаг${_plural(plan.length)}',
+      description: plan.map((p) => '• $p').join('\n'),
+    );
+    reporter?.plan(plan);
     onStage?.call('Планирую поиск…');
+
+    // Стадии 1–3.
+    reporter?.phase(AgentPhase.searching);
     final hits = await searchWebRewritten(
       ref,
       q,
       onStage: onStage,
+      reporter: reporter,
       history: history,
     );
     _log('Поиск: ${DateTime.now().difference(t0).inSeconds}с.');
@@ -476,19 +574,180 @@ class SearchService {
     }
 
     // Стадия 4: чтение страниц-источников и синтез с рассуждением.
+    reporter?.phase(AgentPhase.openingSources);
     onStage?.call('Читаю страницы-источники…');
-    final content = await _numberedWithContent(hits, maxChars: 6000);
+    final content = await _numberedWithContent(
+      hits,
+      maxChars: 6000,
+      reporter: reporter,
+    );
+    reporter?.event(
+      AgentEventType.factExtracted,
+      'Прочитано ${hits.length} страниц',
+      description: hits.map((h) => h.title).take(6).join('\n'),
+    );
+    reporter?.phase(AgentPhase.synthesizing);
+    reporter?.event(AgentEventType.synthesisStarted, 'Составляю ответ…');
     onStage?.call('Составляю ответ…');
     final t1 = DateTime.now();
-    final text = await _synthesize(ref, q, hits, content: content);
+    var text = await _synthesize(ref, q, hits, content: content);
     if (text == _fallbackPrefix) {
       _log('Синтез упал — резервный ответ из сниппетов.');
     }
     _log('Синтез: ${DateTime.now().difference(t1).inSeconds}с.');
 
+    // Этап 5: проверка ответа — каждая цитата указывает на реальный
+    // источник (раздел 17 спецификации).
+    reporter?.phase(AgentPhase.verifying);
+    reporter?.event(AgentEventType.finalAnswerCreated, 'Проверяю ответ…');
+    text = await _verifyCitations(
+      ref,
+      query: q,
+      hits: hits,
+      text: text,
+      maxRepairs: 1,
+    );
+    reporter?.event(AgentEventType.finalAnswerCreated, 'Готово');
+    for (final h in hits) {
+      reporter?.source(AgentSource(
+        hit: h,
+        status: SourceStatus.used,
+        opened: true,
+      ));
+    }
+
     final answer = SearchAnswer(text: text, sources: hits);
     _cachePut(cacheKey, answer, _CacheKind.search);
     return answer;
+  }
+
+  static String _plural(int n) {
+    final m = n % 10;
+    final h = n % 100;
+    if (m == 1 && h != 11) return '';
+    if (m >= 2 && m <= 4 && (h < 12 || h > 14)) return 'а';
+    return 'ов';
+  }
+
+  /// Намерение запроса (раздел 4 спецификации): тип, свежесть, нужна ли
+  /// проверка по нескольким источникам — и план поиска (раздел 5).
+  static Future<SearchIntent> _analyzeIntent(
+    WidgetRef ref,
+    String query, {
+    List<ChatTurn> history = const [],
+  }) async {
+    final today = _todayStr();
+    var historyText = '';
+    if (history.isNotEmpty) {
+      historyText = '\n\nПоследние обмены в этой сессии:\n'
+          '${history.take(3).map((e) => 'Вопрос: ${e.q}\nОтвет: ${e.a}').join('\n\n')}'
+          '\n\nЕсли текущий вопрос ссылается на предыдущий контекст — '
+          'учитывай это при анализе и формулировке шагов плана.';
+    }
+    const fallback = SearchIntent(
+      intent: 'generic',
+      freshness: 'medium',
+      needsMultipleSources: true,
+      plan: [
+        'Найти актуальные источники по запросу',
+        'Сравнить данные из нескольких источников',
+        'Сформировать ответ с цитатами',
+      ],
+    );
+    try {
+      final raw = await llmLimiter.run(() => retry(
+            () => llmComplete(
+              ref,
+              system: 'Ты — планировщик поискового агента. Сегодня $today. '
+                  'Проанализируй вопрос пользователя и верни СТРОГО один '
+                  'JSON-объект без пояснений:\n'
+                  '{\n'
+                  ' "intent": "краткий тип намерения на русском",\n'
+                  ' "freshness": "low|medium|high",\n'
+                  ' "needs_multiple_sources": true|false,\n'
+                  ' "plan": ["шаг 1", "шаг 2", "шаг 3"]\n'
+                  '}\n'
+                  'План — 2-4 конкретных шага исследования: что найти, '
+                  'какие типы источников проверить (официальные документы, '
+                  'новости, экспертные статьи), как сравнить. '
+                  'Если вопрос о текущих событиях/ценах/курсах — freshness '
+                  '= high. Если фактологический/учебный — low.$historyText',
+              user: 'Вопрос: $query',
+              maxTokens: 300,
+              temperature: 0.1,
+              timeoutSeconds: 60,
+            ),
+            onRetry: (a, e) => _log('Retry анализа намерения ($a): $e'),
+          ));
+      final json = _extractJson(raw);
+      final planRaw = (json['plan'] as List?) ?? const [];
+      final plan = planRaw
+          .whereType<String>()
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .take(4)
+          .toList();
+      if (plan.isEmpty) return fallback;
+      return SearchIntent(
+        intent: (json['intent'] as String?) ?? 'generic',
+        freshness: (json['freshness'] as String?) ?? 'medium',
+        needsMultipleSources: json['needs_multiple_sources'] == true,
+        plan: plan,
+      );
+    } catch (e) {
+      _log('Анализ намерения не удался: $e');
+      return fallback;
+    }
+  }
+
+  /// Достаёт JSON-объект из ответа модели (может быть в ```json … ```).
+  static Map<String, dynamic> _extractJson(String raw) {
+    final m = RegExp(r'\{[\s\S]*\}').firstMatch(raw);
+    if (m == null) return const {};
+    try {
+      final decoded = jsonDecode(m.group(0)!);
+      if (decoded is Map) return decoded.cast<String, dynamic>();
+    } catch (_) {}
+    return const {};
+  }
+
+  /// Проверка ответа (раздел 17): каждый [n] указывает на реальный
+  /// источник. При битых цитатах — один вызов на исправление.
+  static Future<String> _verifyCitations(
+    WidgetRef ref, {
+    required String query,
+    required List<SearchHit> hits,
+    required String text,
+    int maxRepairs = 1,
+  }) async {
+    final broken = <String>[];
+    for (final m in RegExp(r'\[(\d{1,2})\]').allMatches(text)) {
+      final n = int.tryParse(m.group(1) ?? '') ?? 0;
+      if (n < 1 || n > hits.length) broken.add(m.group(0)!);
+    }
+    if (broken.isEmpty || maxRepairs <= 0 || hits.isEmpty) return text;
+    _log('Проверка: битые цитаты ${broken.join(', ')} — исправляю.');
+    try {
+      final fixed = await llmLimiter.run(() => retry(
+            () => llmComplete(
+              ref,
+              system: 'Ты — редактор. В ответе ниже номера источников [n] '
+                  'указывают на список из ${hits.length} источников. '
+                  'Исправь битые номера ${broken.join(', ')}: замени их на '
+                  'ближайший корректный номер от 1 до ${hits.length}, '
+                  'соответствующий источнику по теме. Верни исправленный '
+                  'текст целиком, без пояснений.',
+              user: 'Вопрос: $query\n\nОтвет:\n$text',
+              maxTokens: 2600,
+              timeoutSeconds: 120,
+            ),
+            onRetry: (a, e) => _log('Retry исправления цитат ($a): $e'),
+          ));
+      return fixed.trim().isEmpty ? text : fixed.trim();
+    } catch (e) {
+      _log('Исправление цитат не удалось: $e');
+      return text;
+    }
   }
 
   static const _fallbackPrefix = 'По запросу';
@@ -834,6 +1093,7 @@ class SearchService {
     String query, {
     void Function(String stage)? onStage,
     List<ChatTurn> history = const [],
+    SearchReporter? reporter,
   }) async {
     _gateInput(query);
     final q = query.trim();
@@ -850,6 +1110,12 @@ class SearchService {
     final today = _todayStr();
 
     // Стадия 1: декомпозиция (задача 3 — дедуп подвопросов).
+    reporter?.phase(AgentPhase.analyzing);
+    reporter?.event(
+      AgentEventType.searchPlanCreated,
+      'Анализирую тему исследования',
+      query: q,
+    );
     onStage?.call('Планирую исследование…');
     final plan = await llmLimiter.run(() => retry(
           () => llmComplete(
@@ -878,20 +1144,34 @@ class SearchService {
       throw Exception('Не удалось составить план исследования.');
     }
     _log('Подвопросы после дедупликации: ${subqs.length}');
+    reporter?.phase(AgentPhase.planning);
+    reporter?.event(
+      AgentEventType.searchPlanCreated,
+      'План: ${subqs.length} направлений',
+      description: subqs.map((p) => '• $p').join('\n'),
+    );
+    reporter?.plan(subqs);
 
     // Стадия 2: параллельный поиск через пул (задача 2), лимит 5
     // источников на подвопрос после фильтрации; затем — чтение страниц
     // и сжатие в резюме.
+    reporter?.phase(AgentPhase.searching);
     final results = await Future.wait([
       for (var i = 0; i < subqs.length; i++)
         searchLimiter.run(() async {
           onStage?.call('Изучаю подвопрос ${i + 1} из ${subqs.length}…');
+          reporter?.event(
+            AgentEventType.searchQueryStarted,
+            'Подвопрос ${i + 1}/${subqs.length}: ${subqs[i]}',
+            query: subqs[i],
+          );
           try {
             final hits = await retry(
               () => searchWebRewritten(
                 ref,
                 subqs[i],
                 onStage: onStage,
+                reporter: reporter,
                 limit: AppConstants.maxSources,
               ),
               onRetry: (a, e) =>
@@ -899,8 +1179,13 @@ class SearchService {
             );
             // Стадия 3: чтение страниц (топ-3, чтобы не тянуть 35 страниц)
             // и сжатие в резюме (4.2, 4.6).
-            final content =
-                await _numberedWithContent(hits.take(3).toList(), maxChars: 5000);
+            reporter?.phase(AgentPhase.openingSources);
+            final content = await _numberedWithContent(
+              hits.take(3).toList(),
+              maxChars: 5000,
+              reporter: reporter,
+            );
+            reporter?.phase(AgentPhase.extractingEvidence);
             final summary =
                 await _summarizeSubquestion(ref, subqs[i], content);
             return (i: i, hits: hits, summary: summary);
@@ -927,22 +1212,44 @@ class SearchService {
     // Стадия 3.5: выявление пробелов и добор недостающей информации
     // (стиль ChatGPT Deep Research): LLM смотрит резюме, находит аспекты,
     // по которым данных мало, и возвращает дополнительные запросы.
+    reporter?.phase(AgentPhase.checkingConflicts);
+    reporter?.event(
+      AgentEventType.factExtracted,
+      'Собрано фактов по ${results.where((r) => r.summary.isNotEmpty).length} направлениям',
+    );
     final gaps = await _findGaps(ref, q, blocks.toString());
+    if (gaps.isNotEmpty) {
+      reporter?.event(
+        AgentEventType.factConflictFound,
+        'Обнаружены пробелы в данных',
+        description: gaps.map((g) => '• $g').join('\n'),
+      );
+      reporter?.phase(AgentPhase.additionalSearch);
+    }
     for (final g in gaps) {
       onStage?.call('Добираю: "$g"');
+      reporter?.event(
+        AgentEventType.followUpSearchStarted,
+        'Дополнительный поиск: "$g"',
+        query: g,
+      );
       try {
         final hits = await retry(
           () => searchWebRewritten(
             ref,
             g,
             onStage: onStage,
+            reporter: reporter,
             limit: 4,
           ),
           onRetry: (a, e) => _log('Retry добора ($a): $e'),
         );
         if (hits.isEmpty) continue;
-        final content =
-            await _numberedWithContent(hits.take(3).toList(), maxChars: 5000);
+        final content = await _numberedWithContent(
+          hits.take(3).toList(),
+          maxChars: 5000,
+          reporter: reporter,
+        );
         final summary = await _summarizeSubquestion(ref, g, content);
         blocks.writeln('Подвопрос (добор): $g');
         blocks.writeln(summary);
@@ -953,6 +1260,8 @@ class SearchService {
     }
 
     // Стадии 4-5: финальный отчёт с рассуждением + пометка достоверности.
+    reporter?.phase(AgentPhase.synthesizing);
+    reporter?.event(AgentEventType.synthesisStarted, 'Составляю отчёт…');
     onStage?.call('Составляю отчёт…');
     final report = await llmLimiter.run(() => retry(
           () => llmComplete(
@@ -982,9 +1291,28 @@ class SearchService {
         ));
 
     // Задача 4: явная пометка предварительности кросс-валидации.
-    final text = '$report\n\n'
+    var text = '$report\n\n'
         '*Предварительная автоматическая проверка на противоречия. '
         'Не является гарантией фактической точности.*';
+
+    // Проверка цитат: номера [n] должны указывать на реальные источники.
+    reporter?.phase(AgentPhase.verifying);
+    reporter?.event(AgentEventType.finalAnswerCreated, 'Проверяю отчёт…');
+    text = await _verifyCitations(
+      ref,
+      query: q,
+      hits: allHits,
+      text: text,
+      maxRepairs: 1,
+    );
+    reporter?.event(AgentEventType.finalAnswerCreated, 'Готово');
+    for (final h in allHits) {
+      reporter?.source(AgentSource(
+        hit: h,
+        status: SourceStatus.used,
+        opened: true,
+      ));
+    }
 
     final answer = SearchAnswer(text: text, sources: allHits);
     _cachePut(cacheKey, answer, _CacheKind.research);
