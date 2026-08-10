@@ -1,7 +1,8 @@
 // Модуль «Поиск» (в стиле Morphic/NotebookLM Research):
 // вопрос → (Стадия −1: погода/валюты без LLM) → переформулировка запроса →
 // поиск (SearXNG/DDG/Bing/Brave/Yahoo/Wikipedia) → фильтрация стоп-доменов +
-// ранжирование → LLM составляет ответ с цитатами [n].
+// ранжирование → чтение страниц-источников → LLM составляет ответ с
+// рассуждением и цитатами [n].
 //
 // Спецификация: разделы 2 (пять стадий), 3 (доработки), 6 (задачи 1–8).
 
@@ -89,6 +90,50 @@ class SearchService {
         '${now.minute.toString().padLeft(2, '0')}';
     log.add('$t $line');
     if (log.length > 40) log.removeAt(0);
+  }
+
+  // ===================================================================
+  // Чтение страниц-источников
+  // ===================================================================
+
+  /// Кэш прочитанного текста страниц (URL → текст) на сессию.
+  static final Map<String, String> _pageCache = {};
+
+  /// Читает страницу источника; при неудаче — сниппет как запасной
+  /// вариант. Результат кэшируется на сессию.
+  static Future<String> _fetchPage(SearchHit hit, {int maxChars = 6000}) async {
+    final cached = _pageCache[hit.url];
+    if (cached != null) return cached;
+    try {
+      final text =
+          await searchLimiter.run(() => WebTools.getPage(hit.url, maxChars: maxChars));
+      _pageCache[hit.url] = text;
+      return text;
+    } catch (e) {
+      _log('Страница не прочитана: ${hit.url} ($e)');
+      final s = hit.snippet.trim().isEmpty ? hit.title.trim() : hit.snippet.trim();
+      return 'Содержимое страницы недоступно. Сниппет из выдачи: $s';
+    }
+  }
+
+  /// Формирует промпт-блок: для каждого источника — заголовок, URL и
+  /// прочитанное содержимое страницы (или сниппет при сбое).
+  static Future<String> _numberedWithContent(
+    List<SearchHit> hits, {
+    int maxChars = 6000,
+  }) async {
+    final contents = await Future.wait([
+      for (final h in hits) _fetchPage(h, maxChars: maxChars),
+    ]);
+    final sb = StringBuffer();
+    for (var i = 0; i < hits.length; i++) {
+      final h = hits[i];
+      sb.writeln('[${i + 1}] ${h.title.trim()}');
+      sb.writeln('URL: ${h.url}');
+      sb.writeln(contents[i].trim());
+      sb.writeln();
+    }
+    return sb.toString().trim();
   }
 
   // ===================================================================
@@ -422,10 +467,12 @@ class SearchService {
       return answer;
     }
 
-    // Стадия 4: синтез с защитой от пустого ответа (2.6).
+    // Стадия 4: чтение страниц-источников и синтез с рассуждением.
+    onStage?.call('Читаю страницы-источники…');
+    final content = await _numberedWithContent(hits, maxChars: 6000);
     onStage?.call('Составляю ответ…');
     final t1 = DateTime.now();
-    final text = await _synthesize(ref, q, hits);
+    final text = await _synthesize(ref, q, hits, content: content);
     if (text == _fallbackPrefix) {
       _log('Синтез упал — резервный ответ из сниппетов.');
     }
@@ -438,30 +485,40 @@ class SearchService {
 
   static const _fallbackPrefix = 'По запросу';
 
-  /// Стадия 4: LLM отвечает только по источникам с цитатами [n];
+  /// Стадия 4: LLM отвечает только по прочитанным страницам с цитатами
+  /// [n] в стиле ChatGPT: суть → рассуждение по пунктам → вывод;
   /// retry на 429/5xx; при неудаче — резервный ответ из сниппетов.
   static Future<String> _synthesize(
-      WidgetRef ref, String query, List<SearchHit> hits) async {
+    WidgetRef ref,
+    String query,
+    List<SearchHit> hits, {
+    String? content,
+  }) async {
     final today = _todayStr();
-    final numbered = _numbered(hits);
-    try {
+    final material = (content ?? '').trim().isNotEmpty
+        ? content!
+        : _numbered(hits);    try {
       return await llmLimiter.run(() => retry(
             () => llmComplete(
               ref,
-              system: 'Ты — исследовательский ассистент в стиле NotebookLM. '
-                  'Сегодня $today. Отвечай на вопрос пользователя ПО РУССКИ, '
-                  'опираясь ТОЛЬКО на приведённые результаты поиска. '
-                  'Оформляй ответ структурированно: 1-й абзац — суть в 2-3 '
-                  'предложениях, затем тезисы с тире, при списках — маркеры '
-                  '"-". Пиши кратко и по делу. В нужных местах указывай '
-                  'источники в квадратных скобках: [1], [2]. Если вопрос '
-                  'касается текущих событий, а результаты устаревшие или '
-                  'не отвечают на вопрос — честно скажи об этом и не '
-                  'выдумывай, не выдавай старые данные за актуальные. '
-                  'Не упоминай, что у тебя есть список результатов.',
-              user: 'Вопрос: $query\n\nРезультаты поиска:\n$numbered',
-              maxTokens: 1200,
-              timeoutSeconds: 120,
+              system: 'Ты — исследовательский ассистент в стиле ChatGPT '
+                  'Deep Research. Сегодня $today. Отвечай на вопрос '
+                  'пользователя ПО РУССКИ, опираясь ТОЛЬКО на приведённые '
+                  'страницы-источники. Структура ответа: '
+                  '1) «Суть» — 2-3 предложения; '
+                  '2) «Рассуждение» — разбор по пунктам: факты, цифры, '
+                  'сравнения, выводы из источников, с маркерами "-"; '
+                  '3) «Вывод» — итоговый ответ. '
+                  'Каждый факт подкрепляй источником в квадратных скобках: '
+                  '[1], [2]. Если вопрос касается текущих событий, а '
+                  'материалы устаревшие или не отвечают на вопрос — честно '
+                  'скажи об этом и не выдумывай, не выдавай старые данные '
+                  'за актуальные. Пиши подробно, но без воды. Не упоминай, '
+                  'что у тебя есть список результатов.',
+              user: 'Вопрос: $query\n\nСодержимое страниц-источников:\n'
+                  '$material',
+              maxTokens: 2400,
+              timeoutSeconds: 180,
             ),
             onRetry: (a, e) => _log('Retry синтеза ($a): $e'),
           ));
@@ -815,7 +872,8 @@ class SearchService {
     _log('Подвопросы после дедупликации: ${subqs.length}');
 
     // Стадия 2: параллельный поиск через пул (задача 2), лимит 5
-    // источников на подвопрос после фильтрации.
+    // источников на подвопрос после фильтрации; затем — чтение страниц
+    // и сжатие в резюме.
     final results = await Future.wait([
       for (var i = 0; i < subqs.length; i++)
         searchLimiter.run(() async {
@@ -831,8 +889,10 @@ class SearchService {
               onRetry: (a, e) =>
                   _log('Retry поиска по подвопросу ${i + 1} ($a): $e'),
             );
-            // Стадия 3: сжатие в резюме (4.2, 4.6).
-            final summary = await _summarizeSubquestion(ref, subqs[i], hits);
+            // Стадия 3: чтение страниц и сжатие в резюме (4.2, 4.6).
+            final content = await _numberedWithContent(hits, maxChars: 5000);
+            final summary =
+                await _summarizeSubquestion(ref, subqs[i], content);
             return (i: i, hits: hits, summary: summary);
           } catch (e) {
             _log('Подвопрос ${i + 1} не обработан: $e');
@@ -857,22 +917,56 @@ class SearchService {
       throw Exception('Поисковые сервисы недоступны — нечего анализировать.');
     }
 
-    // Стадии 4-5: финальный отчёт + пометка достоверности (задача 4).
+    // Стадия 3.5: выявление пробелов и добор недостающей информации
+    // (стиль ChatGPT Deep Research): LLM смотрит резюме, находит аспекты,
+    // по которым данных мало, и возвращает дополнительные запросы.
+    final gaps = await _findGaps(ref, q, blocks.toString());
+    for (final g in gaps) {
+      onStage?.call('Добираю: "$g"');
+      try {
+        final hits = await retry(
+          () => searchWebRewritten(
+            ref,
+            g,
+            onStage: onStage,
+            limit: 4,
+          ),
+          onRetry: (a, e) => _log('Retry добора ($a): $e'),
+        );
+        if (hits.isEmpty) continue;
+        final content = await _numberedWithContent(hits, maxChars: 5000);
+        final summary = await _summarizeSubquestion(ref, g, content);
+        blocks.writeln('Подвопрос (добор): $g');
+        blocks.writeln(summary);
+        blocks.writeln();
+        for (final h in hits) {
+          if (seen.add(h.url)) allHits.add(h);
+        }
+      } catch (e) {
+        _log('Добор не удался: $g ($e)');
+      }
+    }
+
+    // Стадии 4-5: финальный отчёт с рассуждением + пометка достоверности.
     onStage?.call('Составляю отчёт…');
     final report = await llmLimiter.run(() => retry(
           () => llmComplete(
             ref,
-            system: 'Ты — аналитик-исследователь (стиль NotebookLM Deep '
-                'Research). Сегодня $today. Напиши ПОДРОБНЫЙ '
+            system: 'Ты — аналитик-исследователь в стиле ChatGPT Deep '
+                'Research. Сегодня $today. Напиши ПОДРОБНЫЙ '
                 'структурированный отчёт по теме пользователя на русском, '
                 'используя только приведённые промежуточные резюме по '
-                'подвопросам. Структура отчёта: 1) «Суть» — 2-3 предложения; '
-                '2) раздел по каждому подвопросу с фактами, цифрами и '
-                'примерами; 3) «Выводы» — итог и перспективы. Каждый факт '
-                'подкрепляй источником в квадратных скобках: [1], [2] — '
-                'номера берутся из списка «Все источники» в конце. '
-                'Не выдумывай данные; если информации не хватает — честно '
-                'скажи. Не упоминай, что у тебя есть список результатов.',
+                'подвопросам. Структура отчёта: '
+                '1) «Суть» — 2-3 предложения; '
+                '2) «Рассуждение» — раздел по каждому подвопросу: '
+                'факты, цифры, примеры, сравнения, анализ противоречий '
+                'между источниками; '
+                '3) «Выводы» — итог, перспективы и что осталось неясным. '
+                'Каждый факт подкрепляй источником в квадратных скобках: '
+                '[1], [2] — номера берутся из списка «Все источники» в '
+                'конце. Не выдумывай данные; если информации не хватает — '
+                'честно скажи. Не упоминай, что у тебя есть список '
+                'результатов.',
             user: 'Тема: $q\n\nПромежуточные резюме по подвопросам:\n'
                 '$blocks\n\nВсе источники (глобальная нумерация):\n'
                 '${_numbered(allHits)}',
@@ -892,31 +986,72 @@ class SearchService {
     return answer;
   }
 
-  /// Стадия 3 «Исследования»: сжатие источников подвопроса в резюме
-  /// 3-5 предложений (4.2). В резюме без [n] — глобальная нумерация
+  /// Стадия 3 «Исследования»: сжатие контента страниц подвопроса в резюме
+  /// 4-6 предложений (4.2). В резюме без [n] — глобальная нумерация
   /// выдаётся в финальном отчёте.
   static Future<String> _summarizeSubquestion(
-      WidgetRef ref, String subq, List<SearchHit> hits) async {
-    if (hits.isEmpty) return '(данные отсутствуют)';
-    final numbered = _numbered(hits, maxChars: 600);
+      WidgetRef ref, String subq, String content) async {
+    if (content.trim().isEmpty) return '(данные отсутствуют)';
     try {
       return await llmLimiter.run(() => retry(
             () => llmComplete(
               ref,
-              system: 'Ты — исследователь. Сожми результаты поиска по '
-                  'подвопросу в резюме 3-5 предложений на русском. '
-                  'Используй только данные из результатов, не выдумывай. '
-                  'Без ссылок и цитат в тексте резюме.',
-              user: 'Подвопрос: $subq\n\nРезультаты:\n$numbered',
-              maxTokens: 400,
+              system: 'Ты — исследователь. Сожми контент страниц по '
+                  'подвопросу в резюме 4-6 предложений на русском: '
+                  'ключевые факты, цифры, даты, имена. Используй только '
+                  'данные из контента, не выдумывай. Без ссылок и цитат '
+                  'в тексте резюме.',
+              user: 'Подвопрос: $subq\n\nКонтент страниц:\n$content',
+              maxTokens: 500,
               temperature: 0.2,
-              timeoutSeconds: 90,
+              timeoutSeconds: 120,
             ),
             onRetry: (a, e) => _log('Retry резюме ($a): $e'),
           ));
     } catch (e) {
-      _log('Резюме не получено: $e — отдаю сниппеты.');
-      return _fallbackFromSnippets(subq, hits);
+      _log('Резюме не получено: $e');
+      return '(контент не прочитан)';
+    }
+  }
+
+  /// Выявление пробелов (стиль ChatGPT Deep Research): LLM анализирует
+  /// собранные резюме и возвращает 1-3 коротких поисковых запроса на
+  /// недостающие аспекты; если информации достаточно — пустой список.
+  static Future<List<String>> _findGaps(
+      WidgetRef ref, String theme, String summaries) async {
+    try {
+      final raw = await llmLimiter.run(() => retry(
+            () => llmComplete(
+              ref,
+              system: 'Ты — критичный аналитик Deep Research. Изучи '
+                  'собранные резюме по теме. Определи, какие 1-3 важных '
+                  'аспекта не раскрыты или раскрыты слабо, и сформулируй '
+                  'их как короткие поисковые запросы (3-8 слов), по одному '
+                  'на строку, без нумерации и кавычек. Если информации '
+                  'достаточно для полного ответа — ответь ровно одним '
+                  'словом: ДОСТАТОЧНО.',
+              user: 'Тема: $theme\n\nСобранные резюме:\n$summaries',
+              maxTokens: 250,
+              temperature: 0.2,
+              timeoutSeconds: 60,
+            ),
+            onRetry: (a, e) => _log('Retry выявления пробелов ($a): $e'),
+          ));
+      if (raw.trim().toUpperCase() == 'ДОСТАТОЧНО') {
+        _log('Пробелов не выявлено.');
+        return const [];
+      }
+      final qs = raw
+          .split('\n')
+          .map((l) => l.trim().replaceAll(RegExp(r'^[-*\d.)\s]+'), ''))
+          .where((l) => l.length >= 8 && l.length <= 120)
+          .take(3)
+          .toList();
+      _log('Пробелы: ${qs.isEmpty ? 'не выявлено' : qs.join(' | ')}');
+      return qs;
+    } catch (e) {
+      _log('Выявление пробелов не удалось: $e');
+      return const [];
     }
   }
 

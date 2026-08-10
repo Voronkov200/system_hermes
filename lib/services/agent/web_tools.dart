@@ -83,7 +83,8 @@ class WebTools {
     return hits;
   }
 
-  /// Загрузка страницы и извлечение читаемого текста.
+  /// Загрузка страницы и извлечение читаемого текста: выбрасываем
+  /// навигацию/футеры/рекламу, оставляем основной контент.
   static Future<String> getPage(String url, {int maxChars = 6000}) async {
     var target = url.trim();
     if (!target.startsWith('http')) target = 'https://$target';
@@ -102,11 +103,69 @@ class WebTools {
         .firstMatch(html)
         ?.group(1)
         ?.trim();
-    var text = _stripHtml(html);
-    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final mainText = _extractMainContent(html);
+    var text = mainText.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.length > maxChars) text = '${text.substring(0, maxChars)}…';
     final header = title == null ? '' : 'Заголовок: $title\n\n';
     return '$header$text';
+  }
+
+  /// Выделение основного текста: убираем скрипты, стили, навигацию,
+  /// футеры, рекламу; если найден тег article — берём его, иначе —
+  /// блок с наибольшей плотностью текста.
+  static String _extractMainContent(String html) {
+    var doc = html;
+    final junkTags = [
+      r'<script[\s\S]*?</script>',
+      r'<style[\s\S]*?</style>',
+      r'<noscript[\s\S]*?</noscript>',
+      r'<template[\s\S]*?</template>',
+      r'<svg[\s\S]*?</svg>',
+      r'<nav[\s\S]*?</nav>',
+      r'<header[\s\S]*?</header>',
+      r'<footer[\s\S]*?</footer>',
+      r'<aside[\s\S]*?</aside>',
+      r'<form[\s\S]*?</form>',
+      r'<!--[\s\S]*?-->',
+    ];
+    for (final re in junkTags) {
+      doc = doc.replaceAll(RegExp(re), ' ');
+    }
+
+    // Если есть article — основная статья внутри него.
+    final article = RegExp(r'<article[\s\S]*?</article>', dotAll: true)
+        .allMatches(doc)
+        .map((m) => m.group(0))
+        .whereType<String>()
+        .map(_stripHtml)
+        .where((t) => t.trim().length > 300)
+        .toList();
+    if (article.isNotEmpty) {
+      article.sort((a, b) => b.length.compareTo(a.length));
+      return article.first;
+    }
+
+    // Иначе — самые «тяжёлые» по тексту теги-контейнеры.
+    final candidates = <String>[];
+    for (final tag in ['p', 'h1', 'h2', 'h3', 'h4', 'li']) {
+      final re = RegExp(r'<' + tag + r'[^>]*>([\s\S]*?)</' + tag + r'>');
+      candidates.addAll(
+        re.allMatches(doc).map((m) => m.group(1) ?? '').map(_stripHtml),
+      );
+    }
+    final meaningful = candidates
+        .map((t) => t.replaceAll(RegExp(r'\s+'), ' ').trim())
+        .where((t) => t.length >= 40)
+        .toList();
+    if (meaningful.isEmpty) return _stripHtml(doc);
+    meaningful.sort((a, b) => b.length.compareTo(a.length));
+    // Берём длинные блоки (текст, а не меню): сумма ~maxChars символов.
+    final sb = StringBuffer();
+    for (final t in meaningful) {
+      sb.writeln(t);
+      if (sb.length > 12000) break;
+    }
+    return sb.toString();
   }
 
   // ------------------------------------------------------- Wikipedia
