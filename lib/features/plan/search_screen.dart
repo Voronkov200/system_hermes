@@ -780,7 +780,7 @@ class _ProcessCard extends StatelessWidget {
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           if (run.plan.isNotEmpty) ...[
-            _MiniHeader('План'),
+            const _MiniHeader('План'),
             for (final p in run.plan)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
@@ -789,7 +789,7 @@ class _ProcessCard extends StatelessWidget {
             const SizedBox(height: 10),
           ],
           if (run.queries.isNotEmpty) ...[
-            _MiniHeader('Запросы'),
+            const _MiniHeader('Запросы'),
             for (final q in run.queries)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
@@ -798,11 +798,11 @@ class _ProcessCard extends StatelessWidget {
             const SizedBox(height: 10),
           ],
           if (run.sources.isNotEmpty) ...[
-            _MiniHeader('Источники'),
+            const _MiniHeader('Источники'),
             for (final s in run.sources) _SourceStatusTile(source: s),
             const SizedBox(height: 10),
           ],
-          _MiniHeader('Журнал действий'),
+          const _MiniHeader('Журнал действий'),
           for (final e in run.events) _TimelineTile(event: e, isLast: false),
         ],
       ),

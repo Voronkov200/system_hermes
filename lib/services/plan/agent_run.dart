@@ -353,6 +353,45 @@ class SearchRunController extends Notifier<AgentRunState> {
     _ticker?.cancel();
     _ticker = null;
   }
+
+  // ---- Публичные методы обновления состояния (для SearchReporter) ----
+
+  void reportPhase(AgentPhase phase) {
+    state = state.copyWith(phase: phase);
+  }
+
+  void reportEvent(AgentEvent event) {
+    state = state.copyWith(events: [...state.events, event]);
+  }
+
+  void reportPlan(List<String> plan) {
+    state = state.copyWith(plan: plan);
+  }
+
+  void reportQuery(String q) {
+    if (!state.queries.contains(q)) {
+      state = state.copyWith(queries: [...state.queries, q]);
+    }
+  }
+
+  void reportSource(AgentSource source) {
+    final next = <AgentSource>[];
+    var added = false;
+    for (final x in state.sources) {
+      if (x.hit.url == source.hit.url) {
+        next.add(source);
+        added = true;
+      } else {
+        next.add(x);
+      }
+    }
+    if (!added) next.add(source);
+    state = state.copyWith(sources: next);
+  }
+
+  void reportProgress(double v) {
+    state = state.copyWith(progress: v);
+  }
 }
 
 /// Хелпер-мост: методы репортера, которые дёргают контроллер и обновляют
@@ -362,47 +401,17 @@ class AgentReporterContext {
 
   AgentReporterContext(this.controller);
 
-  void onPhase(AgentPhase phase) {
-    controller.state = controller.state.copyWith(phase: phase);
-  }
+  void onPhase(AgentPhase phase) => controller.reportPhase(phase);
 
-  void onEvent(AgentEvent event) {
-    final s = controller.state;
-    controller.state = s.copyWith(
-      events: [...s.events, event],
-    );
-  }
+  void onEvent(AgentEvent event) => controller.reportEvent(event);
 
-  void onPlan(List<String> plan) {
-    controller.state = controller.state.copyWith(plan: plan);
-  }
+  void onPlan(List<String> plan) => controller.reportPlan(plan);
 
-  void onQuery(String q) {
-    final s = controller.state;
-    if (!s.queries.contains(q)) {
-      controller.state = s.copyWith(queries: [...s.queries, q]);
-    }
-  }
+  void onQuery(String q) => controller.reportQuery(q);
 
-  void onSource(AgentSource source) {
-    final s = controller.state;
-    final next = <AgentSource>[];
-    var added = false;
-    for (final x in s.sources) {
-      if (x.hit.url == source.hit.url) {
-        next.add(source);
-        added = true;
-      } else {
-        next.add(x);
-      }
-    }
-    if (!added) next.add(source);
-    controller.state = s.copyWith(sources: next);
-  }
+  void onSource(AgentSource source) => controller.reportSource(source);
 
-  void onProgress(double v) {
-    controller.state = controller.state.copyWith(progress: v);
-  }
+  void onProgress(double v) => controller.reportProgress(v);
 
   SearchReporter get reporter => SearchReporter(
         onPhase: onPhase,
