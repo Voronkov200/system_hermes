@@ -14,7 +14,7 @@ class ConcurrencyLimiter {
 
   final int maxConcurrent;
   int _active = 0;
-  final Queue<Future<void> Function()> _queue = Queue();
+  final Queue<void Function()> _queue = Queue();
 
   Future<T> run<T>(Future<T> Function() task) {
     final completer = Completer<T>();

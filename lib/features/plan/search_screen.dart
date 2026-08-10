@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../services/plan/article_service.dart';
 import '../../services/plan/search_service.dart';
+import '../../services/settings_service.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});

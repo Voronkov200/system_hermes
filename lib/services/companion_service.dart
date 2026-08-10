@@ -231,7 +231,7 @@ class CompanionController extends Notifier<CompanionState> {
     d.seenSocialCount = total;
     d.lastSocialOutingKey = today;
     _save(d);
-    _gainAffinity(15 * delta);
+    _gainAffinity(15.0 * delta);
     if (firstToday) {
       _addKeyFact('${_factDateKey()} — самостоятельный выход из дома');
     }
@@ -247,7 +247,7 @@ class CompanionController extends Notifier<CompanionState> {
     d.freelanceSteps += delta;
     d.seenFreelanceCount = count;
     _save(d);
-    _gainAffinity(10 * delta);
+    _gainAffinity(10.0 * delta);
     _addKeyFact('${_factDateKey()} — шаг фриланса');
   }
 
@@ -260,7 +260,7 @@ class CompanionController extends Notifier<CompanionState> {
 
     d.seenQuestIndex = index;
     _save(d);
-    _gainAffinity(5 * delta);
+    _gainAffinity(5.0 * delta);
   }
 
   /// +3 за день, когда выполнены обе тренировки (раз в день).
@@ -526,7 +526,7 @@ class CompanionController extends Notifier<CompanionState> {
     if (s.companionKey.isEmpty) return;
 
     final all = _readMessages();
-    final keep = _promptTail;
+    const keep = _promptTail;
     final summaryEnd = all.length - keep;
     if (summaryEnd - d.summarizedUpTo < _summaryEvery) return;
 
