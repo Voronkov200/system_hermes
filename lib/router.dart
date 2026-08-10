@@ -23,6 +23,7 @@ import 'features/shell.dart';
 import 'features/study/paragraph_screen.dart';
 import 'features/study/study_screen.dart';
 import 'features/study/subject_screen.dart';
+import 'services/study/study_service.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/',

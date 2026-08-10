@@ -49,7 +49,7 @@ class StudyScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           if (subjects.isNotEmpty) ...[
-            _Header('Предметы 11 класса'),
+            const _Header('Предметы 11 класса'),
             const SizedBox(height: 8),
             for (final s in subjects) ...[
               _SubjectCard(subject: s),
@@ -57,7 +57,7 @@ class StudyScreen extends ConsumerWidget {
             ],
           ],
           const SizedBox(height: 8),
-          _Header('Дополнительная литература'),
+          const _Header('Дополнительная литература'),
           const SizedBox(height: 8),
           for (final g in guides) ...[
             _SubjectCard(subject: g),

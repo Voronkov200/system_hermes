@@ -620,7 +620,6 @@ class StudyController extends Notifier<StudyState> {
   }
 
   String _systemPrompt(StudySubject subject, String mode) {
-    final kind = subject.analysis;
     final base = 'Ты — репетитор по предмету «${subject.title}» '
         'за 11 класс белорусской школы. Отвечай по-русски, по существу, '
         'только по приведённому тексту учебника, ничего не выдумывай. '

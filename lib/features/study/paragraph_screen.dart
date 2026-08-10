@@ -21,18 +21,18 @@ class ParagraphScreen extends ConsumerStatefulWidget {
 }
 
 class _ParagraphScreenState extends ConsumerState<ParagraphScreen> {
+  StudyParagraph? _find(List<StudyParagraph> all) {
+    for (final x in all) {
+      if (x.id == widget.paragraphId) return x;
+    }
+    return widget.initial;
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(studyProvider);
     final notifier = ref.read(studyProvider.notifier);
-    StudyParagraph? p;
-    for (final x in st.paragraphs) {
-      if (x.id == widget.paragraphId) {
-        p = x;
-        break;
-      }
-    }
-    p ??= widget.initial;
+    final p = _find(st.paragraphs);
     if (p == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Параграф')),
