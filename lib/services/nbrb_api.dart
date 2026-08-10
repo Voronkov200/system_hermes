@@ -62,7 +62,8 @@ class NbrbApi {
 final nbrbApiProvider = Provider<NbrbApi>((ref) => NbrbApi());
 
 /// Курсы валют с автоперезагрузкой (кэш 1 час).
-final ratesProvider = FutureProvider<List<CurrencyRate>>((ref) async {
+final FutureProvider<List<CurrencyRate>> ratesProvider =
+    FutureProvider<List<CurrencyRate>>((ref) async {
   final timer = Timer(const Duration(hours: 1), () {
     ref.invalidate(ratesProvider);
   });
