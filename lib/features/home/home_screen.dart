@@ -114,6 +114,13 @@ class HomeScreen extends ConsumerWidget {
                 color: AppColors.textDim,
                 onTap: () => context.push('/settings'),
               ),
+              _ModuleCard(
+                title: 'Учёба',
+                subtitle: 'Предметы 11 класса',
+                icon: Icons.school_outlined,
+                color: AppColors.accent,
+                onTap: () => context.go('/study'),
+              ),
             ],
           ),
           const SizedBox(height: 16),

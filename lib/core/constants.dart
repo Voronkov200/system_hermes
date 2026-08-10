@@ -92,6 +92,8 @@ class BoxNames {
   static const String tasks = 'tasks';
   static const String journal = 'journal';
   static const String docs = 'docs';
+  static const String study = 'study';
+  static const String studyParagraphs = 'study_paragraphs';
 }
 
 /// Ключи настроек в SharedPreferences.

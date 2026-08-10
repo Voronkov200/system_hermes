@@ -15,6 +15,7 @@ class AppShell extends StatelessWidget {
     if (path.startsWith('/habits')) return 4;
     if (path.startsWith('/chat')) return 5;
     if (path.startsWith('/plan')) return 6;
+    if (path.startsWith('/study')) return 7;
     return 0;
   }
 
@@ -26,7 +27,9 @@ class AppShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) {
-          const paths = ['/', '/bank', '/life', '/mining', '/habits', '/chat', '/plan'];
+          const paths = [
+            '/', '/bank', '/life', '/mining', '/habits', '/chat', '/plan', '/study',
+          ];
           context.go(paths[i]);
         },
         destinations: const [
@@ -64,6 +67,11 @@ class AppShell extends StatelessWidget {
             icon: Icon(Icons.checklist_rtl),
             selectedIcon: Icon(Icons.checklist),
             label: 'План',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.school_outlined),
+            selectedIcon: Icon(Icons.school),
+            label: 'Учёба',
           ),
         ],
       ),

@@ -20,6 +20,9 @@ import 'features/plan/tasks_screen.dart';
 import 'features/plan/web_view_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell.dart';
+import 'features/study/paragraph_screen.dart';
+import 'features/study/study_screen.dart';
+import 'features/study/subject_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/',
@@ -35,10 +38,25 @@ final appRouter = GoRouter(
         GoRoute(path: '/habits', builder: (context, state) => const HabitsScreen()),
         GoRoute(path: '/chat', builder: (context, state) => const ChatScreen()),
         GoRoute(path: '/plan', builder: (context, state) => const PlanScreen()),
+        GoRoute(path: '/study', builder: (context, state) => const StudyScreen()),
       ],
     ),
     // Полноэкранные экраны.
     GoRoute(path: '/pc_builder', builder: (context, state) => const PcBuilderScreen()),
+    GoRoute(
+      path: '/study_subject/:id',
+      builder: (context, state) => SubjectScreen(
+        subjectId: state.pathParameters['id'] ?? '',
+        initial: state.extra as StudySubject?,
+      ),
+    ),
+    GoRoute(
+      path: '/study_paragraph/:id',
+      builder: (context, state) => ParagraphScreen(
+        paragraphId: state.pathParameters['id'] ?? '',
+        initial: state.extra as StudyParagraph?,
+      ),
+    ),
     GoRoute(path: '/plan_tasks', builder: (context, state) => const TasksScreen()),
     GoRoute(path: '/plan_search', builder: (context, state) => const SearchScreen()),
     GoRoute(path: '/plan_docs', builder: (context, state) => const DocsScreen()),

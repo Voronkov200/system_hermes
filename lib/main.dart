@@ -17,6 +17,7 @@ import 'services/settings_service.dart';
 import 'services/tasks_service.dart';
 import 'services/journal_service.dart';
 import 'services/plan/docs_service.dart';
+import 'services/study/study_service.dart';
 
 /// Открытие бокса с защитой от повреждённых данных:
 /// при ошибке чтения бокс сбрасывается, и приложение стартует.
@@ -54,6 +55,8 @@ Future<void> main() async {
   await _openBoxSafely<HermesTask>(BoxNames.tasks);
   await _openBoxSafely<JournalEntry>(BoxNames.journal);
   await _openBoxSafely<SourceDoc>(BoxNames.docs);
+  await _openBoxSafely<StudySubject>(BoxNames.study);
+  await _openBoxSafely<StudyParagraph>(BoxNames.studyParagraphs);
 
   final prefs = await SharedPreferences.getInstance();
 

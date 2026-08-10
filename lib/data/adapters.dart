@@ -7,6 +7,7 @@ import 'package:hive_ce/hive.dart';
 
 import '../services/journal_service.dart';
 import '../services/plan/docs_service.dart';
+import '../services/study/study_service.dart';
 import '../services/tasks_service.dart';
 import 'models.dart';
 
@@ -397,6 +398,8 @@ void registerHiveAdapters() {
     ..registerAdapter(CompanionDataAdapter())
     ..registerAdapter(HermesTaskAdapter())
     ..registerAdapter(JournalEntryAdapter())
-    ..registerAdapter(SourceDocAdapter());
+    ..registerAdapter(SourceDocAdapter())
+    ..registerAdapter(StudySubjectAdapter())
+    ..registerAdapter(StudyParagraphAdapter());
 }
 
