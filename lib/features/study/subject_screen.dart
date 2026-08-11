@@ -61,7 +61,11 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
                 child: FilledButton.icon(
                   onPressed: st.busy ? null : () => _addParagraph(subject),
                   icon: const Icon(Icons.add),
-                  label: const Text('Параграф вручную'),
+                  label: Text(
+                    subject.analysis == 'literature'
+                        ? 'Добавить произведение'
+                        : 'Параграф вручную',
+                  ),
                 ),
               ),
             ],
@@ -98,10 +102,12 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
     final notifier = ref.read(studyProvider.notifier);
     setState(() {});
     try {
-      await notifier.reparsePdf(subject);
+      final count = await notifier.reparsePdf(subject);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Учебник разобран на параграфы')),
+          SnackBar(
+            content: Text('Учебник разобран: $count параграф${_pl(count)}'),
+          ),
         );
       }
     } catch (e) {
@@ -111,6 +117,14 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
         );
       }
     }
+  }
+
+  static String _pl(int n) {
+    if (n % 10 == 1 && n % 100 != 11) return '';
+    if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) {
+      return 'а';
+    }
+    return 'ов';
   }
 
   Future<void> _addParagraph(StudySubject subject) async {

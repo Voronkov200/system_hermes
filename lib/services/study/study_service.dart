@@ -259,23 +259,44 @@ class StudyController extends Notifier<StudyState> {
     );
   }
 
+  /// Создаёт предметы каталога при первом запуске и обновляет подписи
+  /// (авторы, иконки) для уже существующих каталоговых предметов.
   void _ensureCatalog() {
-    if (_box.isNotEmpty) return;
     for (final item in studyCatalog) {
-      final id = genId();
-      _box.put(
-        id,
-        StudySubject(
-          id: id,
-          title: item.title,
-          icon: item.icon,
-          kind: item.kind,
-          category: item.category,
-          subtitle: item.subtitle,
-          analysis: _analysisFor(item.title),
-          addedAt: DateTime.now(),
-        ),
-      );
+      StudySubject? existing;
+      for (final s in _box.values) {
+        if (s.title == item.title) {
+          existing = s;
+          break;
+        }
+      }
+      if (existing == null) {
+        final id = genId();
+        _box.put(
+          id,
+          StudySubject(
+            id: id,
+            title: item.title,
+            icon: item.icon,
+            kind: item.kind,
+            category: item.category,
+            subtitle: item.subtitle,
+            analysis: _analysisFor(item.title),
+            addedAt: DateTime.now(),
+          ),
+        );
+      } else if (existing.subtitle != item.subtitle ||
+          existing.icon != item.icon ||
+          existing.category != item.category) {
+        _box.put(
+          existing.id,
+          existing.copyWith(
+            subtitle: item.subtitle,
+            icon: item.icon,
+            category: item.category,
+          ),
+        );
+      }
     }
   }
 
@@ -647,7 +668,8 @@ class StudyController extends Notifier<StudyState> {
 
   /// Разбор PDF на параграфы и создание StudyParagraph (без LLM —
   /// только нарезка; конспект генерируется отдельно по каждому).
-  Future<void> parsePdf(StudySubject subject) async {
+  /// Возвращает число созданных параграфов.
+  Future<int> parsePdf(StudySubject subject) async {
     if (subject.filePath == null) {
       throw Exception('К предмету не прикреплён PDF-учебник.');
     }
@@ -656,14 +678,19 @@ class StudyController extends Notifier<StudyState> {
       final text = await extractPdfText(subject.filePath!);
       final parts = splitPdfToParagraphs(text);
       if (parts.isEmpty) {
-        throw Exception('В учебнике не нашлось параграфов — возможно, '
-            'не текстовый PDF.');
+        throw Exception(
+          'Не удалось распознать текст учебника на параграфы: '
+          'PDF извлечён, но заголовков §/Глава в тексте не нашлось. '
+          'Возможно, это скан без OCR-слоя или разметка без параграфов '
+          '(стр. 1–${_pageCount(text)}).',
+        );
       }
       for (final part in parts) {
+        final pid = genId();
         await _pbox.put(
-          genId(),
+          pid,
           StudyParagraph(
-            id: genId(),
+            id: pid,
             subjectId: subject.id,
             title: part.title,
             chapter: part.chapter,
@@ -673,8 +700,9 @@ class StudyController extends Notifier<StudyState> {
           ),
         );
       }
-      state = state.copyWith(busy: false);
+      state = state.copyWith(busy: false, clearError: true);
       _emit();
+      return parts.length;
     } catch (e) {
       state = state.copyWith(busy: false, error: '$e');
       rethrow;
@@ -682,11 +710,18 @@ class StudyController extends Notifier<StudyState> {
   }
 
   /// Полная пере-нарезка: старые параграфы удаляются.
-  Future<void> reparsePdf(StudySubject subject) async {
+  Future<int> reparsePdf(StudySubject subject) async {
     for (final p in _pbox.values.where((p) => p.subjectId == subject.id)) {
       await _pbox.delete(p.id);
     }
-    await parsePdf(subject);
+    return parsePdf(subject);
+  }
+
+  /// Число страниц по маркерам «--- стр. N ---» в извлечённом тексте.
+  static int _pageCount(String text) {
+    final re = RegExp(r'---\s*стр\.\s*(\d+)\s*---');
+    final nums = re.allMatches(text).map((m) => int.parse(m.group(1)!));
+    return nums.isEmpty ? 0 : nums.reduce((a, b) => a > b ? a : b);
   }
 
   // ------------------------------------------------------------------
@@ -768,14 +803,20 @@ class StudyController extends Notifier<StudyState> {
         return '$base'
             'Собери из параграфа все правила, определения, теоремы, '
             'формулы и выводы. Для каждого укажи страницу учебника '
-            'и краткий пример, если он есть. Отвечай списком: '
-            '«**Правило/теорема** (с. N) — формулировка + пример».';
+            'и краткий пример, если он есть. Помечай, где правило '
+            'применяется (в каком задании/упражнении параграфа, каком '
+            'классе). Если правило взято из учебника другого класса или '
+            'пособия — укажи это явной перекрёстной ссылкой на источник. '
+            'Отвечай списком: «**Правило/теорема** (с. N) — формулировка '
+            '+ пример + где применяется».';
       case modeTasks:
         return '$base'
-            'Разбери задания/упражнения из параграфа. Каждое задание: '
-            'краткая постановка, какое правило/теорема применяется '
-            '((с. N), если видно), решение по шагам, ответ. '
-            'Оформляй: «**Задание N.** … → **Решение:** … → **Ответ:** …».';
+            'Разбери задания/упражнения из параграфа. Каждое задание '
+            'разбито на пункты (а, б, в, …) — для каждого пункта своё '
+            'решение по шагам и свой ответ. Указывай, какое '
+            'правило/теорема применяется ((с. N), если видно). '
+            'Оформляй: «**Задание N.** постановка → **а) Решение:** … → '
+            '**Ответ:** …» — отдельно для каждого пункта.';
       case modeAnswers:
         return '$base'
             'Дай развёрнутые ответы на вопросы в конце параграфа '
@@ -786,16 +827,19 @@ class StudyController extends Notifier<StudyState> {
             'Это произведение литературы (или его фрагмент). Дай краткое '
             'содержание, главных героев, тему, идею и ключевые моменты '
             'для конспекта. Структура: «**Краткое содержание**», '
-            '«**Герои**», «**Тема и идея**», «**Что выписать в конспект**».';
+            '«**Герои**», «**Тема и идея**», «**Ключевые цитаты**», '
+            '«**Что выписать в конспект**».';
       case modeConspectus:
       default:
         return '$base'
             'Составь конспект параграфа для школьной тетради 11 класса: '
-            '1) план параграфа (пункты); '
+            '1) план параграфа (пункты) — для истории обязательно; '
             '2) главное по пунктам плана: определения, правила, даты, '
-            'формулы — с указанием страниц; '
-            '3) вывод. Оформляй коротко, тезисно, чтобы было удобно '
-            'переписывать от руки.';
+            'формулы — короткими тезисами, пригодными для переписывания '
+            'от руки, с указанием страниц; '
+            '3) если в параграфе есть вопросы после текста — перечисли '
+            'их в конце и дай краткий ответ на каждый; '
+            '4) вывод. Не сплошной текст — только тезисы и списки.';
     }
   }
 

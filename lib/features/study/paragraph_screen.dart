@@ -85,6 +85,7 @@ class _ParagraphScreenState extends ConsumerState<ParagraphScreen> {
               child: Text(
                 [
                   subject.title,
+                  if (subject.subtitle.isNotEmpty) subject.subtitle,
                   if (p.chapter.isNotEmpty) p.chapter,
                   if (p.pages.isNotEmpty) p.pages,
                 ].join(' · '),
