@@ -678,21 +678,22 @@ class StudyController extends Notifier<StudyState> {
       category: item.category,
       subtitle: item.subtitle,
     );
+    final s = subject!;
     final now = DateTime.now();
-    var order = _nextOrder(subject.id);
+    var order = _nextOrder(s.id);
     for (final raw in paragraphList) {
       final m = raw as Map<String, dynamic>;
       final title = (m['title'] as String? ?? '').trim();
       if (title.isEmpty) continue;
       final exists = _pbox.values
-          .any((p) => p.subjectId == subject.id && p.title == title);
+          .any((p) => p.subjectId == s.id && p.title == title);
       if (exists) continue;
       final pid = genId();
       await _pbox.put(
         pid,
         StudyParagraph(
           id: pid,
-          subjectId: subject.id,
+          subjectId: s.id,
           title: title,
           chapter: (m['chapter'] as String? ?? '').trim(),
           pages: (m['pages'] as String? ?? '').trim(),
@@ -703,7 +704,7 @@ class StudyController extends Notifier<StudyState> {
       );
     }
     _emit();
-    return subject;
+    return s;
   }
 
   /// Следующий порядковый номер параграфа в предмете.
