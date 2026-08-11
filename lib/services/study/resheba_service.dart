@@ -81,7 +81,8 @@ class ReshebaService {
     final end = js.lastIndexOf('}');
     if (start < 0 || end <= start) throw Exception('Не удалось прочитать ГДЗ');
     var body = js.substring(start, end + 1);
-    body = body.replaceAll(RegExp(r'([\{,])\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:'),
+    body = body.replaceAllMapped(
+        RegExp(r'([\{,])\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:'),
         (m) => '${m[1]}"${m[2]}":');
     body = body.replaceAll(RegExp(r',\s*([\}])'), r'$1');
     final data = jsonDecode(body) as Map<String, dynamic>;
