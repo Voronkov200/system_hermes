@@ -678,7 +678,7 @@ class StudyController extends Notifier<StudyState> {
       category: item.category,
       subtitle: item.subtitle,
     );
-    final s = subject!;
+    final s = subject;
     final now = DateTime.now();
     var order = _nextOrder(s.id);
     for (final raw in paragraphList) {
