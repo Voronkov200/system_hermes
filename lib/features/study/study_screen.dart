@@ -57,6 +57,33 @@ class StudyScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (st.bundledTotal > 0 && st.bundledDone < st.bundledTotal) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Загрузка разборов учебников… '
+                      '${st.bundledDone}/${st.bundledTotal}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: st.bundledTotal == 0
+                          ? null
+                          : st.bundledDone / st.bundledTotal,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           if (subjects.isNotEmpty) ...[
             const _Header('Предметы 11 класса'),
             const SizedBox(height: 8),

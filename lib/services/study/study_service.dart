@@ -10,6 +10,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
@@ -216,6 +218,9 @@ class StudyState {
   final String? error;
   /// id параграфа, который сейчас разбирает LLM.
   final String? workingId;
+  /// Прогресс загрузки встроенных разборов учебников (bundled).
+  final int bundledDone;
+  final int bundledTotal;
 
   const StudyState({
     this.subjects = const [],
@@ -223,6 +228,8 @@ class StudyState {
     this.busy = false,
     this.error,
     this.workingId,
+    this.bundledDone = 0,
+    this.bundledTotal = 0,
   });
 
   StudyState copyWith({
@@ -233,6 +240,8 @@ class StudyState {
     bool clearError = false,
     String? workingId,
     bool clearWorking = false,
+    int? bundledDone,
+    int? bundledTotal,
   }) =>
       StudyState(
         subjects: subjects ?? this.subjects,
@@ -240,6 +249,8 @@ class StudyState {
         busy: busy ?? this.busy,
         error: clearError ? null : (error ?? this.error),
         workingId: clearWorking ? null : (workingId ?? this.workingId),
+        bundledDone: bundledDone ?? this.bundledDone,
+        bundledTotal: bundledTotal ?? this.bundledTotal,
       );
 }
 
@@ -247,12 +258,17 @@ class StudyState {
 class StudyController extends Notifier<StudyState> {
   late final Box<StudySubject> _box;
   late final Box<StudyParagraph> _pbox;
+  bool _bundledStarted = false;
 
   @override
   StudyState build() {
     _box = Hive.box<StudySubject>(BoxNames.study);
     _pbox = Hive.box<StudyParagraph>(BoxNames.studyParagraphs);
     _ensureCatalog();
+    if (!_bundledStarted && _pbox.isEmpty) {
+      _bundledStarted = true;
+      importBundledBooks();
+    }
     return StudyState(
       subjects: _sortedSubjects(),
       paragraphs: _pbox.values.toList(),
@@ -262,6 +278,16 @@ class StudyController extends Notifier<StudyState> {
   /// Создаёт предметы каталога при первом запуске и обновляет подписи
   /// (авторы, иконки) для уже существующих каталоговых предметов.
   void _ensureCatalog() {
+    // Удаляем предметы, исключённые из каталога (напр. Допризывная
+    // подготовка), вместе с их параграфами.
+    for (final s in _box.values.toList()) {
+      if (s.title == 'Допризывная подготовка') {
+        _box.delete(s.id);
+        for (final p in _pbox.values.where((p) => p.subjectId == s.id)) {
+          _pbox.delete(p.id);
+        }
+      }
+    }
     for (final item in studyCatalog) {
       StudySubject? existing;
       for (final s in _box.values) {
@@ -451,7 +477,7 @@ class StudyController extends Notifier<StudyState> {
   }
 
   // ------------------------------------------------------------------
-  // Импорт готового разбора учебника (JSON с ПК)
+  // Импорт готового разбора учебника (JSON с ПК / встроенные разборы)
   // ------------------------------------------------------------------
 
   /// Импорт JSON из tool/study_parse: предмет + параграфы с текстом.
@@ -461,57 +487,108 @@ class StudyController extends Notifier<StudyState> {
     try {
       final raw = await File(jsonPath).readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      final pdfName = (data['file'] as String? ?? '').trim();
-      final pdfLower = pdfName.toLowerCase();
-      final method = (data['method'] as String? ?? '').trim();
-      final paragraphList = (data['paragraphs'] as List? ?? const []);
-
-      // Иностранные языки, кроме английского, в каталог не входят.
-      const foreignLangs = [
-        'немецкий', 'нямецкая', 'французский', 'французская', 'испанский',
-        'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский',
-        'польский', 'польская', 'иностранный язык',
-      ];
-      for (final lang in foreignLangs) {
-        if (pdfLower.contains(lang) &&
-            !pdfLower.contains('английский') &&
-            !pdfLower.contains('англійская')) {
-          throw StateError(
-            '«$pdfName»: язык не входит в список (только английский)',
-          );
-        }
-      }
-
-      final catalogItem = _matchCatalog(pdfLower);
-      final subject = await _subjectForPdf(pdfName, pdfLower, catalogItem, method);
-      final now = DateTime.now();
-      for (final item in paragraphList) {
-        final m = item as Map<String, dynamic>;
-        final title = (m['title'] as String? ?? '').trim();
-        if (title.isEmpty) continue;
-        final exists = _pbox.values
-            .any((p) => p.subjectId == subject.id && p.title == title);
-        if (exists) continue;
-        final pid = genId();
-        await _pbox.put(
-          pid,
-          StudyParagraph(
-            id: pid,
-            subjectId: subject.id,
-            title: title,
-            chapter: (m['chapter'] as String? ?? '').trim(),
-            pages: (m['pages'] as String? ?? '').trim(),
-            sourceText: (m['text'] as String? ?? '').trim(),
-            updatedAt: now,
-          ),
-        );
-      }
-      state = state.copyWith(busy: false, clearError: true);
-      _emit();
-      return subject;
+      return await _importParsedMap(data);
     } catch (e) {
       state = state.copyWith(busy: false, error: '$e');
       rethrow;
+    }
+  }
+
+  /// Иностранные языки (кроме английского) и спецподготовка не входят
+  /// в список учебников — такие файлы при импорте отклоняются.
+  static const _excludedSubjects = [
+    'немецкий', 'нямецкая', 'французский', 'французская', 'испанский',
+    'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский',
+    'польский', 'польская', 'иностранный язык',
+    'допризывн', 'дапрызыўн', 'медицинск', 'медыцынск',
+  ];
+
+  Future<StudySubject> _importParsedMap(Map<String, dynamic> data) async {
+    final pdfName = (data['file'] as String? ?? '').trim();
+    final pdfLower = pdfName.toLowerCase();
+    final method = (data['method'] as String? ?? '').trim();
+    final paragraphList = (data['paragraphs'] as List? ?? const []);
+
+    for (final marker in _excludedSubjects) {
+      if (pdfLower.contains(marker) &&
+          !pdfLower.contains('английский') &&
+          !pdfLower.contains('англійская')) {
+        throw StateError(
+          '«$pdfName»: предмет не входит в список учебников 11 класса',
+        );
+      }
+    }
+
+    final catalogItem = _matchCatalog(pdfLower);
+    final subject = await _subjectForPdf(pdfName, pdfLower, catalogItem, method);
+    final now = DateTime.now();
+    for (final item in paragraphList) {
+      final m = item as Map<String, dynamic>;
+      final title = (m['title'] as String? ?? '').trim();
+      if (title.isEmpty) continue;
+      final exists = _pbox.values
+          .any((p) => p.subjectId == subject.id && p.title == title);
+      if (exists) continue;
+      final pid = genId();
+      await _pbox.put(
+        pid,
+        StudyParagraph(
+          id: pid,
+          subjectId: subject.id,
+          title: title,
+          chapter: (m['chapter'] as String? ?? '').trim(),
+          pages: (m['pages'] as String? ?? '').trim(),
+          sourceText: (m['text'] as String? ?? '').trim(),
+          updatedAt: now,
+        ),
+      );
+    }
+    state = state.copyWith(busy: false, clearError: true);
+    _emit();
+    return subject;
+  }
+
+  /// Автоимпорт встроенных разборов учебников из assets/study/books.zip.
+  /// Запускается один раз при первом открытии модуля, если база пуста.
+  Future<void> importBundledBooks() async {
+    try {
+      final archiveBytes = await rootBundle.load('assets/study/books.zip');
+      final archive = ZipDecoder().decodeBytes(archiveBytes.buffer);
+      final names = archive.files
+          .where((f) => f.isFile && f.name.endsWith('.json'))
+          .map((f) => f.name)
+          .toList()
+        ..sort();
+      state = state.copyWith(
+        busy: true,
+        error: null,
+        bundledDone: 0,
+        bundledTotal: names.length,
+      );
+      var done = 0;
+      final skipped = <String>[];
+      for (final name in names) {
+        try {
+          final f = archive.files.firstWhere((x) => x.name == name);
+          final content = utf8.decode(f.content as List<int>);
+          final data = jsonDecode(content) as Map<String, dynamic>;
+          await _importParsedMap(data);
+        } catch (e) {
+          skipped.add('$name: $e');
+        }
+        done++;
+        state = state.copyWith(bundledDone: done);
+      }
+      state = state.copyWith(busy: false, clearError: true);
+      _emit();
+      if (skipped.isNotEmpty) {
+        state = state.copyWith(
+          error: 'Пропущено разборов: ${skipped.length} '
+              '(${skipped.take(2).join('; ')})',
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(busy: false, error: 'Автоимпорт: $e');
     }
   }
 

@@ -134,11 +134,4 @@ const List<StudyCatalogItem> studyCatalog = [
     category: 'Точные науки',
     aliases: ['астраномія'],
   ),
-  StudyCatalogItem(
-    title: 'Допризывная подготовка',
-    subtitle: 'В. В. Драгунов и др.',
-    icon: 'shield',
-    kind: 'guide',
-    category: 'Дополнительная литература',
-  ),
 ];

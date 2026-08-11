@@ -36,6 +36,8 @@ dependencies:
   flutter_health_connect: ^1.2.3
   # Генерация PDF-документации прямо на телефоне
   pdf: ^3.11.1
+  # Распаковка встроенных разборов учебников (assets/study/books.zip)
+  archive: ^3.6.1
   # Извлечение текста из PDF учебников (pdfium)
   pdfrx: ^2.4.7
   # Запись голоса с микрофона (транскрибация)
@@ -54,3 +56,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/nastya/
+    - assets/study/
