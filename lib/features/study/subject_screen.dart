@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
+import '../../services/study/resheba_service.dart';
 import '../../services/study/study_service.dart';
+import 'resheba_screen.dart';
 
 class SubjectScreen extends ConsumerStatefulWidget {
   final String subjectId;
@@ -184,6 +186,13 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
               subtitle: const Text('PDF → параграфы (создаст заново)'),
               onTap: () => Navigator.pop(ctx, 'parse'),
             ),
+            if (ReshebaService.jsPathFor(subject.title) != null)
+              ListTile(
+                leading: const Icon(Icons.assignment_turned_in),
+                title: const Text('Решения заданий (Решеба)'),
+                subtitle: const Text('ГДЗ: задания по главам, фото решений'),
+                onTap: () => Navigator.pop(ctx, 'resheba'),
+            ),
             ListTile(
               leading: const Icon(Icons.edit),
               title: const Text('Переименовать'),
@@ -206,6 +215,16 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
         break;
       case 'parse':
         await _parsePdf(subject);
+        break;
+      case 'resheba':
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ReshebaScreen(
+              subjectTitle: subject.title,
+              subjectId: subject.id,
+            ),
+          ),
+        );
         break;
       case 'rename':
         await _rename(subject);

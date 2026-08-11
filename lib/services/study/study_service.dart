@@ -10,7 +10,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
@@ -548,15 +547,16 @@ class StudyController extends Notifier<StudyState> {
     return subject;
   }
 
-  /// Автоимпорт встроенных разборов учебников из assets/study/books.zip.
+  /// Автоимпорт встроенных разборов учебников из assets/study/.
   /// Запускается один раз при первом открытии модуля, если база пуста.
   Future<void> importBundledBooks() async {
     try {
-      final archiveBytes = await rootBundle.load('assets/study/books.zip');
-      final archive = ZipDecoder().decodeBytes(archiveBytes.buffer);
-      final names = archive.files
-          .where((f) => f.isFile && f.name.endsWith('.json'))
-          .map((f) => f.name)
+      final manifest =
+          await rootBundle.loadString('assets/study/manifest.txt');
+      final names = manifest
+          .split('\n')
+          .map((s) => s.trim())
+          .where((s) => s.endsWith('.json'))
           .toList()
         ..sort();
       state = state.copyWith(
@@ -569,8 +569,7 @@ class StudyController extends Notifier<StudyState> {
       final skipped = <String>[];
       for (final name in names) {
         try {
-          final f = archive.files.firstWhere((x) => x.name == name);
-          final content = utf8.decode(f.content as List<int>);
+          final content = await rootBundle.loadString('assets/study/$name');
           final data = jsonDecode(content) as Map<String, dynamic>;
           await _importParsedMap(data);
         } catch (e) {
