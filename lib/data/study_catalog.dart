@@ -12,6 +12,8 @@ class StudyCatalogItem {
   final String icon; // ключ иконки (маппинг в UI)
   final String kind; // subject | guide
   final String category; // «Гуманитарные» | «Точные науки» | «Языки» | ...
+  /// Синонимы названия (для матчинга по имени PDF), напр. белорусские.
+  final List<String> aliases;
 
   const StudyCatalogItem({
     required this.title,
@@ -19,6 +21,7 @@ class StudyCatalogItem {
     required this.icon,
     this.kind = 'subject',
     required this.category,
+    this.aliases = const [],
   });
 }
 
@@ -29,18 +32,21 @@ const List<StudyCatalogItem> studyCatalog = [
     subtitle: '1917 г. — начало XXI в. · учебное пособие, 11 класс',
     icon: 'history',
     category: 'Гуманитарные',
+    aliases: ['гісторыя беларусі'],
   ),
   StudyCatalogItem(
     title: 'Всемирная история',
     subtitle: 'Новейшее время. 1918 — начало XXI в. · 11 класс',
     icon: 'world',
     category: 'Гуманитарные',
+    aliases: ['сусветная гісторыя'],
   ),
   StudyCatalogItem(
     title: 'Обществоведение',
     subtitle: 'Учебное пособие, 11 класс',
     icon: 'society',
     category: 'Гуманитарные',
+    aliases: ['грамадазнаўства'],
   ),
   StudyCatalogItem(
     title: 'Беларуская мова',
@@ -71,6 +77,7 @@ const List<StudyCatalogItem> studyCatalog = [
     subtitle: 'Учебное пособие, 11 класс',
     icon: 'lang_en',
     category: 'Языки',
+    aliases: ['англійская мова'],
   ),
   StudyCatalogItem(
     title: 'Алгебра',
@@ -83,41 +90,48 @@ const List<StudyCatalogItem> studyCatalog = [
     subtitle: 'Геометрия, 11 класс',
     icon: 'geometry',
     category: 'Точные науки',
+    aliases: ['геаметрыя'],
   ),
   StudyCatalogItem(
     title: 'Физика',
     subtitle: 'Физика, 11 класс',
     icon: 'physics',
     category: 'Точные науки',
+    aliases: ['фізіка'],
   ),
   StudyCatalogItem(
     title: 'Химия',
     subtitle: 'Химия, 11 класс',
     icon: 'chemistry',
     category: 'Точные науки',
+    aliases: ['хімія'],
   ),
   StudyCatalogItem(
     title: 'Биология',
     subtitle: 'Биология, 11 класс',
     icon: 'biology',
     category: 'Точные науки',
+    aliases: ['біялогія'],
   ),
   StudyCatalogItem(
     title: 'География',
     subtitle: 'География, 11 класс',
     icon: 'geo',
     category: 'Гуманитарные',
+    aliases: ['геаграфія'],
   ),
   StudyCatalogItem(
     title: 'Информатика',
     subtitle: 'Информатика, 11 класс',
     icon: 'informatics',
     category: 'Точные науки',
+    aliases: ['інфарматыка'],
   ),
   StudyCatalogItem(
     title: 'Астрономия',
     subtitle: 'Астрономия, 11 класс',
     icon: 'astronomy',
     category: 'Точные науки',
+    aliases: ['астраномія'],
   ),
 ];

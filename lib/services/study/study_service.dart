@@ -7,6 +7,7 @@
 // правила/теоремы со страницами, решения заданий, ответы на вопросы,
 // краткое содержание произведений.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -426,6 +427,142 @@ class StudyController extends Notifier<StudyState> {
   Future<void> removeParagraph(String id) async {
     await _pbox.delete(id);
     _emit();
+  }
+
+  // ------------------------------------------------------------------
+  // Импорт готового разбора учебника (JSON с ПК)
+  // ------------------------------------------------------------------
+
+  /// Импорт JSON из tool/study_parse: предмет + параграфы с текстом.
+  /// Сопоставляет название с каталогом по имени PDF-файла.
+  Future<StudySubject> importParsedBook(String jsonPath) async {
+    state = state.copyWith(busy: true, error: null);
+    try {
+      final raw = await File(jsonPath).readAsString();
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final pdfName = (data['file'] as String? ?? '').trim();
+      final pdfLower = pdfName.toLowerCase();
+      final method = (data['method'] as String? ?? '').trim();
+      final paragraphList = (data['paragraphs'] as List? ?? const []);
+
+      // Иностранные языки, кроме английского, в каталог не входят.
+      const foreignLangs = [
+        'немецкий', 'нямецкая', 'французский', 'французская', 'испанский',
+        'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский',
+        'польский', 'польская', 'иностранный язык',
+      ];
+      for (final lang in foreignLangs) {
+        if (pdfLower.contains(lang) &&
+            !pdfLower.contains('английский') &&
+            !pdfLower.contains('англійская')) {
+          throw StateError(
+            '«$pdfName»: язык не входит в список (только английский)',
+          );
+        }
+      }
+
+      final catalogItem = _matchCatalog(pdfLower);
+      final subject = await _subjectForPdf(pdfName, pdfLower, catalogItem, method);
+      var added = 0;
+      final now = DateTime.now();
+      for (final item in paragraphList) {
+        final m = item as Map<String, dynamic>;
+        final title = (m['title'] as String? ?? '').trim();
+        if (title.isEmpty) continue;
+        final exists = _pbox.values
+            .any((p) => p.subjectId == subject.id && p.title == title);
+        if (exists) continue;
+        final pid = genId();
+        await _pbox.put(
+          pid,
+          StudyParagraph(
+            id: pid,
+            subjectId: subject.id,
+            title: title,
+            chapter: (m['chapter'] as String? ?? '').trim(),
+            pages: (m['pages'] as String? ?? '').trim(),
+            sourceText: (m['text'] as String? ?? '').trim(),
+            updatedAt: now,
+          ),
+        );
+        added++;
+      }
+      state = state.copyWith(busy: false, clearError: true);
+      _emit();
+      return subject;
+    } catch (e) {
+      state = state.copyWith(busy: false, error: '$e');
+      rethrow;
+    }
+  }
+
+  /// Поиск предмета каталога по имени PDF-файла (подстрокой).
+  StudyCatalogItem? _matchCatalog(String pdfNameLower) {
+    if (pdfNameLower.isEmpty) return null;
+    for (final item in studyCatalog) {
+      if (pdfNameLower.contains(item.title.toLowerCase())) return item;
+      for (final a in item.aliases) {
+        if (pdfNameLower.contains(a)) return item;
+      }
+    }
+    return null;
+  }
+
+  /// Предмет для PDF: существующий из каталога или созданный по имени файла.
+  Future<StudySubject> _subjectForPdf(
+    String pdfName,
+    String pdfLower,
+    StudyCatalogItem? catalogItem,
+    String method,
+  ) async {
+    if (catalogItem != null) {
+      for (final s in _box.values) {
+        if (s.title == catalogItem.title) return s;
+      }
+      return addSubject(
+        title: catalogItem.title,
+        icon: catalogItem.icon,
+        kind: catalogItem.kind,
+        category: catalogItem.category,
+        subtitle: catalogItem.subtitle,
+      );
+    }
+    final clean = _cleanPdfTitle(pdfName, pdfLower);
+    for (final s in _box.values) {
+      if (s.title == clean) return s;
+    }
+    final isGuide = pdfLower.contains('сборник') ||
+        pdfLower.contains('зборнік') ||
+        pdfLower.contains('хрестоматия') ||
+        pdfLower.contains('хрэстаматыя') ||
+        pdfLower.contains('справочник') ||
+        pdfLower.contains('даведнік') ||
+        pdfLower.contains('пособие') ||
+        pdfLower.contains('дапаможнік');
+    return addSubject(
+      title: clean,
+      icon: 'book',
+      kind: isGuide ? 'guide' : 'subject',
+      category: isGuide ? 'Дополнительная литература' : 'Импортированные',
+      subtitle: method.isEmpty ? '' : 'готовый разбор · $method',
+    );
+  }
+
+  /// Чистое название предмета из имени PDF-файла.
+  static String _cleanPdfTitle(String pdfName, String pdfLower) {
+    String t;
+    final idx = pdfLower.indexOf('_');
+    if (idx >= 0 && RegExp(r'^\d+$').hasMatch(pdfLower.substring(0, idx))) {
+      t = pdfName.substring(idx + 1).replaceAll('.pdf', '');
+    } else {
+      t = pdfName.replaceAll('.pdf', '');
+    }
+    final suffix = RegExp(
+        r'_(учебное пособие|вучэбны дапаможнік|учебник|падручнік|навучальны дапаможнік|пособие|дапаможнік|учебное пособие\.\s*ч\.\s*\d+)$',
+        caseSensitive: false);
+    t = t.replaceAll(suffix, '');
+    t = t.replaceAll('_', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return t;
   }
 
   // ------------------------------------------------------------------

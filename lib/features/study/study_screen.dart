@@ -39,7 +39,16 @@ class StudyScreen extends ConsumerWidget {
     final guides = st.subjects.where((s) => s.kind == 'guide').toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Учёба')),
+      appBar: AppBar(
+        title: const Text('Учёба'),
+        actions: [
+          IconButton(
+            tooltip: 'Импортировать готовый разбор (JSON)',
+            icon: const Icon(Icons.upload_file),
+            onPressed: () => _importJson(context, ref),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _addManualSubject(context, ref),
         icon: const Icon(Icons.add),
@@ -126,6 +135,46 @@ class StudyScreen extends ConsumerWidget {
           SnackBar(content: Text('Ошибка: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _importJson(BuildContext context, WidgetRef ref) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      allowMultiple: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    var ok = 0;
+    var skipped = 0;
+    for (final f in result.files) {
+      final path = f.path;
+      if (path == null) {
+        skipped++;
+        continue;
+      }
+      try {
+        await ref.read(studyProvider.notifier).importParsedBook(path);
+        ok++;
+      } catch (e) {
+        skipped++;
+        messenger.showSnackBar(
+          SnackBar(content: Text('«${f.name}»: $e')),
+        );
+      }
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          ok > 0 ? 'Импортировано файлов: $ok' : 'Ничего не импортировано',
+        ),
+      ),
+    );
+    if (skipped > 0 && ok > 0) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Пропущено: $skipped (см. ошибки выше)')),
+      );
     }
   }
 
