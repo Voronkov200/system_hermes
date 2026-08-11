@@ -28,18 +28,18 @@ class StudyCatalogItem {
 /// Встроенные предметы 11 класса (Беларусь).
 const List<StudyCatalogItem> studyCatalog = [
   StudyCatalogItem(
-    title: 'История Беларуси',
+    title: 'История (часть 1)',
     subtitle: 'А. В. Косович, В. С. Кошелев и др.',
     icon: 'history',
     category: 'Гуманитарные',
-    aliases: ['гісторыя беларусі'],
+    aliases: ['гісторыя беларусі', 'история беларуси'],
   ),
   StudyCatalogItem(
-    title: 'Всемирная история',
-    subtitle: 'Новейшее время. 1918 — начало XXI в.',
-    icon: 'world',
+    title: 'История (часть 2)',
+    subtitle: 'А. В. Косович, В. С. Кошелев и др.',
+    icon: 'history',
     category: 'Гуманитарные',
-    aliases: ['сусветная гісторыя'],
+    aliases: ['гісторыя беларусі', 'история беларуси'],
   ),
   StudyCatalogItem(
     title: 'Обществоведение',
@@ -73,11 +73,18 @@ const List<StudyCatalogItem> studyCatalog = [
     category: 'Языки',
   ),
   StudyCatalogItem(
-    title: 'Английский язык',
+    title: 'Английский язык (часть 1)',
     subtitle: 'Н. В. Юхнель, Н. В. Демченко и др.',
     icon: 'lang_en',
     category: 'Языки',
-    aliases: ['англійская мова'],
+    aliases: ['англійская мова', 'английский язык'],
+  ),
+  StudyCatalogItem(
+    title: 'Английский язык (часть 2)',
+    subtitle: 'Н. В. Юхнель, Н. В. Демченко и др.',
+    icon: 'lang_en',
+    category: 'Языки',
+    aliases: ['англійская мова', 'английский язык'],
   ),
   StudyCatalogItem(
     title: 'Алгебра',

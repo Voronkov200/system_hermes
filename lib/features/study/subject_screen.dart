@@ -37,7 +37,7 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
     final paragraphs = st.paragraphs
         .where((p) => p.subjectId == subject.id)
         .toList()
-      ..sort((a, b) => a.title.compareTo(b.title));
+      ..sort((a, b) => a.order.compareTo(b.order));
 
     return Scaffold(
       appBar: AppBar(

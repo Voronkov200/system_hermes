@@ -142,6 +142,9 @@ class StudyParagraph {
   final bool learned;
   @HiveField(8)
   final DateTime updatedAt;
+  /// Порядок в учебнике (для сортировки).
+  @HiveField(9)
+  final int order;
 
   const StudyParagraph({
     required this.id,
@@ -153,6 +156,7 @@ class StudyParagraph {
     this.content = '',
     this.learned = false,
     required this.updatedAt,
+    this.order = 0,
   });
 
   StudyParagraph copyWith({
@@ -163,6 +167,7 @@ class StudyParagraph {
     String? content,
     bool? learned,
     DateTime? updatedAt,
+    int? order,
   }) =>
       StudyParagraph(
         id: id,
@@ -174,6 +179,7 @@ class StudyParagraph {
         content: content ?? this.content,
         learned: learned ?? this.learned,
         updatedAt: updatedAt ?? this.updatedAt,
+        order: order ?? this.order,
       );
 }
 
@@ -192,6 +198,7 @@ class StudyParagraphAdapter extends TypeAdapter<StudyParagraph> {
         content: reader.readString(),
         learned: reader.readBool(),
         updatedAt: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
+        order: reader.readInt(),
       );
 
   @override
@@ -205,7 +212,8 @@ class StudyParagraphAdapter extends TypeAdapter<StudyParagraph> {
       ..writeString(obj.sourceText)
       ..writeString(obj.content)
       ..writeBool(obj.learned)
-      ..writeInt(obj.updatedAt.millisecondsSinceEpoch);
+      ..writeInt(obj.updatedAt.millisecondsSinceEpoch)
+      ..writeInt(obj.order);
   }
 }
 
@@ -253,16 +261,62 @@ class StudyState {
       );
 }
 
-/// Контроллер «Учёбы»: каталог, параграфы, LLM-разбор.
+  /// Контроллер «Учёбы»: каталог, параграфы, LLM-разбор.
 class StudyController extends Notifier<StudyState> {
   late final Box<StudySubject> _box;
   late final Box<StudyParagraph> _pbox;
   bool _bundledStarted = false;
 
+  /// Версия встроенных разборов: при смене данные модуля пересобираются.
+  static const int _bundleVersion = 2;
+
+  /// Явная карта «книга (id из имени файла) → предмет каталога».
+  /// Исключает слияние нескольких книг/версий в один предмет.
+  static const Map<String, String> _bookCatalogMap = {
+    '1155': 'История (часть 1)',
+    '1176': 'История (часть 2)',
+    '938': 'Обществоведение',
+    '920': 'Беларуская мова',
+    '904': 'Беларуская літаратура',
+    '1202': 'Беларуская літаратура',
+    '914': 'Русский язык',
+    '915': 'Русская литература',
+    '1207': 'Русская литература',
+    '1208': 'Русская литература',
+    '986': 'Английский язык (часть 1)',
+    '1015': 'Английский язык (часть 2)',
+    '894': 'Алгебра',
+    '902': 'Геометрия',
+    '900': 'Физика',
+    '899': 'Химия',
+    '921': 'Биология',
+    '897': 'География',
+    '923': 'Информатика',
+    '888': 'Астрономия',
+  };
+
+  /// Книги, которые не входят в программу (ВОВ, сборники задач, старые
+  /// издания, дубли на другом языке) — при автоимпорте пропускаются.
+  static const Set<String> _excludedBookIds = {
+    '1014', '1025', '1027', // Великая Отечественная война (отдельное пособие)
+    '903', '924', '949', '959', // сборники задач по алгебре/геометрии
+    '1037', '1057', // сборники задач по физике
+    '1040', '1044', // сборники задач по химии
+    '917', '946', // старый английский (без частей, дубли Юхнель 2021)
+    '776', '777', '911', '913', // немецкий
+    '730', '770', '798', // французский
+    '939', '945', '965', // испанский
+    '1177', // китайский
+    '804', '806', '809', '810', // допризывная/медицинская подготовка
+    '916', '901', '905', '898', '922', '896', '931', '918', '940', // бел. дубли
+    '1172', '1188', // история на белорусском (дубли частей)
+  };
+
   @override
   StudyState build() {
     _box = Hive.box<StudySubject>(BoxNames.study);
     _pbox = Hive.box<StudyParagraph>(BoxNames.studyParagraphs);
+    _checkBundleVersion();
     _ensureCatalog();
     if (!_bundledStarted && _pbox.isEmpty) {
       _bundledStarted = true;
@@ -274,13 +328,31 @@ class StudyController extends Notifier<StudyState> {
     );
   }
 
+  /// Сброс модуля «Учёба» при смене версии встроенных разборов:
+  /// старые предметы/параграфы удаляются, каталог и разборы
+  /// пересоздаются заново.
+  void _checkBundleVersion() {
+    final prefs = ref.read(sharedPreferencesProvider);
+    if (prefs.getInt('study_bundle_v') == _bundleVersion) return;
+    for (final key in _box.keys.toList()) {
+      _box.delete(key);
+    }
+    for (final key in _pbox.keys.toList()) {
+      _pbox.delete(key);
+    }
+    prefs.setInt('study_bundle_v', _bundleVersion);
+  }
+
   /// Создаёт предметы каталога при первом запуске и обновляет подписи
   /// (авторы, иконки) для уже существующих каталоговых предметов.
   void _ensureCatalog() {
-    // Удаляем предметы, исключённые из каталога (напр. Допризывная
-    // подготовка), вместе с их параграфами.
+    // Удаляем предметы, исключённые из каталога (старые названия,
+    // Допризывная подготовка), вместе с их параграфами.
     for (final s in _box.values.toList()) {
-      if (s.title == 'Допризывная подготовка') {
+      if (s.title == 'Допризывная подготовка' ||
+          s.title == 'История Беларуси' ||
+          s.title == 'Всемирная история' ||
+          s.title == 'Английский язык') {
         _box.delete(s.id);
         for (final p in _pbox.values.where((p) => p.subjectId == s.id)) {
           _pbox.delete(p.id);
@@ -367,7 +439,7 @@ class StudyController extends Notifier<StudyState> {
     final list = _pbox.values
         .where((p) => p.subjectId == subjectId)
         .toList()
-      ..sort((a, b) => a.title.compareTo(b.title));
+      ..sort((a, b) => a.order.compareTo(b.order));
     return list;
   }
 
@@ -452,6 +524,7 @@ class StudyController extends Notifier<StudyState> {
       pages: pages,
       sourceText: sourceText,
       updatedAt: DateTime.now(),
+      order: _nextOrder(subject.id),
     );
     await _pbox.put(p.id, p);
     _emit();
@@ -486,7 +559,11 @@ class StudyController extends Notifier<StudyState> {
     try {
       final raw = await File(jsonPath).readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      return await _importParsedMap(data);
+      final subject = await _importParsedMap(data);
+      if (subject == null) {
+        throw StateError('Книга не входит в список учебников 11 класса');
+      }
+      return subject;
     } catch (e) {
       state = state.copyWith(busy: false, error: '$e');
       rethrow;
@@ -500,13 +577,37 @@ class StudyController extends Notifier<StudyState> {
     'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский',
     'польский', 'польская', 'иностранный язык',
     'допризывн', 'дапрызыўн', 'медицинск', 'медыцынск',
+    'великая отечественная', 'айчынная вайна',
   ];
 
-  Future<StudySubject> _importParsedMap(Map<String, dynamic> data) async {
+  /// id книги из имени файла («1155_История...pdf» → «1155»), или null.
+  static String? _bookIdOf(String pdfName) {
+    final m = RegExp(r'^(\d+)[_ ]').firstMatch(pdfName.trim());
+    return m?.group(1);
+  }
+
+  Future<StudySubject?> _importParsedMap(
+    Map<String, dynamic> data, {
+    bool bundled = false,
+  }) async {
     final pdfName = (data['file'] as String? ?? '').trim();
     final pdfLower = pdfName.toLowerCase();
     final method = (data['method'] as String? ?? '').trim();
     final paragraphList = (data['paragraphs'] as List? ?? const []);
+    final bookId = _bookIdOf(pdfName);
+
+    // Автоимпорт встроенных разборов: только книги из карты.
+    if (bundled) {
+      if (bookId == null ||
+          _excludedBookIds.contains(bookId) ||
+          !_bookCatalogMap.containsKey(bookId)) {
+        return null;
+      }
+      final catalogTitle = _bookCatalogMap[bookId]!;
+      final catalogItem = studyCatalog
+          .firstWhere((i) => i.title == catalogTitle);
+      return _importBook(catalogItem, paragraphList, method);
+    }
 
     for (final marker in _excludedSubjects) {
       if (pdfLower.contains(marker) &&
@@ -518,9 +619,17 @@ class StudyController extends Notifier<StudyState> {
       }
     }
 
+    final catalogTitle = bookId == null ? null : _bookCatalogMap[bookId];
+    if (catalogTitle != null) {
+      final catalogItem = studyCatalog
+          .firstWhere((i) => i.title == catalogTitle);
+      return _importBook(catalogItem, paragraphList, method);
+    }
+
     final catalogItem = _matchCatalog(pdfLower);
     final subject = await _subjectForPdf(pdfName, pdfLower, catalogItem, method);
     final now = DateTime.now();
+    var order = _nextOrder(subject.id);
     for (final item in paragraphList) {
       final m = item as Map<String, dynamic>;
       final title = (m['title'] as String? ?? '').trim();
@@ -539,12 +648,71 @@ class StudyController extends Notifier<StudyState> {
           pages: (m['pages'] as String? ?? '').trim(),
           sourceText: (m['text'] as String? ?? '').trim(),
           updatedAt: now,
+          order: order++,
         ),
       );
     }
     state = state.copyWith(busy: false, clearError: true);
     _emit();
     return subject;
+  }
+
+  /// Импорт книги в предмет каталога (общий путь для встроенных и
+  /// импортированных разборов). Параграфы дописываются в конец предмета.
+  Future<StudySubject> _importBook(
+    StudyCatalogItem item,
+    List<dynamic> paragraphList,
+    String method,
+  ) async {
+    StudySubject? subject;
+    for (final s in _box.values) {
+      if (s.title == item.title) {
+        subject = s;
+        break;
+      }
+    }
+    subject ??= await addSubject(
+      title: item.title,
+      icon: item.icon,
+      kind: item.kind,
+      category: item.category,
+      subtitle: item.subtitle,
+    );
+    final now = DateTime.now();
+    var order = _nextOrder(subject.id);
+    for (final raw in paragraphList) {
+      final m = raw as Map<String, dynamic>;
+      final title = (m['title'] as String? ?? '').trim();
+      if (title.isEmpty) continue;
+      final exists = _pbox.values
+          .any((p) => p.subjectId == subject.id && p.title == title);
+      if (exists) continue;
+      final pid = genId();
+      await _pbox.put(
+        pid,
+        StudyParagraph(
+          id: pid,
+          subjectId: subject.id,
+          title: title,
+          chapter: (m['chapter'] as String? ?? '').trim(),
+          pages: (m['pages'] as String? ?? '').trim(),
+          sourceText: (m['text'] as String? ?? '').trim(),
+          updatedAt: now,
+          order: order++,
+        ),
+      );
+    }
+    _emit();
+    return subject;
+  }
+
+  /// Следующий порядковый номер параграфа в предмете.
+  int _nextOrder(String subjectId) {
+    var max = 0;
+    for (final p in _pbox.values) {
+      if (p.subjectId == subjectId && p.order > max) max = p.order;
+    }
+    return max + 1;
   }
 
   /// Автоимпорт встроенных разборов учебников из assets/study/.
@@ -558,7 +726,11 @@ class StudyController extends Notifier<StudyState> {
           .map((s) => s.trim())
           .where((s) => s.endsWith('.json'))
           .toList()
-        ..sort();
+        ..sort((a, b) {
+          final ai = int.tryParse(a.split('_').first) ?? 0;
+          final bi = int.tryParse(b.split('_').first) ?? 0;
+          return ai.compareTo(bi);
+        });
       state = state.copyWith(
         busy: true,
         error: null,
@@ -571,7 +743,7 @@ class StudyController extends Notifier<StudyState> {
         try {
           final content = await rootBundle.loadString('assets/study/$name');
           final data = jsonDecode(content) as Map<String, dynamic>;
-          await _importParsedMap(data);
+          await _importParsedMap(data, bundled: true);
         } catch (e) {
           skipped.add('$name: $e');
         }
@@ -595,6 +767,18 @@ class StudyController extends Notifier<StudyState> {
   StudyCatalogItem? _matchCatalog(String pdfNameLower) {
     if (pdfNameLower.isEmpty) return null;
     for (final item in studyCatalog) {
+      final part = item.title.contains('часть 1')
+          ? 1
+          : item.title.contains('часть 2')
+              ? 2
+              : 0;
+      if (part > 0) {
+        final hasPart = RegExp(r'ч\.?\s*\d|часть\s*\d').hasMatch(pdfNameLower);
+        final matchesPart = hasPart
+            ? RegExp('ч\\.?\\s*$part|часть\\s*$part').hasMatch(pdfNameLower)
+            : item.title.toLowerCase() == pdfNameLower;
+        if (!matchesPart) continue;
+      }
       if (pdfNameLower.contains(item.title.toLowerCase())) return item;
       for (final a in item.aliases) {
         if (pdfNameLower.contains(a)) return item;

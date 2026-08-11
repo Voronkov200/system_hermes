@@ -48,16 +48,19 @@ class ReshebaService {
   static const _base = 'https://resheba.top';
 
   /// JS-файл со структурой решений для предмета (или null).
-  static String? jsPathFor(String subjectTitle) => switch (subjectTitle) {
-        'Алгебра' => 'algebra-11-klass',
-        'Геометрия' => 'geom-11-2021',
-        'Русский язык' => 'russkij-jazyk-11-klass-2021',
-        'Беларуская мова' => 'belorusskij-jazyk-11-klass',
-        'Английский язык' => 'anglijskij-jazyk-11-klass',
-        'Физика' => 'fizika-11-2021',
-        'Химия' => 'himija-11-klass',
-        _ => null,
-      };
+  static String? jsPathFor(String subjectTitle) {
+    final t = subjectTitle.toLowerCase();
+    if (t.contains('английский')) return 'anglijskij-jazyk-11-klass';
+    return switch (subjectTitle) {
+      'Алгебра' => 'algebra-11-klass',
+      'Геометрия' => 'geom-11-2021',
+      'Русский язык' => 'russkij-jazyk-11-klass-2021',
+      'Беларуская мова' => 'belorusskij-jazyk-11-klass',
+      'Физика' => 'fizika-11-2021',
+      'Химия' => 'himija-11-klass',
+      _ => null,
+    };
+  }
 
   /// Загрузка структуры книги ГДЗ.
   Future<ReshebaBook> loadBook(String subjectTitle) async {
