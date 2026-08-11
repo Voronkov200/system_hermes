@@ -145,6 +145,7 @@ class StudyScreen extends ConsumerWidget {
       allowMultiple: true,
     );
     if (result == null || result.files.isEmpty) return;
+    if (!context.mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     var ok = 0;
     var skipped = 0;

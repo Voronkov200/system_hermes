@@ -463,7 +463,6 @@ class StudyController extends Notifier<StudyState> {
 
       final catalogItem = _matchCatalog(pdfLower);
       final subject = await _subjectForPdf(pdfName, pdfLower, catalogItem, method);
-      var added = 0;
       final now = DateTime.now();
       for (final item in paragraphList) {
         final m = item as Map<String, dynamic>;
@@ -485,7 +484,6 @@ class StudyController extends Notifier<StudyState> {
             updatedAt: now,
           ),
         );
-        added++;
       }
       state = state.copyWith(busy: false, clearError: true);
       _emit();
