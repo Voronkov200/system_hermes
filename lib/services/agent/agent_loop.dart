@@ -6,27 +6,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'agent_policy.dart';
-
-class ToolDefinition {
-  final String name;
-  final String description;
-  final Map<String, dynamic> parameters;
-
-  const ToolDefinition({
-    required this.name,
-    required this.description,
-    this.parameters = const {'type': 'object', 'properties': {}},
-  });
-
-  Map<String, dynamic> toJson() => {
-        'type': 'function',
-        'function': {
-          'name': name,
-          'description': description,
-          'parameters': parameters,
-        },
-      };
-}
+import 'hermes_tool_registry.dart';
+import 'tool_definition.dart';
 
 class AgentToolCall extends AgentPolicyCall {
   const AgentToolCall(super.name, super.arguments);
@@ -53,14 +34,20 @@ Future<AgentResult> runAgentLoop({
   required List<ToolDefinition> tools,
   required Future<String> Function(AgentToolCall call) executeTool,
   AgentToolPolicy policy = const AgentToolPolicy(),
+  HermesToolRegistry registry = hermesToolRegistry,
   Future<bool> Function(AgentToolCall call)? confirmTool,
+  String? skillContext,
   int maxRounds = 6,
   int maxTokens = 1200,
   double temperature = 0.7,
   int timeoutSeconds = 90,
 }) async {
+  final registeredTools = registry.sanitize(tools);
+  final effectivePrompt = skillContext == null || skillContext.trim().isEmpty
+      ? systemPrompt
+      : '$systemPrompt\n\n$skillContext';
   final messages = <Map<String, dynamic>>[
-    {'role': 'system', 'content': systemPrompt},
+    {'role': 'system', 'content': effectivePrompt},
     ...history,
   ];
   final steps = <AgentStep>[];
@@ -79,7 +66,7 @@ Future<AgentResult> runAgentLoop({
             body: jsonEncode({
               'model': model,
               'messages': messages,
-              'tools': tools.map((t) => t.toJson()).toList(),
+              'tools': registeredTools.map((t) => t.toJson()).toList(),
               'temperature': temperature,
               'max_tokens': maxTokens,
             }),
@@ -137,7 +124,7 @@ Future<AgentResult> runAgentLoop({
           final decoded = jsonDecode(rawArgs);
           if (decoded is Map) args = decoded.cast<String, dynamic>();
         } catch (_) {
-          // Keep empty arguments. The policy/executor will reject unsafe calls.
+          // Empty args are deliberately left for policy/executor validation.
         }
       }
 
@@ -146,7 +133,7 @@ Future<AgentResult> runAgentLoop({
       final decision = policy.decide(call);
       String result;
 
-      if (decision == ToolDecision.deny) {
+      if (decision == ToolDecision.deny || !registry.contains(name)) {
         result = 'Инструмент заблокирован политикой безопасности: $name';
       } else if (decision == ToolDecision.confirm) {
         final approved = confirmTool == null ? false : await confirmTool(call);
