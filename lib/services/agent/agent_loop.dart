@@ -1,6 +1,4 @@
 // Агентный цикл: LLM + инструменты (function calling).
-//
-// ВАЖНО: LLM выбирает инструмент, но не получает права на его выполнение.
 // Перед каждым вызовом применяется детерминированная AgentToolPolicy.
 
 import 'dart:convert';
@@ -30,32 +28,22 @@ class ToolDefinition {
       };
 }
 
-class AgentToolCall {
-  final String name;
-  final Map<String, dynamic> arguments;
-
-  const AgentToolCall(this.name, this.arguments);
+class AgentToolCall extends AgentPolicyCall {
+  const AgentToolCall(super.name, super.arguments);
 }
 
 class AgentStep {
   final String toolName;
   final String result;
-
   const AgentStep(this.toolName, this.result);
 }
 
 class AgentResult {
   final String content;
   final List<AgentStep> steps;
-
   const AgentResult({required this.content, required this.steps});
 }
 
-/// Запуск агентного цикла.
-///
-/// [confirmTool] вызывается только для WRITE/DESTRUCTIVE/SENSITIVE действий,
-/// которые политика не разрешила автоматически. Если callback отсутствует,
-/// такое действие блокируется. Это fail-closed поведение.
 Future<AgentResult> runAgentLoop({
   required String apiUrl,
   required String apiKey,
@@ -79,7 +67,7 @@ Future<AgentResult> runAgentLoop({
   var lastContent = '';
 
   for (var round = 0; round < maxRounds; round++) {
-    late final http.Response res;
+    final http.Response res;
     try {
       res = await http
           .post(
@@ -118,9 +106,7 @@ Future<AgentResult> runAgentLoop({
       throw Exception('Некорректный ответ сервера ИИ');
     }
     final choices = data['choices'];
-    if (choices is! List || choices.isEmpty) {
-      throw Exception('Пустой ответ API');
-    }
+    if (choices is! List || choices.isEmpty) throw Exception('Пустой ответ API');
     final first = choices.first;
     if (first is! Map || first['message'] is! Map) {
       throw Exception('Некорректный ответ сервера ИИ');
@@ -144,33 +130,29 @@ Future<AgentResult> runAgentLoop({
       final name = fn['name'];
       if (name is! String || name.isEmpty) continue;
 
-      final rawArgs = fn['arguments'];
       Map<String, dynamic> args = {};
+      final rawArgs = fn['arguments'];
       if (rawArgs is String) {
         try {
           final decoded = jsonDecode(rawArgs);
           if (decoded is Map) args = decoded.cast<String, dynamic>();
         } catch (_) {
-          // Invalid arguments are rejected by policy/executor rather than
-          // being silently interpreted as a different action.
+          // Keep empty arguments. The policy/executor will reject unsafe calls.
         }
       }
 
+      final callId = raw['id'] is String ? raw['id'] as String : '';
       final call = AgentToolCall(name, args);
-      final idRaw = raw['id'];
-      final callId = idRaw is String ? idRaw : '';
+      final decision = policy.decide(call);
       String result;
 
-      final decision = policy.decide(call);
       if (decision == ToolDecision.deny) {
         result = 'Инструмент заблокирован политикой безопасности: $name';
       } else if (decision == ToolDecision.confirm) {
         final approved = confirmTool == null ? false : await confirmTool(call);
-        if (!approved) {
-          result = 'Действие требует подтверждения пользователя и не выполнено: $name';
-        } else {
-          result = await _executeSafely(executeTool, call);
-        }
+        result = approved
+            ? await _executeSafely(executeTool, call)
+            : 'Действие требует подтверждения пользователя и не выполнено: $name';
       } else {
         result = await _executeSafely(executeTool, call);
       }
@@ -193,8 +175,6 @@ Future<String> _executeSafely(
 ) async {
   try {
     return await executeTool(call);
-  } on Exception catch (e) {
-    return 'Ошибка инструмента: $e';
   } catch (e) {
     return 'Ошибка инструмента: $e';
   }
