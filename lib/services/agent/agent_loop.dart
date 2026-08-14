@@ -1,15 +1,14 @@
 // Агентный цикл: LLM + инструменты (function calling).
 //
-// Работает с любым OpenAI-совместимым API (Groq, OpenCode Zen, OpenRouter):
-// запрос уходит с описанием инструментов, LLM решает, какие инструменты
-// вызвать, мы их выполняем локально и возвращаем результат — и так по
-// кругу, пока LLM не даст финальный ответ (или не упрёмся в лимит ходов).
+// ВАЖНО: LLM выбирает инструмент, но не получает права на его выполнение.
+// Перед каждым вызовом применяется детерминированная AgentToolPolicy.
 
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Описание инструмента для LLM (OpenAI function calling).
+import 'agent_policy.dart';
+
 class ToolDefinition {
   final String name;
   final String description;
@@ -31,7 +30,6 @@ class ToolDefinition {
       };
 }
 
-/// Вызов инструмента, который попросила LLM.
 class AgentToolCall {
   final String name;
   final Map<String, dynamic> arguments;
@@ -39,7 +37,6 @@ class AgentToolCall {
   const AgentToolCall(this.name, this.arguments);
 }
 
-/// Один выполненный инструмент.
 class AgentStep {
   final String toolName;
   final String result;
@@ -47,7 +44,6 @@ class AgentStep {
   const AgentStep(this.toolName, this.result);
 }
 
-/// Итог работы агента: финальный ответ + журнал инструментов.
 class AgentResult {
   final String content;
   final List<AgentStep> steps;
@@ -56,6 +52,10 @@ class AgentResult {
 }
 
 /// Запуск агентного цикла.
+///
+/// [confirmTool] вызывается только для WRITE/DESTRUCTIVE/SENSITIVE действий,
+/// которые политика не разрешила автоматически. Если callback отсутствует,
+/// такое действие блокируется. Это fail-closed поведение.
 Future<AgentResult> runAgentLoop({
   required String apiUrl,
   required String apiKey,
@@ -64,6 +64,8 @@ Future<AgentResult> runAgentLoop({
   required List<Map<String, dynamic>> history,
   required List<ToolDefinition> tools,
   required Future<String> Function(AgentToolCall call) executeTool,
+  AgentToolPolicy policy = const AgentToolPolicy(),
+  Future<bool> Function(AgentToolCall call)? confirmTool,
   int maxRounds = 6,
   int maxTokens = 1200,
   double temperature = 0.7,
@@ -116,7 +118,9 @@ Future<AgentResult> runAgentLoop({
       throw Exception('Некорректный ответ сервера ИИ');
     }
     final choices = data['choices'];
-    if (choices is! List || choices.isEmpty) throw Exception('Пустой ответ API');
+    if (choices is! List || choices.isEmpty) {
+      throw Exception('Пустой ответ API');
+    }
     final first = choices.first;
     if (first is! Map || first['message'] is! Map) {
       throw Exception('Некорректный ответ сервера ИИ');
@@ -139,22 +143,38 @@ Future<AgentResult> runAgentLoop({
           : const <String, dynamic>{};
       final name = fn['name'];
       if (name is! String || name.isEmpty) continue;
+
       final rawArgs = fn['arguments'];
       Map<String, dynamic> args = {};
       if (rawArgs is String) {
         try {
           final decoded = jsonDecode(rawArgs);
           if (decoded is Map) args = decoded.cast<String, dynamic>();
-        } catch (_) {}
+        } catch (_) {
+          // Invalid arguments are rejected by policy/executor rather than
+          // being silently interpreted as a different action.
+        }
       }
+
+      final call = AgentToolCall(name, args);
       final idRaw = raw['id'];
       final callId = idRaw is String ? idRaw : '';
       String result;
-      try {
-        result = await executeTool(AgentToolCall(name, args));
-      } on Exception catch (e) {
-        result = 'Ошибка инструмента: $e';
+
+      final decision = policy.decide(call);
+      if (decision == ToolDecision.deny) {
+        result = 'Инструмент заблокирован политикой безопасности: $name';
+      } else if (decision == ToolDecision.confirm) {
+        final approved = confirmTool == null ? false : await confirmTool(call);
+        if (!approved) {
+          result = 'Действие требует подтверждения пользователя и не выполнено: $name';
+        } else {
+          result = await _executeSafely(executeTool, call);
+        }
+      } else {
+        result = await _executeSafely(executeTool, call);
       }
+
       steps.add(AgentStep(name, result));
       messages.add({
         'role': 'tool',
@@ -165,4 +185,17 @@ Future<AgentResult> runAgentLoop({
   }
 
   return AgentResult(content: lastContent, steps: steps);
+}
+
+Future<String> _executeSafely(
+  Future<String> Function(AgentToolCall call) executeTool,
+  AgentToolCall call,
+) async {
+  try {
+    return await executeTool(call);
+  } on Exception catch (e) {
+    return 'Ошибка инструмента: $e';
+  } catch (e) {
+    return 'Ошибка инструмента: $e';
+  }
 }
