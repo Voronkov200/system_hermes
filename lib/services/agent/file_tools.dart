@@ -1,10 +1,4 @@
 // Файловые инструменты агента: создание/чтение файлов и PDF-документация.
-//
-// Файлы пишутся в /storage/emulated/0/SystemHermes (если у приложения есть
-// доступ ко всем файлам), иначе — в каталог приложения HermesFiles.
-// PDF собирается на телефоне (пакет pdf), шрифт с кириллицей берётся
-// из системных шрифтов Android.
-
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -14,7 +8,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 class FileTools {
-  /// Корень файлов Hermes: внешнее хранилище, если доступно.
   static Future<Directory> root() async {
     const external = '/storage/emulated/0/SystemHermes';
     try {
@@ -32,13 +25,18 @@ class FileTools {
     }
   }
 
+  /// Resolve a relative path inside Hermes root. Reject traversal instead of
+  /// silently rewriting it; security decisions must fail closed.
   static String _join(String root, String path) {
-    final clean = path.replaceAll('\\', '/').replaceFirst(RegExp(r'^/+'), '');
-    final parts = clean.split('/').where((p) => p.isNotEmpty && p != '..');
+    final clean = path.replaceAll('\\', '/').trim();
+    if (clean.isEmpty) return root;
+    if (clean.startsWith('/') || clean.contains('..')) {
+      throw ArgumentError('Недопустимый путь: $path');
+    }
+    final parts = clean.split('/').where((p) => p.isNotEmpty && p != '.');
     return '$root/${parts.join('/')}';
   }
 
-  /// Создание файла (папки создаются автоматически).
   static Future<String> writeFile(String path, String content) async {
     final rootDir = await root();
     final full = File(_join(rootDir.path, path));
@@ -47,7 +45,6 @@ class FileTools {
     return 'Создан файл: ${full.path}\nРазмер: ${content.length} символов.';
   }
 
-  /// Чтение файла (первые 8000 символов).
   static Future<String> readFile(String path) async {
     final rootDir = await root();
     final full = File(_join(rootDir.path, path));
@@ -57,7 +54,6 @@ class FileTools {
     return 'Содержимое $path:\n$text';
   }
 
-  /// Список файлов и папок.
   static Future<String> listDir(String path) async {
     final rootDir = await root();
     final dir = Directory(_join(rootDir.path, path));
@@ -73,8 +69,6 @@ class FileTools {
     return 'Содержимое $path:\n${parts.take(100).join('\n')}';
   }
 
-  /// Извлечение текста из PDF (учебники). pages: "12", "12-15" или пусто
-  /// (первые страницы до лимита символов).
   static Future<String> readPdf(String path, {String pages = ''}) async {
     final rootDir = await root();
     final full = File(_join(rootDir.path, path));
@@ -82,7 +76,6 @@ class FileTools {
 
     final doc = await pdfrx.PdfDocument.openFile(full.path);
     final total = doc.pages.length;
-
     var start = 1;
     var end = total;
     if (pages.trim().isNotEmpty) {
@@ -102,44 +95,41 @@ class FileTools {
     final buffer = StringBuffer();
     var chars = 0;
     const maxChars = 20000;
-    for (var i = start; i <= end && chars < maxChars; i++) {
-      try {
-        final page = doc.pages[i - 1];
-        final text = await page.loadStructuredText();
-        final content = text.fullText.trim();
-        if (content.isEmpty) continue;
-        buffer.writeln('--- стр. $i ---');
-        buffer.writeln(content);
-        chars += content.length;
-      } catch (_) {}
+    try {
+      for (var i = start; i <= end && chars < maxChars; i++) {
+        try {
+          final text = await doc.pages[i - 1].loadStructuredText();
+          final content = text.fullText.trim();
+          if (content.isEmpty) continue;
+          buffer.writeln('--- стр. $i ---');
+          buffer.writeln(content);
+          chars += content.length;
+        } catch (_) {}
+      }
+    } finally {
+      await doc.dispose();
     }
-    await doc.dispose();
 
     var out = buffer.toString().trim();
     if (out.isEmpty) {
-      return 'Текст из PDF не извлекается (возможно, это скан без OCR). '
-          'В PDF $total страниц.';
+      return 'Текст из PDF не извлекается (возможно, это скан без OCR). В PDF $total страниц.';
     }
-    final pagesDone = (chars >= maxChars)
+    final pagesDone = chars >= maxChars
         ? 'первые страницы (лимит $maxChars символов)'
         : 'страницы $start-$end';
     if (chars >= maxChars) out = '${out.substring(0, maxChars)}…';
     return 'PDF: $path ($total стр.), извлечено: $pagesDone.\n$out';
   }
 
-  /// Генерация PDF-документации на телефоне.
   static Future<String> makePdf({
     required String title,
     required String text,
     String outPath = '',
   }) async {
     final rootDir = await root();
-    final fileName = outPath.isNotEmpty
-        ? outPath
-        : 'docs/${_safeName(title)}.pdf';
+    final fileName = outPath.isNotEmpty ? outPath : 'docs/${_safeName(title)}.pdf';
     final full = File(_join(rootDir.path, fileName));
     await full.parent.create(recursive: true);
-
     final fontData = await _systemCyrillicFont();
     final doc = pw.Document();
     doc.addPage(
@@ -151,18 +141,12 @@ class FileTools {
               : pw.Font.helvetica(),
         ),
         build: (ctx) => [
-          pw.Header(
-            level: 0,
-            child: pw.Text(title, style: const pw.TextStyle(fontSize: 20)),
-          ),
+          pw.Header(level: 0, child: pw.Text(title, style: const pw.TextStyle(fontSize: 20))),
           pw.SizedBox(height: 12),
           for (final line in text.split('\n'))
             pw.Padding(
               padding: const pw.EdgeInsets.only(bottom: 6),
-              child: pw.Text(
-                line,
-                textAlign: pw.TextAlign.left,
-              ),
+              child: pw.Text(line, textAlign: pw.TextAlign.left),
             ),
         ],
       ),
@@ -171,7 +155,6 @@ class FileTools {
     return 'PDF создан: ${full.path}';
   }
 
-  /// Шрифт с кириллицей из системных шрифтов Android.
   static Future<Uint8List?> _systemCyrillicFont() async {
     const candidates = [
       '/system/fonts/Roboto-Regular.ttf',
@@ -182,7 +165,7 @@ class FileTools {
     for (final path in candidates) {
       try {
         final f = File(path);
-        if (await f.exists()) return f.readAsBytesSync();
+        if (await f.exists()) return f.readAsBytes();
       } catch (_) {}
     }
     return null;
