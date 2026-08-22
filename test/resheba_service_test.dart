@@ -12,6 +12,18 @@ void main() {
         ReshebaService.jsPathFor('Биология'),
         'biologija-11',
       );
+      expect(
+        ReshebaService.jsPathFor('Русский язык'),
+        'russkij-jazyk-11-klass-2021',
+      );
+      expect(
+        ReshebaService.jsPathFor('Беларуская мова'),
+        'belorusskij-jazyk-11-klass',
+      );
+      expect(
+        ReshebaService.jsPathFor('Английский язык (часть 1)'),
+        'anglijskij-jazyk-11-klass',
+      );
       expect(ReshebaService.jsPathFor('Астрономия'), isNull);
     });
 

@@ -104,7 +104,8 @@ class _ReshebaScreenState extends State<ReshebaScreen> {
                           'Источник: resheba.top. Найдено заданий: '
                           '${book.totalNumbers}. Выбери сначала точный раздел, '
                           'затем номер из этой редакции учебника. Фото '
-                          'проверяется перед сохранением в кэш.',
+                          'проверяется перед сохранением на телефон. Каталог '
+                          'и уже открытые фото доступны повторно без сети.',
                           style: const TextStyle(
                             color: AppColors.textDim,
                             fontSize: 12,

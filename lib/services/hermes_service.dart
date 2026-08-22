@@ -244,7 +244,7 @@ class ChatController extends Notifier<ChatState> {
     final system = buildHermesSystemPrompt(
       generalBalance: general,
       cardsBynEquivalent: cardsByn < 0 ? 0 : cardsByn,
-      cleanStreak: habits.cleanStreak(),
+      trainingStreak: habits.trainingStreak(),
       lifeLevel: LifeCatalog.levelForXp(life.xp),
       xp: life.xp,
     );
@@ -260,9 +260,9 @@ class ChatController extends Notifier<ChatState> {
         .toList();
 
     final result = await runAgentLoop(
-      apiUrl: s.companionApiUrl,
+      apiUrl: s.hermesLlmUrl,
       apiKey: s.llmKey,
-      model: s.companionModel,
+      model: s.hermesLlmModel,
       systemPrompt: system,
       history: history,
       tools: hermesAgentTools,
@@ -331,11 +331,6 @@ class ChatController extends Notifier<ChatState> {
       return 'Сегодня: приседания ${squat?.doneToday() ?? false ? 'выполнены' : 'НЕ выполнены'}, '
           'отжимания ${pushups?.doneToday() ?? false ? 'выполнены' : 'НЕ выполнены'}.\n'
           'Отметь их в разделе «Протокол» — видимый прогресс важнее идеальности.';
-    }
-    if (lower.contains('сорва') || lower.contains('срыв')) {
-      return 'Срыв протокола = штраф ${AppConstants.habitFine} BYN в локальном '
-          'финансовом планировщике. Отметь срыв честно в разделе «Протокол». '
-          'Держись. Возвращайся в строй.';
     }
     if (lower.contains('привет') || lower.contains('здравств')) {
       return 'Привет. Я на связи. Система следит за твоим прогрессом. '
@@ -440,13 +435,13 @@ class ChatController extends Notifier<ChatState> {
         case 'update_dopamine_protocol_status':
           final habitId = call.arguments['habit_id'] as String? ?? '';
           final status = call.arguments['status'] as String? ?? '';
+          if (!const ['workout_squat', 'workout_pushups'].contains(habitId) ||
+              status != 'done') {
+            return 'Ошибка: протокол принимает только выполненную тренировку.';
+          }
           final habitsN = ref.read(habitsProvider.notifier);
           final targetReps =
               ref.read(habitsProvider).byId(habitId)?.targetReps ?? 20;
-          if (status == 'broken') {
-            await habitsN.markBreak(habitId);
-            return 'Срыв отмечен. Локальный финансовый штраф применён.';
-          }
           await habitsN.markWorkout(habitId, targetReps);
           return 'Тренировка отмечена.';
 
@@ -631,13 +626,13 @@ class ChatController extends Notifier<ChatState> {
     final habits = ref.read(habitsProvider);
     final general = bank.generalAccount;
     final total = bank.totalByn(rates: NbrbApi.bundledRates);
-    final clean = habits.cleanStreak();
+    final trainingStreak = habits.trainingStreak();
 
     return 'СВОДКА СИСТЕМЫ\n'
         '• Деньги: общий счёт ${general?.balance.toStringAsFixed(2) ?? '0'} BYN, '
         'весь плановый капитал ≈ ${total.toStringAsFixed(2)} BYN\n'
         '• Виртуальные карты: ${bank.cards.length}\n'
-        '• Протокол: $clean дней без срывов (макс ${habits.byId('abstinence')?.maxStreak ?? 0})\n'
+        '• Протокол тренировок: общий стрик $trainingStreak дн\n'
         '• Тренировки: приседания ${habits.byId('workout_squat')?.doneToday() ?? false ? '✓' : '✗'}, '
         'отжимания ${habits.byId('workout_pushups')?.doneToday() ?? false ? '✓' : '✗'}\n'
         'Продолжай в том же духе.';

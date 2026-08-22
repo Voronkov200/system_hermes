@@ -75,30 +75,63 @@ void main() {
 
   test('старые балансы переносятся в общий счёт и валютную карту', () async {
     await accounts.put(
-      Account.fuelId,
+      Account.generalId,
       Account(
-        id: Account.fuelId,
-        name: 'Топливо разработки',
+        id: Account.generalId,
+        name: 'Общий счёт',
+        currency: 'BYN',
+        balance: 100,
+      ),
+    );
+    await accounts.put(
+      'fuel',
+      Account(
+        id: 'fuel',
+        name: 'Старый рублёвый счёт',
         currency: 'BYN',
         balance: 450,
       ),
     );
     await accounts.put(
-      Account.assetsId,
+      Account.cardId('USD'),
       Account(
-        id: Account.assetsId,
-        name: 'Твердые активы',
+        id: Account.cardId('USD'),
+        name: 'Виртуальная карта USD',
+        currency: 'USD',
+        type: 'card',
+        balance: 5,
+      ),
+    );
+    await accounts.put(
+      'assets',
+      Account(
+        id: 'assets',
+        name: 'Старая валютная карта',
         currency: 'USD',
         balance: 21,
+      ),
+    );
+    await transactions.add(
+      Transaction(
+        id: 'legacy-operation',
+        type: 'deposit',
+        amount: 450,
+        currency: 'BYN',
+        date: DateTime(2026, 8, 1),
+        description: 'Пенсия → Топливо для разработки',
       ),
     );
 
     final scope = await makeContainer();
     final state = scope.read(bankProvider);
 
-    expect(state.generalAccount?.balance, 450);
-    expect(state.cardFor('USD')?.balance, 21);
-    expect(state.byId(Account.fuelId), isNull);
-    expect(state.byId(Account.assetsId), isNull);
+    expect(state.generalAccount?.balance, 550);
+    expect(state.cardFor('USD')?.balance, 26);
+    expect(state.byId('fuel'), isNull);
+    expect(state.byId('assets'), isNull);
+    expect(
+      state.transactions.single.description,
+      'Пенсия → Общий счёт',
+    );
   });
 }

@@ -1,9 +1,8 @@
-// Экран "Протокол Дофаминовой Стабильности": привычки, тренировки, стрики.
+// Протокол тренировок: отжимания и приседания без штрафных привычек.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../data/models.dart';
@@ -14,55 +13,52 @@ class HabitsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final habits = ref.watch(habitsProvider);
-    final lastPenalty = habits.lastPenaltyAt;
-
+    final state = ref.watch(habitsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Протокол Стабильности')),
+      appBar: AppBar(title: const Text('Протокол тренировок')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (lastPenalty != null) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.danger.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.danger),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.warning_amber, color: AppColors.danger, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      habits.lastPenaltyText ?? 'Срыв зафиксирован',
-                      style: const TextStyle(color: AppColors.danger, fontSize: 13),
-                    ),
-                  ),
-                ],
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withValues(alpha: .09),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.accent.withValues(alpha: .35),
               ),
             ),
+            child: Row(
+              children: [
+                const Icon(Icons.fitness_center, color: AppColors.accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Общий стрик тренировок: ${state.trainingStreak()} дн',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final habit in state.habits) ...[
+            _WorkoutCard(habit: habit),
             const SizedBox(height: 12),
           ],
-
-          for (final h in habits.habits) _HabitCard(habit: h),
         ],
       ),
     );
   }
 }
 
-class _HabitCard extends ConsumerWidget {
+class _WorkoutCard extends ConsumerWidget {
   final HabitTracker habit;
 
-  const _HabitCard({required this.habit});
+  const _WorkoutCard({required this.habit});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isBad = habit.type == 'bad';
-    final accent = isBad ? AppColors.danger : AppColors.accent;
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -71,106 +67,66 @@ class _HabitCard extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(isBad ? Icons.shield_outlined : Icons.fitness_center,
-                    color: accent),
+                const Icon(Icons.fitness_center, color: AppColors.accent),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(habit.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 15)),
+                  child: Text(
+                    habit.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
                 ),
-                Text('${habit.currentStreak} дн',
-                    style: TextStyle(
-                        color: accent, fontWeight: FontWeight.w800, fontSize: 16)),
+                Text(
+                  '${habit.currentStreak} дн',
+                  style: const TextStyle(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              isBad
-                  ? 'Максимум: ${habit.maxStreak} дн • последний срыв: '
-                      '${habit.lastBreakKey ?? '—'}'
-                  : 'Стрик: ${habit.currentStreak} дн • рекорд: ${habit.maxStreak} дн',
+              'Стрик: ${habit.currentStreak} дн · рекорд: ${habit.maxStreak} дн',
               style: const TextStyle(color: AppColors.textDim, fontSize: 12),
             ),
             const SizedBox(height: 12),
             _StreakDots(habit: habit),
             const SizedBox(height: 12),
-            if (isBad)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.danger,
-                    side: const BorderSide(color: AppColors.danger),
-                  ),
-                  onPressed: () => _confirmBreak(context, ref),
-                  icon: const Icon(Icons.warning, size: 18),
-                  label: const Text('Отметить срыв'),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: habit.doneToday()
+                    ? null
+                    : () async {
+                        await ref
+                            .read(habitsProvider.notifier)
+                            .markWorkout(habit.id, habit.targetReps);
+                        if (context.mounted) {
+                          toast(context, '${habit.name}: выполнено');
+                        }
+                      },
+                icon: Icon(
+                  habit.doneToday() ? Icons.check_circle : Icons.done,
+                  size: 18,
                 ),
-              )
-            else
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: accent),
-                  onPressed: habit.doneToday()
-                      ? null
-                      : () async {
-                          await ref
-                              .read(habitsProvider.notifier)
-                              .markWorkout(habit.id, habit.targetReps);
-                          if (context.mounted) {
-                            toast(context,
-                                '${habit.name}: выполнено! +10% хешрейта');
-                          }
-                        },
-                  icon: Icon(
-                      habit.doneToday() ? Icons.check_circle : Icons.done,
-                      size: 18),
-                  label: Text(habit.doneToday()
+                label: Text(
+                  habit.doneToday()
                       ? 'Выполнено сегодня ✓'
-                      : 'Выполнить (${habit.targetReps})'),
+                      : 'Выполнить (${habit.targetReps})',
                 ),
               ),
+            ),
           ],
         ),
       ),
     );
   }
-
-  Future<void> _confirmBreak(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Срыв протокола?'),
-        content: const Text(
-          'Будет применён штраф ${AppConstants.habitFine} BYN в локальном '
-          'разделе «Деньги». Честность — ключевая '
-          'метрика системы. Подтверди:',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Не срывался'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Да, срыв был'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await ref.read(habitsProvider.notifier).markBreak(habit.id);
-    if (context.mounted) {
-      toast(context, 'Срыв зафиксирован. Штраф и блокировка применены.');
-    }
-  }
 }
 
-/// Сетка последних 14 дней: зелёный = выполнение, красный = срыв.
 class _StreakDots extends StatelessWidget {
   final HabitTracker habit;
 
@@ -183,37 +139,30 @@ class _StreakDots extends StatelessWidget {
     return Wrap(
       spacing: 6,
       runSpacing: 6,
-      children: List.generate(14, (i) {
-        final day = now.subtract(Duration(days: 13 - i));
+      children: List.generate(14, (index) {
+        final day = now.subtract(Duration(days: 13 - index));
         final key = dateKey(day);
         final isToday = key == today;
-        final Color color;
-        if (habit.type == 'bad') {
-          final lastBreak = habit.lastBreakKey;
-          color = lastBreak == key
-              ? AppColors.danger
-              : isToday
-                  ? AppColors.accent
-                  : AppColors.textDim.withValues(alpha: 0.4);
-        } else {
-          color = habit.isDoneOn(key)
-              ? AppColors.accent
-              : (isToday
-                  ? AppColors.warning
-                  : AppColors.textDim.withValues(alpha: 0.4));
-        }
+        final done = habit.isDoneOn(key);
+        final color = done
+            ? AppColors.accent
+            : isToday
+                ? AppColors.warning
+                : AppColors.textDim.withValues(alpha: .4);
         return Container(
           width: 22,
           height: 22,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.25),
+            color: color.withValues(alpha: .25),
             borderRadius: BorderRadius.circular(6),
             border: Border.all(color: color),
           ),
-          alignment: Alignment.center,
-          child: isToday
-              ? const Icon(Icons.circle, size: 6)
-              : null,
+          child: done
+              ? const Icon(Icons.check, size: 13)
+              : isToday
+                  ? const Icon(Icons.circle, size: 6)
+                  : null,
         );
       }),
     );

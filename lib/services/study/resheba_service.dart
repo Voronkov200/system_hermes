@@ -84,8 +84,20 @@ class ReshebaService {
       );
     }
 
-    final body = await _getText('$_base/answers/$js.js');
-    return parseBook(body);
+    final appDir = await FileTools.root();
+    final catalogDir = Directory('${appDir.path}/resheba/catalogs');
+    final cachedCatalog = File('${catalogDir.path}/$js.js');
+    try {
+      final body = await _getText('$_base/answers/$js.js');
+      final book = parseBook(body);
+      await catalogDir.create(recursive: true);
+      await cachedCatalog.writeAsString(body, flush: true);
+      return book;
+    } catch (_) {
+      if (!await cachedCatalog.exists()) rethrow;
+      final cached = await cachedCatalog.readAsString();
+      return parseBook(cached);
+    }
   }
 
   Future<String> _getText(String url) async {

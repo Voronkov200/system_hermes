@@ -12,9 +12,6 @@ class AppConstants {
   /// День месяца получения пенсии (по умолчанию 5-е число).
   static const int defaultPensionDay = 5;
 
-  /// Штраф за срыв протокола (BYN).
-  static const double habitFine = 25;
-
   /// URL API курсов Нацбанка РБ.
   static const String nbrbRatesUrl =
       'https://www.nbrb.by/api/exrates/rates?periodicity=0';
@@ -25,17 +22,13 @@ class AppConstants {
   /// Максимум секунд начисляемых за один "тик" (защита от читов по времени).
   static const Duration maxTickGap = Duration(hours: 12);
 
-  /// URL по умолчанию для LLM Анастасии и Hermes (Groq, OpenAI-совместимый).
+  /// URL по умолчанию для LLM Hermes (Groq, OpenAI-совместимый).
   /// Бесплатный ключ: https://console.groq.com/keys
-  static const String companionDefaultUrl =
+  static const String hermesLlmDefaultUrl =
       'https://api.groq.com/openai/v1/chat/completions';
 
   /// Модель по умолчанию (бесплатная на Groq, хорошо знает русский).
-  static const String companionDefaultModel = 'llama-3.3-70b-versatile';
-
-  /// Фото Анастасии по умолчанию.
-  /// Используется как аватар и фон чата, пока не выбрано своё фото.
-  static const String nastyaDefaultPhoto = 'assets/nastya/avatar.webp';
+  static const String hermesLlmDefaultModel = 'llama-3.3-70b-versatile';
 
   // ===================================================================
   // Поиск и исследования (спецификация, разделы 3.3, 6)
@@ -77,8 +70,6 @@ class BoxNames {
   static const String habits = 'habits';
   static const String chat = 'chat';
   static const String life = 'life';
-  static const String companion = 'companion';
-  static const String companionChat = 'companion_chat';
   static const String tasks = 'tasks';
   static const String journal = 'journal';
   static const String docs = 'docs';
@@ -99,11 +90,10 @@ class PrefKeys {
   static const String githubOwner = 'github_owner';
   static const String githubRepo = 'github_repo';
   static const String lastPensionMonth = 'last_pension_month';
-  static const String protocolStart = 'protocol_start';
   static const String workoutBonusDay = 'workout_bonus_day';
-  static const String companionApiUrl = 'companion_api_url';
-  static const String companionApiKey = 'companion_api_key';
-  static const String companionModel = 'companion_model';
+  static const String hermesLlmUrl = 'hermes_llm_url';
+  static const String hermesLlmApiKey = 'hermes_llm_api_key';
+  static const String hermesLlmModel = 'hermes_llm_model';
   static const String searchSearxngUrl = 'search_searxng_url';
   static const String searchOffline = 'search_offline';
 }

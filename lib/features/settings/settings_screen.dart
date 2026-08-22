@@ -1,7 +1,6 @@
 // Экран настроек: тема, пенсия, Vault, Hermes Agent, GitHub, сброс.
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +10,6 @@ import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../services/bank_service.dart';
-import '../../services/companion_service.dart';
 import '../../services/habits_service.dart';
 import '../../services/hermes_service.dart';
 import '../../services/journal_service.dart';
@@ -49,7 +47,6 @@ class SettingsScreen extends ConsumerWidget {
     await ref.read(bankProvider.notifier).reset();
     await ref.read(habitsProvider.notifier).reset();
     await ref.read(chatProvider.notifier).reset();
-    await ref.read(companionProvider.notifier).reset();
     await ref.read(tasksProvider.notifier).reset();
     await ref.read(journalProvider.notifier).clear();
     if (context.mounted) {
@@ -144,7 +141,8 @@ class SettingsScreen extends ConsumerWidget {
           const Padding(
             padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
             child: Text(
-              'Ключ Hermes используется и Анастасией, если её собственный ключ не задан.',
+              'Можно подключить собственный сервер Hermes или использовать '
+              'OpenAI-совместимую модель напрямую.',
               style: TextStyle(color: AppColors.textDim, fontSize: 11),
             ),
           ),
@@ -156,20 +154,18 @@ class SettingsScreen extends ConsumerWidget {
                 ref.read(settingsProvider.notifier).setHermesUrl(v),
           ),
           _TextFieldSetting(
-            label: 'API ключ Hermes',
+            label: 'Ключ сервера Hermes',
             initial: s.hermesApiKey,
-            hint: 'опционально',
+            hint: 'не нужен, если сервер не используется',
             obscure: true,
             onSave: (v) =>
                 ref.read(settingsProvider.notifier).setHermesApiKey(v),
           ),
-          const Divider(),
-
-          const _SectionTitle('Анастасия (ИИ-компаньон)'),
           const Padding(
-            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+            padding: EdgeInsets.fromLTRB(4, 12, 4, 8),
             child: Text(
-              'Без ключа чат работает в офлайн-режиме (скрипты). '
+              'Модель Hermes. Без ключа агент работает в локальном '
+              'офлайн-режиме. '
               'Бесплатный ключ Groq: console.groq.com → API Keys.',
               style: TextStyle(color: AppColors.textDim, fontSize: 11),
             ),
@@ -197,45 +193,27 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          ListTile(
-            leading: _AvatarPreview(path: ref.watch(companionProvider).avatarPath),
-            title: const Text('Фото Анастасии'),
-            subtitle: const Text('Аватар и фон в чате. '
-                'По умолчанию — фото с её TikTok'),
-            trailing: FilledButton.tonal(
-              onPressed: () async {
-                final path = await ref
-                    .read(companionProvider.notifier)
-                    .pickAvatar();
-                if (context.mounted) {
-                  toast(context,
-                      path == null ? 'Фото не выбрано' : 'Фото Анастасии обновлено');
-                }
-              },
-              child: const Text('Выбрать'),
-            ),
-          ),
           _TextFieldSetting(
-            label: 'API URL',
-            initial: s.companionApiUrl,
-            hint: AppConstants.companionDefaultUrl,
+            label: 'URL модели Hermes',
+            initial: s.hermesLlmUrl,
+            hint: AppConstants.hermesLlmDefaultUrl,
             onSave: (v) =>
-                ref.read(settingsProvider.notifier).setCompanionApiUrl(v),
+                ref.read(settingsProvider.notifier).setHermesLlmUrl(v),
           ),
           _TextFieldSetting(
-            label: 'API ключ',
-            initial: s.companionApiKey,
+            label: 'API-ключ модели Hermes',
+            initial: s.hermesLlmApiKey,
             hint: 'gsk_… из console.groq.com (без ключа — офлайн-режим)',
             obscure: true,
             onSave: (v) =>
-                ref.read(settingsProvider.notifier).setCompanionApiKey(v),
+                ref.read(settingsProvider.notifier).setHermesLlmApiKey(v),
           ),
           _TextFieldSetting(
-            label: 'Модель',
-            initial: s.companionModel,
-            hint: AppConstants.companionDefaultModel,
+            label: 'Модель Hermes',
+            initial: s.hermesLlmModel,
+            hint: AppConstants.hermesLlmDefaultModel,
             onSave: (v) =>
-                ref.read(settingsProvider.notifier).setCompanionModel(v),
+                ref.read(settingsProvider.notifier).setHermesLlmModel(v),
           ),
           const Divider(),
 
@@ -321,35 +299,6 @@ class _SectionTitle extends StatelessWidget {
           fontWeight: FontWeight.w700,
         ),
       ),
-    );
-  }
-}
-
-/// Кружок-превью фото Анастасии (выбранное или по умолчанию).
-class _AvatarPreview extends StatelessWidget {
-  final String path;
-
-  const _AvatarPreview({required this.path});
-
-  @override
-  Widget build(BuildContext context) {
-    const size = 44.0;
-    Widget image;
-    if (path.isNotEmpty && File(path).existsSync()) {
-      image = Image.file(File(path), fit: BoxFit.cover);
-    } else {
-      image = Image.asset(
-        AppConstants.nastyaDefaultPhoto,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(
-          Icons.favorite,
-          color: AppColors.violet,
-          size: 20,
-        ),
-      );
-    }
-    return ClipOval(
-      child: SizedBox(width: size, height: size, child: image),
     );
   }
 }
@@ -458,7 +407,7 @@ class _ProviderPreset extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(settingsProvider);
-    final active = s.companionApiUrl == url && s.companionModel == model;
+    final active = s.hermesLlmUrl == url && s.hermesLlmModel == model;
     return ActionChip(
       label: Text(label),
       backgroundColor:
@@ -468,8 +417,8 @@ class _ProviderPreset extends ConsumerWidget {
         fontWeight: active ? FontWeight.w700 : null,
       ),
       onPressed: () {
-        ref.read(settingsProvider.notifier).setCompanionApiUrl(url);
-        ref.read(settingsProvider.notifier).setCompanionModel(model);
+        ref.read(settingsProvider.notifier).setHermesLlmUrl(url);
+        ref.read(settingsProvider.notifier).setHermesLlmModel(model);
         if (context.mounted) toast(context, '$label: URL и модель подставлены');
       },
     );

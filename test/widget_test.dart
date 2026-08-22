@@ -23,11 +23,17 @@ void main() {
     registerHiveAdapters();
     await Hive.openBox<Account>(BoxNames.accounts);
     await Hive.openBox<Transaction>(BoxNames.transactions);
-    await Hive.openBox<HabitTracker>(BoxNames.habits);
+    final habits = await Hive.openBox<HabitTracker>(BoxNames.habits);
+    await habits.put(
+      'abstinence',
+      HabitTracker(
+        id: 'abstinence',
+        name: 'Устаревшая привычка',
+        type: 'bad',
+      ),
+    );
     await Hive.openBox<ChatMessage>(BoxNames.chat);
     await Hive.openBox<LifeState>(BoxNames.life);
-    await Hive.openBox<CompanionData>(BoxNames.companion);
-    await Hive.openBox<ChatMessage>(BoxNames.companionChat);
     await Hive.openBox<HermesTask>(BoxNames.tasks);
     await Hive.openBox<JournalEntry>(BoxNames.journal);
     await Hive.openBox<SourceDoc>(BoxNames.docs);
@@ -45,5 +51,10 @@ void main() {
     );
     await tester.pump(const Duration(seconds: 1));
     expect(find.textContaining('SYSTEM'), findsWidgets);
+    expect(Hive.box<HabitTracker>(BoxNames.habits).get('abstinence'), isNull);
+    expect(Hive.box<HabitTracker>(BoxNames.habits).get('workout_pushups'),
+        isNotNull);
+    expect(Hive.box<HabitTracker>(BoxNames.habits).get('workout_squat'),
+        isNotNull);
   });
 }

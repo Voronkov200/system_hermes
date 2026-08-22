@@ -1,4 +1,6 @@
-// Модуль "Протокол Дофаминовой Стабильности": привычки и тренировки.
+// Протокол тренировок: два ежедневных действия и общий стрик.
+
+import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
@@ -6,144 +8,118 @@ import 'package:hive_ce/hive.dart';
 import '../core/constants.dart';
 import '../data/models.dart';
 import 'bank_service.dart';
-import 'settings_service.dart';
 
-/// Состояние протокола.
+const _workoutIds = ['workout_pushups', 'workout_squat'];
+
 class HabitsState {
   final List<HabitTracker> habits;
 
-  /// Момент последнего штрафа (для UI-уведомления).
-  final DateTime? lastPenaltyAt;
-  final String? lastPenaltyText;
-
-  const HabitsState({
-    required this.habits,
-    this.lastPenaltyAt,
-    this.lastPenaltyText,
-  });
+  const HabitsState({required this.habits});
 
   HabitTracker? byId(String id) {
-    for (final h in habits) {
-      if (h.id == id) return h;
+    for (final habit in habits) {
+      if (habit.id == id) return habit;
     }
     return null;
   }
 
-  /// Стрик без срывов (дней).
-  int cleanStreak() {
-    final h = byId('abstinence');
-    if (h == null) return 0;
-    return h.currentStreak;
+  /// Число дней подряд, когда выполнены обе тренировки.
+  int trainingStreak() {
+    final pushups = byId('workout_pushups');
+    final squats = byId('workout_squat');
+    if (pushups == null || squats == null) return 0;
+    return pushups.currentStreak < squats.currentStreak
+        ? pushups.currentStreak
+        : squats.currentStreak;
   }
 }
 
-/// Контроллер протокола: стрики, штрафы, тренировки.
 class HabitsController extends Notifier<HabitsState> {
   late final Box<HabitTracker> _box;
 
   @override
   HabitsState build() {
     _box = Hive.box<HabitTracker>(BoxNames.habits);
-    _ensureDefaults();
+    _ensureDefaultsAndMigrate();
     _recomputeStreaks();
     return _readState();
   }
 
   HabitTracker _byId(String id) {
-    final h = _box.get(id);
-    if (h == null) {
-      throw StateError('Привычка не найдена: $id');
+    final habit = _box.get(id);
+    if (habit == null || !_workoutIds.contains(id)) {
+      throw StateError('Тренировка не найдена: $id');
     }
-    return h;
+    return habit;
   }
 
-  void _ensureDefaults() {
-    if (_box.isNotEmpty) return;
-    _box.put('abstinence', HabitTracker(
-      id: 'abstinence',
-      name: 'Воздержание',
-      type: 'bad',
-    ));
-    _box.put('workout_squat', HabitTracker(
-      id: 'workout_squat',
-      name: 'Приседания ×20',
-      type: 'good',
-      targetReps: 20,
-    ));
-    _box.put('workout_pushups', HabitTracker(
-      id: 'workout_pushups',
-      name: 'Отжимания ×20',
-      type: 'good',
-      targetReps: 20,
-    ));
+  void _ensureDefaultsAndMigrate() {
+    // Старый пункт протокола удаляется при первом запуске новой версии.
+    final obsoleteKeys = _box.keys.where((key) {
+      final habit = _box.get(key);
+      if (habit == null) return false;
+      return habit.id == 'abstinence' ||
+          habit.name.toLowerCase().contains('воздерж');
+    }).toList();
+    for (final key in obsoleteKeys) {
+      unawaited(_box.delete(key));
+    }
+
+    if (_box.get('workout_pushups') == null) {
+      unawaited(
+        _box.put(
+          'workout_pushups',
+          HabitTracker(
+            id: 'workout_pushups',
+            name: 'Отжимания ×20',
+            type: 'good',
+            targetReps: 20,
+          ),
+        ),
+      );
+    }
+    if (_box.get('workout_squat') == null) {
+      unawaited(
+        _box.put(
+          'workout_squat',
+          HabitTracker(
+            id: 'workout_squat',
+            name: 'Приседания ×20',
+            type: 'good',
+            targetReps: 20,
+          ),
+        ),
+      );
+    }
   }
 
   HabitsState _readState() => HabitsState(
-        habits: List.of(_box.values),
+        habits: _workoutIds
+            .map((id) => _box.get(id))
+            .whereType<HabitTracker>()
+            .toList(),
       );
 
-  /// Пересчёт стриков: для 'bad' — дни с последнего срыва,
-  /// для 'good' — подряд идущие дни с выполнением.
   void _recomputeStreaks() {
     final now = DateTime.now();
-    final today = dateKey(now);
-    final s = ref.read(settingsProvider);
-
-    for (final habit in List.of(_box.values)) {
-      if (habit.type == 'bad') {
-        final anchor = habit.lastBreakKey ?? s.protocolStart;
-        int streak = 0;
-        if (anchor.isNotEmpty) {
-          final parsed = DateTime.tryParse(anchor);
-          if (parsed != null) {
-            streak = now.difference(parsed).inDays;
-            if (habit.lastBreakKey == today) streak = 0;
-          }
-        }
-        habit.currentStreak = streak < 0 ? 0 : streak;
-      } else {
-        var streak = 0;
-        var day = now;
-        if (!habit.isDoneOn(dateKey(day))) {
-          day = day.subtract(const Duration(days: 1)); // сегодня ещё можно
-        }
-        while (habit.isDoneOn(dateKey(day))) {
-          streak++;
-          day = day.subtract(const Duration(days: 1));
-        }
-        habit.currentStreak = streak;
+    for (final id in _workoutIds) {
+      final habit = _box.get(id);
+      if (habit == null) continue;
+      var streak = 0;
+      var day = now;
+      if (!habit.isDoneOn(dateKey(day))) {
+        day = day.subtract(const Duration(days: 1));
       }
-      if (habit.currentStreak > habit.maxStreak) {
-        habit.maxStreak = habit.currentStreak;
+      while (habit.isDoneOn(dateKey(day))) {
+        streak++;
+        day = day.subtract(const Duration(days: 1));
       }
-      _box.put(habit.id, habit);
+      habit.currentStreak = streak;
+      if (streak > habit.maxStreak) habit.maxStreak = streak;
+      unawaited(_box.put(id, habit));
     }
   }
 
-  // ------------------------------------------------------------ действия
-
-  /// Отметить срыв вредной привычки и применить финансовый штраф.
-  Future<void> markBreak(String id) async {
-    final habit = _byId(id);
-    final today = dateKey(DateTime.now());
-    if (habit.lastBreakKey == today) return; // уже отмечен
-
-    habit.lastBreakKey = today;
-    habit.currentStreak = 0;
-    _box.put(habit.id, habit);
-
-    // Штраф отражается только в локальном финансовом планировщике.
-    await ref.read(bankProvider.notifier).applyHabitFine();
-
-    final next = _readState();
-    state = HabitsState(
-      habits: next.habits,
-      lastPenaltyAt: DateTime.now(),
-      lastPenaltyText: 'Срыв: -${fmtAmount(AppConstants.habitFine)} BYN',
-    );
-  }
-
-  /// Отметить выполнение тренировки (с количеством повторений).
   Future<void> markWorkout(String id, int reps) async {
     final habit = _byId(id);
     final today = dateKey(DateTime.now());
@@ -151,24 +127,20 @@ class HabitsController extends Notifier<HabitsState> {
 
     habit.entries.add(today);
     habit.repsData.add('$today:$reps');
-    _box.put(habit.id, habit);
+    await _box.put(habit.id, habit);
     _recomputeStreaks();
 
-    // Бонус в банке, если обе тренировки выполнены сегодня.
     final squat = _box.get('workout_squat');
     final pushups = _box.get('workout_pushups');
-    if (squat != null && pushups != null &&
-        squat.isDoneOn(today) && pushups.isDoneOn(today)) {
+    if (squat?.isDoneOn(today) == true && pushups?.isDoneOn(today) == true) {
       await ref.read(bankProvider.notifier).applyWorkoutBonus();
     }
-
     state = _readState();
   }
 
-  /// Принудительный сброс статуса протокола (для тестов).
   Future<void> reset() async {
     await _box.clear();
-    _ensureDefaults();
+    _ensureDefaultsAndMigrate();
     _recomputeStreaks();
     state = _readState();
   }

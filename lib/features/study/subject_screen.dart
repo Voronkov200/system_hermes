@@ -57,10 +57,28 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
             _PdfBanner(subject: subject, onParse: () => _parsePdf(subject)),
             const SizedBox(height: 12),
           ],
+          if (ReshebaService.jsPathFor(subject.title) != null) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReshebaScreen(
+                      subjectTitle: subject.title,
+                      subjectId: subject.id,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text('Фото решений по заданиям'),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: [
               Expanded(
-                child: FilledButton.icon(
+                child: OutlinedButton.icon(
                   onPressed: st.busy ? null : () => _addParagraph(subject),
                   icon: const Icon(Icons.add),
                   label: Text(

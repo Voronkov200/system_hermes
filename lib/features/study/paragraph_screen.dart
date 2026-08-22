@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../services/study/local_study_content.dart';
+import '../../services/study/resheba_service.dart';
 import '../../services/study/study_content_quality.dart';
 import '../../services/study/study_service.dart';
+import 'resheba_screen.dart';
 
 class ParagraphScreen extends ConsumerWidget {
   final String paragraphId;
@@ -44,6 +46,9 @@ class ParagraphScreen extends ConsumerWidget {
       paragraph.sourceText,
       analysis: subject?.analysis ?? 'humanities',
     );
+    final exactScience = subject?.analysis == 'exact';
+    final hasSolutionPhotos = subject != null &&
+        ReshebaService.jsPathFor(subject.title) != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -105,32 +110,44 @@ class ParagraphScreen extends ConsumerWidget {
               ),
             ),
           const SizedBox(height: 12),
-          _OfflineNotice(sectionCount: local.sections.length),
-          const SizedBox(height: 12),
-          _SourceQualityCard(report: sourceReport, pages: paragraph.pages),
-          const SizedBox(height: 18),
-          const Text(
-            'Локальный разбор',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Все блоки ниже извлечены из текста учебника на телефоне. '
-            'Hermes не отправляет параграф в ИИ и не дописывает факты.',
-            style: TextStyle(
-              color: AppColors.textDim,
-              fontSize: 12,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (local.isEmpty)
-            const _MissingSourceCard()
-          else
-            for (final section in local.sections) ...[
-              _LocalSectionCard(section: section),
-              const SizedBox(height: 10),
+          if (exactScience) ...[
+            const _ExactScienceNotice(),
+            if (hasSolutionPhotos) ...[
+              const SizedBox(height: 12),
+              _SolutionPhotosCard(
+                subject: subject!,
+              ),
             ],
+            const SizedBox(height: 12),
+            _SourceQualityCard(report: sourceReport, pages: paragraph.pages),
+          ] else ...[
+            _OfflineNotice(sectionCount: local.sections.length),
+            const SizedBox(height: 12),
+            _SourceQualityCard(report: sourceReport, pages: paragraph.pages),
+            const SizedBox(height: 18),
+            const Text(
+              'Локальный разбор',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Все блоки ниже извлечены из текста учебника на телефоне. '
+              'Hermes не отправляет параграф в ИИ и не дописывает факты.',
+              style: TextStyle(
+                color: AppColors.textDim,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (local.isEmpty)
+              const _MissingSourceCard()
+            else
+              for (final section in local.sections) ...[
+                _LocalSectionCard(section: section),
+                const SizedBox(height: 10),
+              ],
+          ],
           if (paragraph.content.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             Card(
@@ -145,7 +162,7 @@ class ParagraphScreen extends ConsumerWidget {
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                 ),
                 subtitle: const Text(
-                  'Сохранён для совместимости; новый локальный разбор выше',
+                  'Сохранён для совместимости и по умолчанию скрыт',
                   style: TextStyle(fontSize: 11),
                 ),
                 children: [
@@ -173,13 +190,15 @@ class ParagraphScreen extends ConsumerWidget {
             child: ExpansionTile(
               leading: const Icon(Icons.menu_book, color: AppColors.cyan),
               title: const Text(
-                'Полный исходный текст',
+                'Распознанный текст учебника',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
               ),
               subtitle: Text(
                 local.isEmpty
                     ? 'Текст отсутствует'
-                    : '${local.sourceText.length} символов · локально',
+                    : exactScience
+                        ? '${local.sourceText.length} символов · формулы могут быть повреждены'
+                        : '${local.sourceText.length} символов · локально',
                 style: const TextStyle(fontSize: 11),
               ),
               children: [
@@ -233,6 +252,94 @@ class ParagraphScreen extends ConsumerWidget {
     if (confirmed != true) return;
     await notifier.removeParagraph(paragraph.id);
     if (context.mounted) Navigator.of(context).pop();
+  }
+}
+
+class _ExactScienceNotice extends StatelessWidget {
+  const _ExactScienceNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.warning.withValues(alpha: .45)),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.functions, color: AppColors.warning),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Для точных предметов автоматический текстовый разбор отключён: '
+              'PDF-распознавание ломает степени, корни, дроби и знаки. '
+              'Используй оригинальный учебник и фотографии решений.',
+              style: TextStyle(fontSize: 12, height: 1.45),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SolutionPhotosCard extends StatelessWidget {
+  final StudySubject subject;
+
+  const _SolutionPhotosCard({required this.subject});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ReshebaScreen(
+              subjectTitle: subject.title,
+              subjectId: subject.id,
+            ),
+          ),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(Icons.photo_library_outlined, color: AppColors.accent),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Открыть фото решений',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Выбери раздел и номер. Фото загружается без OCR и '
+                      'сохраняется на телефоне для повторного просмотра.',
+                      style: TextStyle(
+                        color: AppColors.textDim,
+                        fontSize: 11,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

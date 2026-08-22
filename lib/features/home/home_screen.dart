@@ -22,7 +22,7 @@ class HomeScreen extends ConsumerWidget {
     final rates = ratesAsync.valueOrNull ?? NbrbApi.bundledRates;
 
     final totalByn = bank.totalByn(rates: rates);
-    final clean = habits.cleanStreak();
+    final trainingStreak = habits.trainingStreak();
 
     return Scaffold(
       appBar: AppBar(
@@ -43,7 +43,7 @@ class HomeScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _StatusBanner(clean: clean),
+          _StatusBanner(trainingStreak: trainingStreak),
           const SizedBox(height: 16),
           GridView.count(
             crossAxisCount: 2,
@@ -108,9 +108,9 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _StatusBanner extends StatelessWidget {
-  final int clean;
+  final int trainingStreak;
 
-  const _StatusBanner({required this.clean});
+  const _StatusBanner({required this.trainingStreak});
 
   @override
   Widget build(BuildContext context) {
@@ -133,9 +133,13 @@ class _StatusBanner extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
-          Text('$clean дн',
-              style: const TextStyle(
-                  color: AppColors.warning, fontWeight: FontWeight.w700)),
+          Text(
+            'стрик $trainingStreak',
+            style: const TextStyle(
+              color: AppColors.warning,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
@@ -240,9 +244,7 @@ class _HabitStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = <Widget>[];
     for (final h in habits.habits) {
-      final done = h.type == 'bad'
-          ? h.currentStreak > 0
-          : h.doneToday();
+      final done = h.doneToday();
       items.add(Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
@@ -260,7 +262,7 @@ class _HabitStrip extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(h.name)),
-            Text(h.type == 'bad' ? '${h.currentStreak} дн' : 'стрик ${h.currentStreak}',
+            Text('стрик ${h.currentStreak}',
                 style: const TextStyle(color: AppColors.textDim, fontSize: 12)),
           ],
         ),

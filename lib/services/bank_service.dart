@@ -15,6 +15,8 @@ import 'nbrb_api.dart';
 import 'settings_service.dart';
 
 const supportedBankCurrencies = ['BYN', 'USD', 'EUR', 'RUB'];
+const _legacyGeneralId = 'fuel';
+const _legacyCardId = 'assets';
 
 /// Состояние локального кошелька.
 class BankState {
@@ -118,43 +120,44 @@ class BankController extends Notifier<BankState> {
     }
   }
 
-  /// Переносит старые «Топливо/Твёрдые активы» без потери баланса.
+  /// Переносит старые идентификаторы счетов без потери баланса.
   void _ensureDefaultsAndMigrate() {
-    final legacyFuel = _storedById(Account.fuelId);
-    final legacyAssets = _storedById(Account.assetsId);
+    final legacyGeneral = _storedById(_legacyGeneralId);
+    final legacyCard = _storedById(_legacyCardId);
+    var general = _storedById(Account.generalId);
 
-    if (_storedById(Account.generalId) == null) {
-      final general = Account(
+    if (general == null) {
+      general = Account(
         id: Account.generalId,
         name: 'Общий счёт',
         currency: 'BYN',
         type: 'account',
-        balance: legacyFuel?.balance ?? 0,
+        balance: legacyGeneral?.balance ?? 0,
       );
+      unawaited(_accounts.put(general.id, general));
+    } else if (legacyGeneral != null) {
+      general.balance += legacyGeneral.balance;
       unawaited(_accounts.put(general.id, general));
     }
 
-    if (legacyAssets != null &&
-        supportedBankCurrencies.contains(legacyAssets.currency)) {
-      final cardId = Account.cardId(legacyAssets.currency);
-      if (_storedById(cardId) == null) {
-        unawaited(
-          _accounts.put(
-            cardId,
-            Account(
-              id: cardId,
-              name: 'Виртуальная карта ${legacyAssets.currency}',
-              currency: legacyAssets.currency,
-              type: 'card',
-              balance: legacyAssets.balance,
-            ),
-          ),
-        );
-      }
+    if (legacyCard != null &&
+        supportedBankCurrencies.contains(legacyCard.currency)) {
+      final cardId = Account.cardId(legacyCard.currency);
+      final existingCard = _storedById(cardId);
+      final migratedCard = existingCard ??
+          Account(
+            id: cardId,
+            name: 'Виртуальная карта ${legacyCard.currency}',
+            currency: legacyCard.currency,
+            type: 'card',
+          );
+      migratedCard.balance += legacyCard.balance;
+      unawaited(_accounts.put(cardId, migratedCard));
     }
 
-    _deleteStoredId(Account.fuelId);
-    _deleteStoredId(Account.assetsId);
+    _deleteStoredId(_legacyGeneralId);
+    _deleteStoredId(_legacyCardId);
+    _sanitizeLegacyTransactions();
 
     if (_transactions.isEmpty) {
       _logTransaction(
@@ -162,6 +165,37 @@ class BankController extends Notifier<BankState> {
         0,
         'BYN',
         'Открыт локальный общий счёт System Hermes',
+      );
+    }
+  }
+
+  void _sanitizeLegacyTransactions() {
+    for (final key in _transactions.keys.toList()) {
+      final transaction = _transactions.get(key);
+      final description = transaction?.description;
+      if (transaction == null || description == null) continue;
+      var updated = description
+          .replaceAll('Топливо для разработки', 'Общий счёт')
+          .replaceAll('Топливо разработки', 'Общий счёт')
+          .replaceAll('Твердые активы', 'Виртуальная карта')
+          .replaceAll('Твёрдые активы', 'Виртуальная карта');
+      if (transaction.type == 'fine') {
+        updated = 'Архивная корректировка старой версии';
+      }
+      if (updated == description) continue;
+      unawaited(
+        _transactions.put(
+          key,
+          Transaction(
+            id: transaction.id,
+            type: transaction.type,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            date: transaction.date,
+            description: updated,
+            rate: transaction.rate,
+          ),
+        ),
       );
     }
   }
@@ -288,25 +322,6 @@ class BankController extends Notifier<BankState> {
           '${fmtAmount(credited)} ${to.currency}',
     );
     return null;
-  }
-
-  Future<void> applyHabitFine() async {
-    final general = _storedById(Account.generalId);
-    if (general != null) {
-      const fine = AppConstants.habitFine;
-      final actual = general.balance >= fine ? fine : general.balance;
-      general.balance -= actual;
-      await _accounts.put(general.id, general);
-      _logTransaction(
-        'fine',
-        -actual,
-        'BYN',
-        'Штраф: срыв Протокола Дофаминовой Стабильности',
-      );
-    }
-    state = _readState(
-      lastEvent: 'Штраф за срыв протокола: -${AppConstants.habitFine} BYN',
-    );
   }
 
   Future<void> applyWorkoutBonus() async {
