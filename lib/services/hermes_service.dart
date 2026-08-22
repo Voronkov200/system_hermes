@@ -23,7 +23,6 @@ import 'github_api.dart';
 import 'habits_service.dart';
 import 'health_service.dart';
 import 'life_service.dart';
-import 'mining_service.dart';
 import 'nbrb_api.dart';
 import 'obsidian_service.dart';
 import 'settings_service.dart';
@@ -236,21 +235,18 @@ class ChatController extends Notifier<ChatState> {
   /// Ответ через OpenAI-совместимый LLM с агентным циклом (function calling).
   Future<String> _llmRequest(String text, SettingsState s) async {
     final bank = ref.read(bankProvider);
-    final mining = ref.read(miningProvider);
     final habits = ref.read(habitsProvider);
     final life = ref.read(lifeProvider).state;
-    final fuel = bank.byId(Account.fuelId)?.balance ?? 0;
-    final assets = bank.byId(Account.assetsId)?.balance ?? 0;
+    final general = bank.generalAccount?.balance ?? 0;
+    final cardsByn =
+        bank.totalByn(rates: NbrbApi.bundledRates) - general;
 
     final system = buildHermesSystemPrompt(
-      fuelBalance: fuel,
-      assetsBalance: assets,
+      generalBalance: general,
+      cardsBynEquivalent: cardsByn < 0 ? 0 : cardsByn,
       cleanStreak: habits.cleanStreak(),
       lifeLevel: LifeCatalog.levelForXp(life.xp),
       xp: life.xp,
-      farmOnline: mining.farm.status == 'online',
-      farmLocked: mining.locked,
-      farmHashRate: mining.hashRate,
     );
 
     final all = _readMessages();
@@ -334,11 +330,11 @@ class ChatController extends Notifier<ChatState> {
       final pushups = s.byId('workout_pushups');
       return 'Сегодня: приседания ${squat?.doneToday() ?? false ? 'выполнены' : 'НЕ выполнены'}, '
           'отжимания ${pushups?.doneToday() ?? false ? 'выполнены' : 'НЕ выполнены'}.\n'
-          'Отметь их в разделе «Протокол» — это даст +10% хешрейта за каждую.';
+          'Отметь их в разделе «Протокол» — видимый прогресс важнее идеальности.';
     }
     if (lower.contains('сорва') || lower.contains('срыв')) {
-      return 'Срыв протокола = штраф ${AppConstants.habitFine} BYN и блокировка '
-          'фермы на 24 ч. Отметь срыв честно в разделе «Протокол». '
+      return 'Срыв протокола = штраф ${AppConstants.habitFine} BYN в локальном '
+          'финансовом планировщике. Отметь срыв честно в разделе «Протокол». '
           'Держись. Возвращайся в строй.';
     }
     if (lower.contains('привет') || lower.contains('здравств')) {
@@ -449,7 +445,7 @@ class ChatController extends Notifier<ChatState> {
               ref.read(habitsProvider).byId(habitId)?.targetReps ?? 20;
           if (status == 'broken') {
             await habitsN.markBreak(habitId);
-            return 'Срыв отмечен. Штраф и блокировка фермы применены.';
+            return 'Срыв отмечен. Локальный финансовый штраф применён.';
           }
           await habitsN.markWorkout(habitId, targetReps);
           return 'Тренировка отмечена.';
@@ -632,24 +628,15 @@ class ChatController extends Notifier<ChatState> {
 
   Future<String> _systemStatus() async {
     final bank = ref.read(bankProvider);
-    final mining = ref.read(miningProvider);
     final habits = ref.read(habitsProvider);
-    final s = ref.read(settingsProvider);
-
-    final fuel = bank.byId(Account.fuelId);
-    final assets = bank.byId(Account.assetsId);
+    final general = bank.generalAccount;
+    final total = bank.totalByn(rates: NbrbApi.bundledRates);
     final clean = habits.cleanStreak();
-    final farmStatus = mining.farm.status == 'online'
-        ? 'ОНЛАЙН'
-        : mining.locked
-            ? 'ЗАБЛОКИРОВАНА'
-            : 'НЕ ЗАПУЩЕНА';
 
     return 'СВОДКА СИСТЕМЫ\n'
-        '• Банк: Топливо ${fuel?.balance.toStringAsFixed(2) ?? '0'} BYN, '
-        'Активы ${assets?.balance.toStringAsFixed(2) ?? '0'} ${s.assetsCurrency}\n'
-        '• Ферма: $farmStatus, хешрейт ${mining.hashRate.toStringAsFixed(0)}, '
-        'очки ${mining.farm.points.toStringAsFixed(0)}\n'
+        '• Деньги: общий счёт ${general?.balance.toStringAsFixed(2) ?? '0'} BYN, '
+        'весь плановый капитал ≈ ${total.toStringAsFixed(2)} BYN\n'
+        '• Виртуальные карты: ${bank.cards.length}\n'
         '• Протокол: $clean дней без срывов (макс ${habits.byId('abstinence')?.maxStreak ?? 0})\n'
         '• Тренировки: приседания ${habits.byId('workout_squat')?.doneToday() ?? false ? '✓' : '✗'}, '
         'отжимания ${habits.byId('workout_pushups')?.doneToday() ?? false ? '✓' : '✗'}\n'

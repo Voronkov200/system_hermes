@@ -46,7 +46,6 @@ Future<void> main() async {
   registerHiveAdapters();
   await _openBoxSafely<Account>(BoxNames.accounts);
   await _openBoxSafely<Transaction>(BoxNames.transactions);
-  await _openBoxSafely<MiningFarm>(BoxNames.farm);
   await _openBoxSafely<HabitTracker>(BoxNames.habits);
   await _openBoxSafely<ChatMessage>(BoxNames.chat);
   await _openBoxSafely<LifeState>(BoxNames.life);

@@ -127,8 +127,8 @@ class CompanionController extends Notifier<CompanionState> {
     final life = ref.read(lifeProvider).state;
     final habits = ref.read(habitsProvider);
     final bank = ref.read(bankProvider);
-    final fuel = bank.byId(Account.fuelId)?.balance ?? 0;
-    final assets = bank.byId(Account.assetsId)?.balance ?? 0;
+    final fuel = bank.generalAccount?.balance ?? 0;
+    final assets = bank.cardFor('USD')?.balance ?? 0;
     return CompanionContext(
       affinity: _affinity(),
       cleanStreak: habits.cleanStreak(),

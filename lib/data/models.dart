@@ -22,7 +22,7 @@ String dateKey(DateTime d) =>
 class Account {
   final String id;
   final String name;
-  final String currency; // BYN, USD, EUR
+  final String currency; // BYN, USD, EUR, RUB
   final String type; // 'account' | 'card'
   double balance;
 
@@ -34,7 +34,14 @@ class Account {
     this.balance = 0,
   });
 
-  /// Зарезервированные id счетов.
+  /// Основной локальный счёт, на который приходит пенсия.
+  static const generalId = 'general_byn';
+
+  /// Стабильный id локальной виртуальной карты для выбранной валюты.
+  static String cardId(String currency) =>
+      'virtual_${currency.trim().toLowerCase()}';
+
+  /// Старые id нужны только для безопасной миграции существующего баланса.
   static const fuelId = 'fuel';
   static const assetsId = 'assets';
 }
@@ -78,87 +85,6 @@ class CurrencyRate {
 
   /// Сколько BYN стоит 1 единица валюты.
   double get perUnit => rate / scale;
-}
-
-// =====================================================================
-// МАЙНИНГ И PC BUILDER
-// =====================================================================
-
-/// Комплектующая для ПК/фермы.
-@HiveType(typeId: 3)
-class Component {
-  final String id;
-  final String name;
-  final String type; // CPU | GPU | RAM | Storage
-  final double power; // виртуальная мощность
-  final int price; // цена в очках
-
-  const Component({
-    required this.id,
-    required this.name,
-    required this.type,
-    required this.power,
-    this.price = 0,
-  });
-}
-
-/// Каталог доступных комплектующих.
-class ComponentCatalog {
-  static const List<Component> all = [
-    Component(id: 'cpu_celeron', name: 'Intel Celeron G5905', type: 'CPU', power: 40, price: 50),
-    Component(id: 'cpu_i5', name: 'Intel Core i5-10400F', type: 'CPU', power: 120, price: 200),
-    Component(id: 'cpu_ryzen', name: 'AMD Ryzen 5 5600X', type: 'CPU', power: 160, price: 300),
-    Component(id: 'gpu_gt710', name: 'NVIDIA GT 710', type: 'GPU', power: 30, price: 40),
-    Component(id: 'gpu_gtx1060', name: 'NVIDIA GTX 1060', type: 'GPU', power: 220, price: 350),
-    Component(id: 'gpu_rtx3060', name: 'NVIDIA RTX 3060', type: 'GPU', power: 380, price: 600),
-    Component(id: 'ram_4gb', name: 'RAM 4 ГБ DDR4', type: 'RAM', power: 20, price: 30),
-    Component(id: 'ram_8gb', name: 'RAM 8 ГБ DDR4', type: 'RAM', power: 45, price: 80),
-    Component(id: 'ram_16gb', name: 'RAM 16 ГБ DDR4', type: 'RAM', power: 80, price: 150),
-    Component(id: 'ssd_128', name: 'SSD 128 ГБ', type: 'Storage', power: 25, price: 40),
-    Component(id: 'ssd_512', name: 'SSD 512 ГБ NVMe', type: 'Storage', power: 70, price: 120),
-    Component(id: 'ssd_1tb', name: 'SSD 1 ТБ NVMe', type: 'Storage', power: 120, price: 220),
-  ];
-
-  static Component? byId(String id) {
-    for (final c in all) {
-      if (c.id == id) return c;
-    }
-    return null;
-  }
-}
-
-/// Состояние майнинг-фермы.
-@HiveType(typeId: 4)
-class MiningFarm {
-  final List<String> componentIds; // выбранные комплектующие
-  final String osInstalled; // 'none' | 'linux' | 'windows'
-  final bool driversInstalled;
-  final String status; // offline | building | online | locked
-  DateTime? lockUntil; // блокировка после срыва протокола
-  double points; // накопленные очки
-  DateTime lastTick; // последнее начисление
-
-  MiningFarm({
-    required this.componentIds,
-    this.osInstalled = 'none',
-    this.driversInstalled = false,
-    this.status = 'offline',
-    this.lockUntil,
-    this.points = 0,
-    required this.lastTick,
-  });
-
-  factory MiningFarm.empty() =>
-      MiningFarm(componentIds: [], lastTick: DateTime.now());
-
-  double get basePower {
-    double sum = 0;
-    for (final id in componentIds) {
-      final c = ComponentCatalog.byId(id);
-      if (c != null) sum += c.power;
-    }
-    return sum;
-  }
 }
 
 // =====================================================================

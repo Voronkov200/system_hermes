@@ -6,23 +6,14 @@ class AppConstants {
 
   static const String appName = 'System: Hermes';
 
-  /// Ежемесячная "пенсия" в BYN.
-  static const double defaultPension = 450;
-
-  /// Часть на "Топливо разработки".
-  static const double defaultFuelShare = 50;
+  /// Официальная ежемесячная пенсия в BYN.
+  static const double defaultPension = 390;
 
   /// День месяца получения пенсии (по умолчанию 5-е число).
   static const int defaultPensionDay = 5;
 
-  /// Валюта "Твердых активов" по умолчанию.
-  static const String defaultAssetsCurrency = 'USD';
-
   /// Штраф за срыв протокола (BYN).
   static const double habitFine = 25;
-
-  /// Длительность блокировки майнинг-фермы после срыва.
-  static const Duration farmLockDuration = Duration(hours: 24);
 
   /// URL API курсов Нацбанка РБ.
   static const String nbrbRatesUrl =
@@ -83,7 +74,6 @@ class BoxNames {
 
   static const String accounts = 'accounts';
   static const String transactions = 'transactions';
-  static const String farm = 'farm';
   static const String habits = 'habits';
   static const String chat = 'chat';
   static const String life = 'life';
@@ -103,8 +93,6 @@ class PrefKeys {
   static const String themeMode = 'theme_mode'; // dark | light
   static const String pensionDay = 'pension_day';
   static const String pensionAmount = 'pension_amount';
-  static const String fuelShare = 'fuel_share';
-  static const String assetsCurrency = 'assets_currency';
   static const String vaultPath = 'vault_path';
   static const String hermesUrl = 'hermes_url';
   static const String hermesApiKey = 'hermes_api_key';

@@ -15,7 +15,6 @@ import '../../services/companion_service.dart';
 import '../../services/habits_service.dart';
 import '../../services/hermes_service.dart';
 import '../../services/journal_service.dart';
-import '../../services/mining_service.dart';
 import '../../services/obsidian_service.dart';
 import '../../services/settings_service.dart';
 import '../../services/tasks_service.dart';
@@ -30,7 +29,8 @@ class SettingsScreen extends ConsumerWidget {
         backgroundColor: AppColors.surface,
         title: const Text('Сбросить все данные?'),
         content: const Text(
-            'Будут удалены: счета и транзакции, ферма, привычки, история чата. '
+            'Будут удалены: локальные счета, карты, транзакции, привычки и '
+            'история чата. '
             'Это действие необратимо.'),
         actions: [
           TextButton(
@@ -47,7 +47,6 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (confirmed != true) return;
     await ref.read(bankProvider.notifier).reset();
-    await ref.read(miningProvider.notifier).reset();
     await ref.read(habitsProvider.notifier).reset();
     await ref.read(chatProvider.notifier).reset();
     await ref.read(companionProvider.notifier).reset();
@@ -84,7 +83,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
 
-          const _SectionTitle('Центральный Банк'),
+          const _SectionTitle('Деньги'),
           ListTile(
             title: const Text('День получения пенсии'),
             subtitle: Text('${s.pensionDay}-е число каждого месяца'),
@@ -110,52 +109,18 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           ListTile(
-            title: const Text('Сумма пенсии (BYN)'),
-            subtitle: Text(fmt2(s.pensionAmount)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              final controller = TextEditingController(
-                  text: fmt2(s.pensionAmount));
-              final v = await showDialog<double>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: AppColors.surface,
-                  title: const Text('Сумма пенсии'),
-                  content: TextField(
-                    controller: controller,
-                    keyboardType: TextInputType.number,
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Отмена'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(
-                          ctx,
-                          double.tryParse(controller.text.replaceAll(',', '.'))),
-                      child: const Text('OK'),
-                    ),
-                  ],
-                ),
-              );
-              if (v != null && v > 0) {
-                await ref.read(settingsProvider.notifier).setPensionAmount(v);
-              }
-            },
-          ),
-          ListTile(
-            title: const Text('Валюта твердых активов'),
-            subtitle: Text(s.assetsCurrency),
-            trailing: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'USD', label: Text('USD')),
-                ButtonSegment(value: 'EUR', label: Text('EUR')),
-              ],
-              selected: {s.assetsCurrency},
-              onSelectionChanged: (sel) => ref
-                  .read(settingsProvider.notifier)
-                  .setAssetsCurrency(sel.first),
+            leading: const Icon(
+              Icons.verified_outlined,
+              color: AppColors.accent,
+            ),
+            title: const Text('Официальная пенсия'),
+            subtitle: Text('${fmt2(s.pensionAmount)} BYN в месяц'),
+            trailing: const Text(
+              '390 BYN',
+              style: TextStyle(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           const Divider(),

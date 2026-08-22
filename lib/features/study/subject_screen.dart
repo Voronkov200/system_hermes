@@ -1,4 +1,4 @@
-// Экран предмета «Учёба»: параграфы, разбор PDF, генерация конспектов.
+// Экран предмета «Учёба»: параграфы и локальный разбор PDF.
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';

@@ -9,10 +9,7 @@ import '../../core/utils.dart';
 import '../../data/models.dart';
 import '../../services/bank_service.dart';
 import '../../services/habits_service.dart';
-import '../../services/mining_service.dart';
 import '../../services/nbrb_api.dart';
-import '../../services/obsidian_service.dart';
-import '../../services/settings_service.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -20,14 +17,11 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bank = ref.watch(bankProvider);
-    final mining = ref.watch(miningProvider);
     final habits = ref.watch(habitsProvider);
-    final obsidian = ref.watch(obsidianProvider);
-    final settings = ref.watch(settingsProvider);
     final ratesAsync = ref.watch(ratesProvider);
-    final rates = ratesAsync.valueOrNull;
+    final rates = ratesAsync.valueOrNull ?? NbrbApi.bundledRates;
 
-    final totalByn = bank.totalByn(rates: rates, assetsCurrency: settings.assetsCurrency);
+    final totalByn = bank.totalByn(rates: rates);
     final clean = habits.cleanStreak();
 
     return Scaffold(
@@ -49,7 +43,7 @@ class HomeScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _StatusBanner(mining: mining, clean: clean),
+          _StatusBanner(clean: clean),
           const SizedBox(height: 16),
           GridView.count(
             crossAxisCount: 2,
@@ -60,38 +54,32 @@ class HomeScreen extends ConsumerWidget {
             childAspectRatio: 1.25,
             children: [
               _ModuleCard(
-                title: 'Центральный Банк',
+                title: 'Работа',
+                subtitle: 'Учёба, план, проекты',
+                icon: Icons.work_outline,
+                color: AppColors.accent,
+                onTap: () => context.go('/work'),
+              ),
+              _ModuleCard(
+                title: 'Деньги',
                 subtitle: '${fmt2(totalByn)} BYN',
                 icon: Icons.account_balance_wallet,
-                color: AppColors.accent,
-                onTap: () => context.go('/bank'),
-              ),
-              _ModuleCard(
-                title: 'Майнинг-ферма',
-                subtitle: mining.locked
-                    ? 'ЗАБЛОКИРОВАНА'
-                    : mining.farm.status == 'online'
-                        ? '${fmt0(mining.hashRate)} MH/s'
-                        : 'Собери ПК',
-                icon: Icons.memory,
                 color: AppColors.cyan,
-                onTap: () => context.go('/mining'),
+                onTap: () => context.go('/money'),
               ),
               _ModuleCard(
-                title: 'Протокол',
-                subtitle: '$clean дней чистоты',
-                icon: Icons.fitness_center,
-                color: AppColors.danger,
-                onTap: () => context.go('/habits'),
+                title: 'Учёба',
+                subtitle: 'Локальные учебники',
+                icon: Icons.school_outlined,
+                color: AppColors.accent,
+                onTap: () => context.go('/study'),
               ),
               _ModuleCard(
-                title: 'Obsidian',
-                subtitle: obsidian.vaultPath == null
-                    ? 'Vault не выбран'
-                    : '${obsidian.notes.length} заметок',
-                icon: Icons.description_outlined,
+                title: 'Жизнь',
+                subtitle: 'Самостоятельные шаги',
+                icon: Icons.self_improvement,
                 color: AppColors.violet,
-                onTap: () => context.push('/obsidian'),
+                onTap: () => context.go('/life'),
               ),
               _ModuleCard(
                 title: 'Hermes Agent',
@@ -101,30 +89,16 @@ class HomeScreen extends ConsumerWidget {
                 onTap: () => context.go('/chat'),
               ),
               _ModuleCard(
-                title: 'Журнал изменений',
-                subtitle: 'Все действия и записи',
-                icon: Icons.history,
-                color: AppColors.violet,
-                onTap: () => context.push('/journal'),
-              ),
-              _ModuleCard(
-                title: 'Настройки',
-                subtitle: 'Тема, пенсия, Vault',
-                icon: Icons.settings_outlined,
+                title: 'Ещё',
+                subtitle: 'Протокол и настройки',
+                icon: Icons.apps,
                 color: AppColors.textDim,
-                onTap: () => context.push('/settings'),
-              ),
-              _ModuleCard(
-                title: 'Учёба',
-                subtitle: 'Предметы 11 класса',
-                icon: Icons.school_outlined,
-                color: AppColors.accent,
-                onTap: () => context.go('/study'),
+                onTap: () => context.go('/more'),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          if (rates != null && rates.isNotEmpty) _RatesCard(rates: rates),
+          if (rates.isNotEmpty) _RatesCard(rates: rates),
           const SizedBox(height: 16),
           _HabitStrip(habits: habits),
         ],
@@ -134,25 +108,14 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _StatusBanner extends StatelessWidget {
-  final MiningState mining;
   final int clean;
 
-  const _StatusBanner({required this.mining, required this.clean});
+  const _StatusBanner({required this.clean});
 
   @override
   Widget build(BuildContext context) {
-    final String status;
-    final Color color;
-    if (mining.locked) {
-      status = 'СИСТЕМА В РЕЖИМЕ ОШИБКИ — ферма заблокирована';
-      color = AppColors.danger;
-    } else if (mining.farm.status == 'online') {
-      status = 'СИСТЕМА ОНЛАЙН — дисциплина активна';
-      color = AppColors.accent;
-    } else {
-      status = 'СИСТЕМА ИНИЦИАЛИЗИРУЕТСЯ — собери ферму';
-      color = AppColors.warning;
-    }
+    const status = 'СИСТЕМА ГОТОВА — выбери один небольшой следующий шаг';
+    const color = AppColors.accent;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(

@@ -145,8 +145,8 @@ class _HabitCard extends ConsumerWidget {
         backgroundColor: AppColors.surface,
         title: const Text('Срыв протокола?'),
         content: const Text(
-          'Будет применён штраф ${AppConstants.habitFine} BYN в Банке '
-          'и блокировка майнинг-фермы на 24 часа. Честность — ключевая '
+          'Будет применён штраф ${AppConstants.habitFine} BYN в локальном '
+          'разделе «Деньги». Честность — ключевая '
           'метрика системы. Подтверди:',
         ),
         actions: [

@@ -220,12 +220,12 @@ class LifeController extends Notifier<LifeStateEx> {
   }
 
   double _fuelBalance() {
-    final b = ref.read(bankProvider).byId(Account.fuelId);
+    final b = ref.read(bankProvider).generalAccount;
     return b?.balance ?? 0;
   }
 
   double _assetsBalance() {
-    final b = ref.read(bankProvider).byId(Account.assetsId);
+    final b = ref.read(bankProvider).cardFor('USD');
     return b?.balance ?? 0;
   }
 

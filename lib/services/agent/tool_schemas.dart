@@ -274,7 +274,7 @@ const ToolDefinition updateProtocolStatusTool = ToolDefinition(
   name: 'update_dopamine_protocol_status',
   description:
       'Отметить в протоколе тренировку (приседания/отжимания) или срыв '
-      'воздержания. Срыв = штраф и блокировка фермы.',
+      'воздержания. Срыв = штраф в локальном финансовом планировщике.',
   parameters: {
     'type': 'object',
     'properties': {

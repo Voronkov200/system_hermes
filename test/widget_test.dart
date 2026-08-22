@@ -23,7 +23,6 @@ void main() {
     registerHiveAdapters();
     await Hive.openBox<Account>(BoxNames.accounts);
     await Hive.openBox<Transaction>(BoxNames.transactions);
-    await Hive.openBox<MiningFarm>(BoxNames.farm);
     await Hive.openBox<HabitTracker>(BoxNames.habits);
     await Hive.openBox<ChatMessage>(BoxNames.chat);
     await Hive.openBox<LifeState>(BoxNames.life);

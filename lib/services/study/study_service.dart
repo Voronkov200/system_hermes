@@ -2,11 +2,10 @@
 //
 // Предмет (StudySubject) — из каталога [studyCatalog] либо добавленный
 // вручную (в т.ч. дополнительная литература/пособия). К предмету
-// прикрепляется PDF-учебник; его текст извлекается, режется на параграфы
-// (StudyParagraph), каждый параграф разбирается LLM: конспект, план,
-// правила/теоремы со страницами, решения заданий, ответы на вопросы,
-// краткое содержание произведений.
+// прикрепляется PDF-учебник; его текст извлекается, режется на параграфы,
+// а затем структурируется локально на телефоне без вызова LLM.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,7 +20,6 @@ import '../../data/study_catalog.dart';
 import '../agent/file_tools.dart';
 import '../settings_service.dart';
 import '../plan/docs_service.dart' show splitSections;
-import '../plan/llm.dart';
 import 'study_content_quality.dart';
 
 /// Предмет (или дополнительная литература) в «Учёбе».
@@ -249,23 +247,21 @@ class StudyState {
       );
 }
 
-/// Контроллер «Учёбы»: каталог, параграфы, LLM-разбор.
+/// Контроллер «Учёбы»: каталог, локальный импорт и параграфы.
 class StudyController extends Notifier<StudyState> {
   late final Box<StudySubject> _box;
   late final Box<StudyParagraph> _pbox;
   bool _bundledStarted = false;
   bool _bundleNeedsRefresh = false;
 
-  static const int _bundleVersion = 3;
+  static const int _bundleVersion = 4;
 
   static const Map<String, String> _bookCatalogMap = {
     '1155': 'История (часть 1)',
     '1176': 'История (часть 2)',
     '938': 'Обществоведение',
-    '920': 'Беларуская мова',
     '904': 'Беларуская літаратура',
     '1202': 'Беларуская літаратура',
-    '914': 'Русский язык',
     '915': 'Русская литература',
     '1207': 'Русская литература',
     '1208': 'Русская литература',
@@ -282,7 +278,8 @@ class StudyController extends Notifier<StudyState> {
   };
 
   static const Set<String> _excludedBookIds = {
-    '1014', '1025', '1027', '903', '924', '949', '959', '1037', '1057',
+    '914', '920', '1014', '1025', '1027', '903', '924', '949', '959',
+    '1037', '1057',
     '1040', '1044', '917', '946', '776', '777', '911', '913', '730', '770',
     '798', '939', '945', '965', '1177', '804', '806', '809', '810', '916',
     '901', '905', '898', '922', '896', '931', '918', '940', '1172', '1188',
@@ -316,19 +313,25 @@ class StudyController extends Notifier<StudyState> {
     // В старой реализации здесь очищались обе Hive-базы. Это уничтожало
     // импортированные книги, конспекты и флаг learned при обновлении APK.
     // Версия теперь является только маркером контента.
-    prefs.setInt('study_bundle_v', _bundleVersion);
+    unawaited(prefs.setInt('study_bundle_v', _bundleVersion));
   }
 
   void _ensureCatalog() {
-    for (final s in _box.values.toList()) {
-      if (s.title == 'Допризывная подготовка' ||
-          s.title == 'История Беларуси' ||
-          s.title == 'Всемирная история' ||
-          s.title == 'Английский язык') {
-        // Не удаляем предмет автоматически: пользователь мог добавить в него
-        // собственный PDF/конспект. Оставляем его как пользовательские данные.
+    // Эти два предмета входили в ранний встроенный комплект по ошибке.
+    // Удаляем только записи без прикреплённого пользовательского PDF.
+    const removedBuiltInLanguages = {'Беларуская мова', 'Русский язык'};
+    for (final subject in _box.values.toList()) {
+      if (!removedBuiltInLanguages.contains(subject.title) ||
+          subject.filePath != null) {
         continue;
       }
+      final paragraphKeys = _pbox.keys
+          .where((key) => _pbox.get(key)?.subjectId == subject.id)
+          .toList();
+      for (final key in paragraphKeys) {
+        unawaited(_pbox.delete(key));
+      }
+      unawaited(_box.delete(subject.id));
     }
     for (final item in studyCatalog) {
       StudySubject? existing;
@@ -603,7 +606,13 @@ class StudyController extends Notifier<StudyState> {
   }
 
   static const _excludedSubjects = [
-    'немецкий', 'нямецкая', 'французский', 'французская', 'испанский', 'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский', 'польский', 'польская', 'иностранный язык', 'допризывн', 'дапрызыўн', 'медицинск', 'медыцынск', 'великая отечественная', 'айчынная вайна',
+    'беларуская мова', 'белорусский язык', 'русский язык', 'руская мова',
+    'немецкий', 'нямецкая', 'французский', 'французская', 'испанский',
+    'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский',
+    'польский', 'польская', 'иностранный язык', 'допризывн', 'дапрызыўн',
+    'медицинск', 'медыцынск', 'великая отечественная', 'айчынная вайна',
+    'сборник', 'зборнік', 'хрестоматия', 'хрэстаматыя', 'справочник',
+    'даведнік',
   ];
 
   static String? _bookIdOf(String pdfName) {
@@ -758,8 +767,12 @@ class StudyController extends Notifier<StudyState> {
     for (final s in _box.values) {
       if (s.title == clean) return s;
     }
-    final isGuide = pdfLower.contains('сборник') || pdfLower.contains('зборнік') || pdfLower.contains('хрестоматия') || pdfLower.contains('хрэстаматыя') || pdfLower.contains('справочник') || pdfLower.contains('даведнік') || pdfLower.contains('пособие') || pdfLower.contains('дапаможнік');
-    return addSubject(title: clean, icon: 'book', kind: isGuide ? 'guide' : 'subject', category: isGuide ? 'Дополнительная литература' : 'Импортированные', subtitle: method.isEmpty ? '' : 'готовый разбор · $method');
+    return addSubject(
+      title: clean,
+      icon: 'book',
+      category: 'Импортированные',
+      subtitle: method.isEmpty ? '' : 'локальный источник · $method',
+    );
   }
 
   static String _cleanPdfTitle(String pdfName, String pdfLower) {
@@ -870,84 +883,6 @@ class StudyController extends Notifier<StudyState> {
     // Повторный разбор обновляет источник идемпотентно. Удаление здесь
     // уничтожало конспекты, прогресс и стабильные ссылки на параграфы.
     return parsePdf(subject);
-  }
-
-  static const modeConspectus = 'conspectus';
-  static const modeRules = 'rules';
-  static const modeTasks = 'tasks';
-  static const modeAnswers = 'answers';
-  static const modeSummary = 'summary';
-
-  Future<String> analyzeParagraph(StudyParagraph p, {String mode = modeConspectus}) async {
-    final subject = subjectOf(p.subjectId);
-    if (subject == null) throw Exception('Предмет не найден.');
-    final report = StudyContentQuality.inspect(p.sourceText);
-    if (!report.canAnalyze) {
-      final message = '${report.label}. Прикрепи или повторно разбери PDF; '
-          'Hermes не будет составлять материал только по названию темы.';
-      state = state.copyWith(
-        busy: false,
-        error: message,
-        workingId: p.id,
-      );
-      throw StateError(message);
-    }
-    final s = ref.read(settingsProvider);
-    final source = StudyContentQuality.prepareForAnalysis(p.sourceText);
-    final sys = _systemPrompt(subject, mode);
-    final user = 'Учебник: ${subject.title}'
-        '${subject.subtitle.isEmpty ? '' : ' (${subject.subtitle})'}\n'
-        'Глава: ${p.chapter.isEmpty ? '—' : p.chapter}\n'
-        'Параграф: ${p.title}'
-        '${p.pages.isEmpty ? '' : ' · ${p.pages}'}\n'
-        'Качество извлечения: ${report.label}.\n\n'
-        'Текст параграфа:\n$source';
-    state = state.copyWith(busy: true, error: null, workingId: p.id);
-    try {
-      final answer = await llmComplete(s, system: sys, user: user, maxTokens: 3000, timeoutSeconds: 180, temperature: 0.3);
-      await _putParagraph(
-        p.copyWith(content: answer, updatedAt: DateTime.now()),
-      );
-      state = state.copyWith(busy: false, clearError: true, clearWorking: true);
-      return answer;
-    } catch (e) {
-      state = state.copyWith(busy: false, error: '$e', workingId: p.id);
-      rethrow;
-    }
-  }
-
-  String _systemPrompt(StudySubject subject, String mode) {
-    final base = 'Ты — репетитор по предмету «${subject.title}» за 11 класс '
-        'белорусской школы. Используй только приведённый текст учебника. '
-        'Не восстанавливай повреждённые OCR-формулы по догадке и не создавай '
-        'несуществующие факты, номера, вопросы или задания. Если фрагмент '
-        'нечитаем, прямо напиши «Не удалось надёжно распознать фрагмент». '
-        'Оформляй результат корректным Markdown: заголовки и списки. Не '
-        'используй псевдотаблицы с вертикальными чертами. Не выводи команды '
-        'LaTeX вроде \\frac, \\sqrt и \\cdot: формулы записывай читаемым '
-        'обычным текстом или Unicode. Страницу указывай только тогда, когда '
-        'она подтверждена источником. Не переписывай исходник дословно.\n\n';
-    switch (mode) {
-      case modeRules:
-        return '$base Собери правила, определения, теоремы, формулы и выводы. Для каждого укажи страницу, если она известна, и пример только если он есть в источнике.';
-      case modeTasks:
-        return '$base Найди только реально присутствующие задания. Сохрани '
-            'исходные номера и подпункты а/б/в. Разбирай по схеме: точное '
-            'условие → шаги решения → ответ. Если условие или формула '
-            'повреждены, не решай задание и укажи причину.';
-      case modeAnswers:
-        return '$base Дай ответы только на вопросы, которые действительно '
-            'присутствуют после параграфа. Если вопросов в источнике нет, '
-            'так и напиши; не создавай свои вопросы в этом режиме.';
-      case modeSummary:
-        return '$base Для литературы дай краткое содержание, героев, тему, идею и ключевые моменты без выдуманных деталей.';
-      case modeConspectus:
-      default:
-        return '$base Составь короткий конспект для тетради: цель темы, '
-            '3–7 основных тезисов, точные определения/правила/даты/формулы '
-            'из источника, один подтверждённый пример и итог. Не дублируй '
-            'одну мысль в нескольких разделах.';
-    }
   }
 
   Future<void> clearParagraphContent(String id) async {

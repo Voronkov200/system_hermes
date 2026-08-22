@@ -87,62 +87,6 @@ class CurrencyRateAdapter extends TypeAdapter<CurrencyRate> {
   }
 }
 
-class ComponentAdapter extends TypeAdapter<Component> {
-  @override
-  final int typeId = 3;
-
-  @override
-  Component read(BinaryReader reader) => Component(
-        id: reader.readString(),
-        name: reader.readString(),
-        type: reader.readString(),
-        power: reader.readDouble(),
-        price: reader.readInt(),
-      );
-
-  @override
-  void write(BinaryWriter writer, Component obj) {
-    writer
-      ..writeString(obj.id)
-      ..writeString(obj.name)
-      ..writeString(obj.type)
-      ..writeDouble(obj.power)
-      ..writeInt(obj.price);
-  }
-}
-
-class MiningFarmAdapter extends TypeAdapter<MiningFarm> {
-  @override
-  final int typeId = 4;
-
-  @override
-  MiningFarm read(BinaryReader reader) => MiningFarm(
-        componentIds: reader.readStringList(),
-        osInstalled: reader.readString(),
-        driversInstalled: reader.readBool(),
-        status: reader.readString(),
-        lockUntil: reader.readBool()
-            ? DateTime.fromMillisecondsSinceEpoch(reader.readInt())
-            : null,
-        points: reader.readDouble(),
-        lastTick: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
-      );
-
-  @override
-  void write(BinaryWriter writer, MiningFarm obj) {
-    writer
-      ..writeStringList(obj.componentIds)
-      ..writeString(obj.osInstalled)
-      ..writeBool(obj.driversInstalled)
-      ..writeString(obj.status)
-      ..writeBool(obj.lockUntil != null);
-    if (obj.lockUntil != null) writer.writeInt(obj.lockUntil!.millisecondsSinceEpoch);
-    writer
-      ..writeDouble(obj.points)
-      ..writeInt(obj.lastTick.millisecondsSinceEpoch);
-  }
-}
-
 class HabitTrackerAdapter extends TypeAdapter<HabitTracker> {
   @override
   final int typeId = 5;
@@ -389,8 +333,6 @@ void registerHiveAdapters() {
     ..registerAdapter(AccountAdapter())
     ..registerAdapter(TransactionAdapter())
     ..registerAdapter(CurrencyRateAdapter())
-    ..registerAdapter(ComponentAdapter())
-    ..registerAdapter(MiningFarmAdapter())
     ..registerAdapter(HabitTrackerAdapter())
     ..registerAdapter(ObsidianNoteAdapter())
     ..registerAdapter(ChatMessageAdapter())
@@ -402,4 +344,3 @@ void registerHiveAdapters() {
     ..registerAdapter(StudySubjectAdapter())
     ..registerAdapter(StudyParagraphAdapter());
 }
-

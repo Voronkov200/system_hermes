@@ -1,5 +1,7 @@
 // Настройки приложения (SharedPreferences) + провайдер доступа к ним.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,8 +18,6 @@ class SettingsState {
   ThemeMode themeMode;
   int pensionDay;
   double pensionAmount;
-  double fuelShare;
-  String assetsCurrency; // USD | EUR
   String vaultPath;
   String hermesUrl;
   String hermesApiKey;
@@ -36,8 +36,6 @@ class SettingsState {
     this.themeMode = ThemeMode.dark,
     this.pensionDay = AppConstants.defaultPensionDay,
     this.pensionAmount = AppConstants.defaultPension,
-    this.fuelShare = AppConstants.defaultFuelShare,
-    this.assetsCurrency = AppConstants.defaultAssetsCurrency,
     this.vaultPath = '',
     this.hermesUrl = '',
     this.hermesApiKey = '',
@@ -67,8 +65,6 @@ class SettingsState {
     ThemeMode? themeMode,
     int? pensionDay,
     double? pensionAmount,
-    double? fuelShare,
-    String? assetsCurrency,
     String? vaultPath,
     String? hermesUrl,
     String? hermesApiKey,
@@ -87,8 +83,6 @@ class SettingsState {
       themeMode: themeMode ?? this.themeMode,
       pensionDay: pensionDay ?? this.pensionDay,
       pensionAmount: pensionAmount ?? this.pensionAmount,
-      fuelShare: fuelShare ?? this.fuelShare,
-      assetsCurrency: assetsCurrency ?? this.assetsCurrency,
       vaultPath: vaultPath ?? this.vaultPath,
       hermesUrl: hermesUrl ?? this.hermesUrl,
       hermesApiKey: hermesApiKey ?? this.hermesApiKey,
@@ -111,17 +105,20 @@ class SettingsController extends Notifier<SettingsState> {
   @override
   SettingsState build() {
     final prefs = ref.read(sharedPreferencesProvider);
+    final storedPension = prefs.getDouble(PrefKeys.pensionAmount);
+    // Пенсия — подтверждённая постоянная величина, а не редактируемый бюджет.
+    // Старые 450 BYN и любые тестовые значения исправляются при запуске.
+    const pensionAmount = AppConstants.defaultPension;
+    if (storedPension == null ||
+        (storedPension - pensionAmount).abs() >= 0.001) {
+      unawaited(prefs.setDouble(PrefKeys.pensionAmount, pensionAmount));
+    }
     return SettingsState(
       themeMode: prefs.getString(PrefKeys.themeMode) == 'light'
           ? ThemeMode.light
           : ThemeMode.dark,
       pensionDay: prefs.getInt(PrefKeys.pensionDay) ?? AppConstants.defaultPensionDay,
-      pensionAmount:
-          prefs.getDouble(PrefKeys.pensionAmount) ?? AppConstants.defaultPension,
-      fuelShare:
-          prefs.getDouble(PrefKeys.fuelShare) ?? AppConstants.defaultFuelShare,
-      assetsCurrency:
-          prefs.getString(PrefKeys.assetsCurrency) ?? AppConstants.defaultAssetsCurrency,
+      pensionAmount: pensionAmount,
       vaultPath: prefs.getString(PrefKeys.vaultPath) ?? '',
       hermesUrl: prefs.getString(PrefKeys.hermesUrl) ?? '',
       hermesApiKey: prefs.getString(PrefKeys.hermesApiKey) ?? '',
@@ -149,8 +146,6 @@ class SettingsController extends Notifier<SettingsState> {
       themeMode: s.themeMode,
       pensionDay: s.pensionDay,
       pensionAmount: s.pensionAmount,
-      fuelShare: s.fuelShare,
-      assetsCurrency: s.assetsCurrency,
       vaultPath: s.vaultPath,
       hermesUrl: s.hermesUrl,
       hermesApiKey: s.hermesApiKey,
@@ -170,8 +165,6 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.themeMode, next.themeMode == ThemeMode.light ? 'light' : 'dark');
     await prefs.setInt(PrefKeys.pensionDay, next.pensionDay);
     await prefs.setDouble(PrefKeys.pensionAmount, next.pensionAmount);
-    await prefs.setDouble(PrefKeys.fuelShare, next.fuelShare);
-    await prefs.setString(PrefKeys.assetsCurrency, next.assetsCurrency);
     await prefs.setString(PrefKeys.vaultPath, next.vaultPath);
     await prefs.setString(PrefKeys.hermesUrl, next.hermesUrl);
     await prefs.setString(PrefKeys.hermesApiKey, next.hermesApiKey);
@@ -194,18 +187,6 @@ class SettingsController extends Notifier<SettingsState> {
 
   Future<void> setPensionDay(int day) async {
     await _save((n) => n.pensionDay = day);
-  }
-
-  Future<void> setPensionAmount(double amount) async {
-    await _save((n) => n.pensionAmount = amount);
-  }
-
-  Future<void> setFuelShare(double share) async {
-    await _save((n) => n.fuelShare = share);
-  }
-
-  Future<void> setAssetsCurrency(String currency) async {
-    await _save((n) => n.assetsCurrency = currency);
   }
 
   Future<void> setVaultPath(String path) async {

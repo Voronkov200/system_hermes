@@ -6,7 +6,6 @@ import 'package:hive_ce/hive.dart';
 import '../core/constants.dart';
 import '../data/models.dart';
 import 'bank_service.dart';
-import 'mining_service.dart';
 import 'settings_service.dart';
 
 /// Состояние протокола.
@@ -123,7 +122,7 @@ class HabitsController extends Notifier<HabitsState> {
 
   // ------------------------------------------------------------ действия
 
-  /// Отметить срыв вредной привычки: штраф в банке + блок фермы.
+  /// Отметить срыв вредной привычки и применить финансовый штраф.
   Future<void> markBreak(String id) async {
     final habit = _byId(id);
     final today = dateKey(DateTime.now());
@@ -133,16 +132,14 @@ class HabitsController extends Notifier<HabitsState> {
     habit.currentStreak = 0;
     _box.put(habit.id, habit);
 
-    // Штраф в Банке и блокировка майнинг-фермы на 24 часа.
+    // Штраф отражается только в локальном финансовом планировщике.
     await ref.read(bankProvider.notifier).applyHabitFine();
-    await ref.read(miningProvider.notifier).lockFarm(AppConstants.farmLockDuration);
 
     final next = _readState();
     state = HabitsState(
       habits: next.habits,
       lastPenaltyAt: DateTime.now(),
-      lastPenaltyText: 'Срыв: -${fmtAmount(AppConstants.habitFine)} BYN, '
-          'ферма заблокирована на 24 ч',
+      lastPenaltyText: 'Срыв: -${fmtAmount(AppConstants.habitFine)} BYN',
     );
   }
 
