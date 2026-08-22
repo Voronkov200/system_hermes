@@ -94,6 +94,46 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  publish_study_preview:
+    name: Publish study preview
+    needs: build
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'codex/study-content-gdz-fixes' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: system-hermes-release-apk-${{ github.sha }}
+          path: ./apk
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v1.0.0-study-preview.1
+          TARGET_SHA: a4e6e80d319ebd5940596a1bb84e73348e365212
+        run: |
+          set -euo pipefail
+          apk=$(find ./apk -type f -name '*.apk' -print -quit)
+          test -n "$apk"
+          asset=./System-Hermes-study-preview.apk
+          cp "$apk" "$asset"
+          notes='Тестовая сборка модуля «Учёба»: проверка источника, безопасный разбор параграфов и восстановленная загрузка ГДЗ. Flutter analyze, тесты и release-сборка пройдены.'
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$asset" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$asset" \
+              --target "$TARGET_SHA" \
+              --title 'System Hermes — Study Preview 1' \
+              --notes "$notes" \
+              --prerelease
+          fi
+
   install_on_phone:
     name: Install APK on Android phone
     needs: build
