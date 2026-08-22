@@ -115,7 +115,7 @@ class ParagraphScreen extends ConsumerWidget {
             if (hasSolutionPhotos) ...[
               const SizedBox(height: 12),
               _SolutionPhotosCard(
-                subject: subject!,
+                subject: subject,
               ),
             ],
             const SizedBox(height: 12),
