@@ -8,8 +8,7 @@ import 'features/habits/habits_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/journal/journal_screen.dart';
 import 'features/life/life_screen.dart';
-import 'features/mining/mining_screen.dart';
-import 'features/mining/pc_builder_screen.dart';
+import 'features/more/more_screen.dart';
 import 'features/obsidian/note_screen.dart';
 import 'features/obsidian/obsidian_screen.dart';
 import 'features/plan/docs_screen.dart';
@@ -23,6 +22,7 @@ import 'features/shell.dart';
 import 'features/study/paragraph_screen.dart';
 import 'features/study/study_screen.dart';
 import 'features/study/subject_screen.dart';
+import 'features/work/work_screen.dart';
 import 'services/study/study_service.dart';
 
 final appRouter = GoRouter(
@@ -33,9 +33,11 @@ final appRouter = GoRouter(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
         GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
-        GoRoute(path: '/bank', builder: (context, state) => const BankScreen()),
+        GoRoute(path: '/work', builder: (context, state) => const WorkScreen()),
+        GoRoute(path: '/money', builder: (context, state) => const BankScreen()),
+        GoRoute(path: '/bank', redirect: (context, state) => '/money'),
+        GoRoute(path: '/more', builder: (context, state) => const MoreScreen()),
         GoRoute(path: '/life', builder: (context, state) => const LifeScreen()),
-        GoRoute(path: '/mining', builder: (context, state) => const MiningScreen()),
         GoRoute(path: '/habits', builder: (context, state) => const HabitsScreen()),
         GoRoute(path: '/chat', builder: (context, state) => const ChatScreen()),
         GoRoute(path: '/plan', builder: (context, state) => const PlanScreen()),
@@ -43,7 +45,6 @@ final appRouter = GoRouter(
       ],
     ),
     // Полноэкранные экраны.
-    GoRoute(path: '/pc_builder', builder: (context, state) => const PcBuilderScreen()),
     GoRoute(
       path: '/study_subject/:id',
       builder: (context, state) => SubjectScreen(

@@ -38,13 +38,13 @@ Future<String> llmComplete(
     throw Exception('Не задан API-ключ LLM: вставь ключ Groq '
         'в Настройках (Hermes) и попробуй ещё раз.');
   }
-  final apiUrl = s.companionApiUrl.trim().isNotEmpty
-      ? s.companionApiUrl.trim()
+  final apiUrl = s.hermesLlmUrl.trim().isNotEmpty
+      ? s.hermesLlmUrl.trim()
       : 'https://api.groq.com/openai/v1/chat/completions';
   final usedModel = model?.trim().isNotEmpty == true
       ? model!.trim()
-      : s.companionModel.trim().isNotEmpty
-          ? s.companionModel.trim()
+      : s.hermesLlmModel.trim().isNotEmpty
+          ? s.hermesLlmModel.trim()
           : 'llama-3.3-70b-versatile';
 
   final res = await http

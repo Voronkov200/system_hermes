@@ -118,7 +118,7 @@ class _JournalScreenState extends ConsumerState<JournalScreen> {
           Expanded(
             child: visible.isEmpty
                 ? const Center(
-                    child: Text('Пусто. Спроси Hermes или Анастасию '
+                    child: Text('Пусто. Спроси Hermes '
                         '«добавь в журнал …»\nили надиктуй голосовое — '
                         'всё попадёт сюда.',
                         textAlign: TextAlign.center,

@@ -46,12 +46,9 @@ Future<void> main() async {
   registerHiveAdapters();
   await _openBoxSafely<Account>(BoxNames.accounts);
   await _openBoxSafely<Transaction>(BoxNames.transactions);
-  await _openBoxSafely<MiningFarm>(BoxNames.farm);
   await _openBoxSafely<HabitTracker>(BoxNames.habits);
   await _openBoxSafely<ChatMessage>(BoxNames.chat);
   await _openBoxSafely<LifeState>(BoxNames.life);
-  await _openBoxSafely<CompanionData>(BoxNames.companion);
-  await _openBoxSafely<ChatMessage>(BoxNames.companionChat);
   await _openBoxSafely<HermesTask>(BoxNames.tasks);
   await _openBoxSafely<JournalEntry>(BoxNames.journal);
   await _openBoxSafely<SourceDoc>(BoxNames.docs);
@@ -59,11 +56,6 @@ Future<void> main() async {
   await _openBoxSafely<StudyParagraph>(BoxNames.studyParagraphs);
 
   final prefs = await SharedPreferences.getInstance();
-
-  // Дата начала протокола (якорь стрика чистоты) — устанавливается один раз.
-  if ((prefs.getString(PrefKeys.protocolStart) ?? '').isEmpty) {
-    await prefs.setString(PrefKeys.protocolStart, dateKeyLocal());
-  }
 
   runApp(
     ProviderScope(

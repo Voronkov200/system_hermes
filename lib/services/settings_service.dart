@@ -1,5 +1,7 @@
 // Настройки приложения (SharedPreferences) + провайдер доступа к ним.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,19 +18,16 @@ class SettingsState {
   ThemeMode themeMode;
   int pensionDay;
   double pensionAmount;
-  double fuelShare;
-  String assetsCurrency; // USD | EUR
   String vaultPath;
   String hermesUrl;
   String hermesApiKey;
   String githubOwner;
   String githubRepo;
   String lastPensionMonth; // '2026-08' — месяц последнего начисления
-  String protocolStart; // дата начала протокола (для стрика)
   String lastWorkoutBonusDay; // '2026-08-07' — день последнего бонуса за тренировки
-  String companionApiUrl; // LLM для Анастасии (Groq-совместимый)
-  String companionApiKey;
-  String companionModel;
+  String hermesLlmUrl; // OpenAI-совместимый endpoint модели Hermes
+  String hermesLlmApiKey;
+  String hermesLlmModel;
   String searchSearxngUrl; // свой SearXNG-инстанс для модуля «Поиск»
   bool searchOffline; // «Не искать в интернете» (3.12, 5.1.9): пропускать поиск
 
@@ -36,50 +35,36 @@ class SettingsState {
     this.themeMode = ThemeMode.dark,
     this.pensionDay = AppConstants.defaultPensionDay,
     this.pensionAmount = AppConstants.defaultPension,
-    this.fuelShare = AppConstants.defaultFuelShare,
-    this.assetsCurrency = AppConstants.defaultAssetsCurrency,
     this.vaultPath = '',
     this.hermesUrl = '',
     this.hermesApiKey = '',
     this.githubOwner = '',
     this.githubRepo = '',
     this.lastPensionMonth = '',
-    this.protocolStart = '',
     this.lastWorkoutBonusDay = '',
-    this.companionApiUrl = AppConstants.companionDefaultUrl,
-    this.companionApiKey = '',
-    this.companionModel = AppConstants.companionDefaultModel,
+    this.hermesLlmUrl = AppConstants.hermesLlmDefaultUrl,
+    this.hermesLlmApiKey = '',
+    this.hermesLlmModel = AppConstants.hermesLlmDefaultModel,
     this.searchSearxngUrl = '',
     this.searchOffline = false,
   });
 
-  /// Ключ для LLM Hermes: свой ключ, либо ключ Анастасии, либо пусто.
-  String get llmKey => hermesApiKey.trim().isNotEmpty
-      ? hermesApiKey.trim()
-      : companionApiKey.trim();
-
-  /// Ключ для LLM Анастасии: свой ключ, либо ключ Hermes, либо пусто.
-  String get companionKey => companionApiKey.trim().isNotEmpty
-      ? companionApiKey.trim()
-      : hermesApiKey.trim();
+  String get llmKey => hermesLlmApiKey.trim();
 
   SettingsState copyWith({
     ThemeMode? themeMode,
     int? pensionDay,
     double? pensionAmount,
-    double? fuelShare,
-    String? assetsCurrency,
     String? vaultPath,
     String? hermesUrl,
     String? hermesApiKey,
     String? githubOwner,
     String? githubRepo,
     String? lastPensionMonth,
-    String? protocolStart,
     String? lastWorkoutBonusDay,
-    String? companionApiUrl,
-    String? companionApiKey,
-    String? companionModel,
+    String? hermesLlmUrl,
+    String? hermesLlmApiKey,
+    String? hermesLlmModel,
     String? searchSearxngUrl,
     bool? searchOffline,
   }) {
@@ -87,19 +72,16 @@ class SettingsState {
       themeMode: themeMode ?? this.themeMode,
       pensionDay: pensionDay ?? this.pensionDay,
       pensionAmount: pensionAmount ?? this.pensionAmount,
-      fuelShare: fuelShare ?? this.fuelShare,
-      assetsCurrency: assetsCurrency ?? this.assetsCurrency,
       vaultPath: vaultPath ?? this.vaultPath,
       hermesUrl: hermesUrl ?? this.hermesUrl,
       hermesApiKey: hermesApiKey ?? this.hermesApiKey,
       githubOwner: githubOwner ?? this.githubOwner,
       githubRepo: githubRepo ?? this.githubRepo,
       lastPensionMonth: lastPensionMonth ?? this.lastPensionMonth,
-      protocolStart: protocolStart ?? this.protocolStart,
       lastWorkoutBonusDay: lastWorkoutBonusDay ?? this.lastWorkoutBonusDay,
-      companionApiUrl: companionApiUrl ?? this.companionApiUrl,
-      companionApiKey: companionApiKey ?? this.companionApiKey,
-      companionModel: companionModel ?? this.companionModel,
+      hermesLlmUrl: hermesLlmUrl ?? this.hermesLlmUrl,
+      hermesLlmApiKey: hermesLlmApiKey ?? this.hermesLlmApiKey,
+      hermesLlmModel: hermesLlmModel ?? this.hermesLlmModel,
       searchSearxngUrl: searchSearxngUrl ?? this.searchSearxngUrl,
       searchOffline: searchOffline ?? this.searchOffline,
     );
@@ -111,31 +93,53 @@ class SettingsController extends Notifier<SettingsState> {
   @override
   SettingsState build() {
     final prefs = ref.read(sharedPreferencesProvider);
+    const legacyLlmUrlKey = 'companion_api_url';
+    const legacyLlmApiKey = 'companion_api_key';
+    const legacyLlmModelKey = 'companion_model';
+    final storedPension = prefs.getDouble(PrefKeys.pensionAmount);
+    // Пенсия — подтверждённая постоянная величина, а не редактируемый бюджет.
+    // Старые 450 BYN и любые тестовые значения исправляются при запуске.
+    const pensionAmount = AppConstants.defaultPension;
+    if (storedPension == null ||
+        (storedPension - pensionAmount).abs() >= 0.001) {
+      unawaited(prefs.setDouble(PrefKeys.pensionAmount, pensionAmount));
+    }
+    final serverApiKey = prefs.getString(PrefKeys.hermesApiKey) ?? '';
+    final llmUrl = prefs.getString(PrefKeys.hermesLlmUrl) ??
+        prefs.getString(legacyLlmUrlKey) ??
+        AppConstants.hermesLlmDefaultUrl;
+    final llmApiKey = prefs.getString(PrefKeys.hermesLlmApiKey) ??
+        prefs.getString(legacyLlmApiKey) ??
+        serverApiKey;
+    final llmModel = prefs.getString(PrefKeys.hermesLlmModel) ??
+        prefs.getString(legacyLlmModelKey) ??
+        AppConstants.hermesLlmDefaultModel;
+    if (!prefs.containsKey(PrefKeys.hermesLlmUrl)) {
+      unawaited(prefs.setString(PrefKeys.hermesLlmUrl, llmUrl));
+    }
+    if (!prefs.containsKey(PrefKeys.hermesLlmApiKey)) {
+      unawaited(prefs.setString(PrefKeys.hermesLlmApiKey, llmApiKey));
+    }
+    if (!prefs.containsKey(PrefKeys.hermesLlmModel)) {
+      unawaited(prefs.setString(PrefKeys.hermesLlmModel, llmModel));
+    }
     return SettingsState(
       themeMode: prefs.getString(PrefKeys.themeMode) == 'light'
           ? ThemeMode.light
           : ThemeMode.dark,
       pensionDay: prefs.getInt(PrefKeys.pensionDay) ?? AppConstants.defaultPensionDay,
-      pensionAmount:
-          prefs.getDouble(PrefKeys.pensionAmount) ?? AppConstants.defaultPension,
-      fuelShare:
-          prefs.getDouble(PrefKeys.fuelShare) ?? AppConstants.defaultFuelShare,
-      assetsCurrency:
-          prefs.getString(PrefKeys.assetsCurrency) ?? AppConstants.defaultAssetsCurrency,
+      pensionAmount: pensionAmount,
       vaultPath: prefs.getString(PrefKeys.vaultPath) ?? '',
       hermesUrl: prefs.getString(PrefKeys.hermesUrl) ?? '',
-      hermesApiKey: prefs.getString(PrefKeys.hermesApiKey) ?? '',
+      hermesApiKey: serverApiKey,
       githubOwner: prefs.getString(PrefKeys.githubOwner) ?? '',
       githubRepo: prefs.getString(PrefKeys.githubRepo) ?? '',
       lastPensionMonth: prefs.getString(PrefKeys.lastPensionMonth) ?? '',
-      protocolStart: prefs.getString(PrefKeys.protocolStart) ?? '',
       lastWorkoutBonusDay:
           prefs.getString(PrefKeys.workoutBonusDay) ?? '',
-      companionApiUrl: prefs.getString(PrefKeys.companionApiUrl) ??
-          AppConstants.companionDefaultUrl,
-      companionApiKey: prefs.getString(PrefKeys.companionApiKey) ?? '',
-      companionModel: prefs.getString(PrefKeys.companionModel) ??
-          AppConstants.companionDefaultModel,
+      hermesLlmUrl: llmUrl,
+      hermesLlmApiKey: llmApiKey,
+      hermesLlmModel: llmModel,
       searchSearxngUrl: prefs.getString(PrefKeys.searchSearxngUrl) ?? '',
       searchOffline: prefs.getBool(PrefKeys.searchOffline) ?? false,
     );
@@ -149,19 +153,16 @@ class SettingsController extends Notifier<SettingsState> {
       themeMode: s.themeMode,
       pensionDay: s.pensionDay,
       pensionAmount: s.pensionAmount,
-      fuelShare: s.fuelShare,
-      assetsCurrency: s.assetsCurrency,
       vaultPath: s.vaultPath,
       hermesUrl: s.hermesUrl,
       hermesApiKey: s.hermesApiKey,
       githubOwner: s.githubOwner,
       githubRepo: s.githubRepo,
       lastPensionMonth: s.lastPensionMonth,
-      protocolStart: s.protocolStart,
       lastWorkoutBonusDay: s.lastWorkoutBonusDay,
-      companionApiUrl: s.companionApiUrl,
-      companionApiKey: s.companionApiKey,
-      companionModel: s.companionModel,
+      hermesLlmUrl: s.hermesLlmUrl,
+      hermesLlmApiKey: s.hermesLlmApiKey,
+      hermesLlmModel: s.hermesLlmModel,
       searchSearxngUrl: s.searchSearxngUrl,
       searchOffline: s.searchOffline,
     );
@@ -170,20 +171,17 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.themeMode, next.themeMode == ThemeMode.light ? 'light' : 'dark');
     await prefs.setInt(PrefKeys.pensionDay, next.pensionDay);
     await prefs.setDouble(PrefKeys.pensionAmount, next.pensionAmount);
-    await prefs.setDouble(PrefKeys.fuelShare, next.fuelShare);
-    await prefs.setString(PrefKeys.assetsCurrency, next.assetsCurrency);
     await prefs.setString(PrefKeys.vaultPath, next.vaultPath);
     await prefs.setString(PrefKeys.hermesUrl, next.hermesUrl);
     await prefs.setString(PrefKeys.hermesApiKey, next.hermesApiKey);
     await prefs.setString(PrefKeys.githubOwner, next.githubOwner);
     await prefs.setString(PrefKeys.githubRepo, next.githubRepo);
     await prefs.setString(PrefKeys.lastPensionMonth, next.lastPensionMonth);
-    await prefs.setString(PrefKeys.protocolStart, next.protocolStart);
     await prefs.setString(
         PrefKeys.workoutBonusDay, next.lastWorkoutBonusDay);
-    await prefs.setString(PrefKeys.companionApiUrl, next.companionApiUrl);
-    await prefs.setString(PrefKeys.companionApiKey, next.companionApiKey);
-    await prefs.setString(PrefKeys.companionModel, next.companionModel);
+    await prefs.setString(PrefKeys.hermesLlmUrl, next.hermesLlmUrl);
+    await prefs.setString(PrefKeys.hermesLlmApiKey, next.hermesLlmApiKey);
+    await prefs.setString(PrefKeys.hermesLlmModel, next.hermesLlmModel);
     await prefs.setString(PrefKeys.searchSearxngUrl, next.searchSearxngUrl);
     await prefs.setBool(PrefKeys.searchOffline, next.searchOffline);
   }
@@ -194,18 +192,6 @@ class SettingsController extends Notifier<SettingsState> {
 
   Future<void> setPensionDay(int day) async {
     await _save((n) => n.pensionDay = day);
-  }
-
-  Future<void> setPensionAmount(double amount) async {
-    await _save((n) => n.pensionAmount = amount);
-  }
-
-  Future<void> setFuelShare(double share) async {
-    await _save((n) => n.fuelShare = share);
-  }
-
-  Future<void> setAssetsCurrency(String currency) async {
-    await _save((n) => n.assetsCurrency = currency);
   }
 
   Future<void> setVaultPath(String path) async {
@@ -235,16 +221,16 @@ class SettingsController extends Notifier<SettingsState> {
     await _save((n) => n.lastWorkoutBonusDay = day);
   }
 
-  Future<void> setCompanionApiUrl(String url) async {
-    await _save((n) => n.companionApiUrl = url);
+  Future<void> setHermesLlmUrl(String url) async {
+    await _save((n) => n.hermesLlmUrl = url);
   }
 
-  Future<void> setCompanionApiKey(String key) async {
-    await _save((n) => n.companionApiKey = key);
+  Future<void> setHermesLlmApiKey(String key) async {
+    await _save((n) => n.hermesLlmApiKey = key);
   }
 
-  Future<void> setCompanionModel(String model) async {
-    await _save((n) => n.companionModel = model);
+  Future<void> setHermesLlmModel(String model) async {
+    await _save((n) => n.hermesLlmModel = model);
   }
 
   Future<void> setSearchSearxngUrl(String url) async {
@@ -257,10 +243,6 @@ class SettingsController extends Notifier<SettingsState> {
     await _save((n) => n.searchOffline = value);
   }
 
-  Future<void> ensureProtocolStart() async {
-    if (s.protocolStart.isNotEmpty) return;
-    await _save((n) => n.protocolStart = dateKeyLocal());
-  }
 }
 
 String dateKeyLocal() {

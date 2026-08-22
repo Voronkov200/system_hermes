@@ -1,6 +1,6 @@
-// Схемы инструментов (function calling) для Hermes и Анастасии.
+// Схемы инструментов (function calling) для Hermes.
 
-import 'agent_loop.dart';
+import 'tool_definition.dart';
 
 const ToolDefinition webSearchTool = ToolDefinition(
   name: 'web_search',
@@ -272,17 +272,15 @@ const ToolDefinition requestPhotoVerificationTool = ToolDefinition(
 
 const ToolDefinition updateProtocolStatusTool = ToolDefinition(
   name: 'update_dopamine_protocol_status',
-  description:
-      'Отметить в протоколе тренировку (приседания/отжимания) или срыв '
-      'воздержания. Срыв = штраф и блокировка фермы.',
+  description: 'Отметить выполненную тренировку в протоколе.',
   parameters: {
     'type': 'object',
     'properties': {
       'habit_id': {
         'type': 'string',
-        'description': 'ID привычки: workout_squat, workout_pushups или abstinence',
+        'description': 'ID тренировки: workout_squat или workout_pushups',
       },
-      'status': {'type': 'string', 'description': '"broken" (срыв) или "done"'},
+      'status': {'type': 'string', 'description': 'Только "done"'},
     },
     'required': ['habit_id', 'status'],
   },
@@ -310,18 +308,4 @@ final List<ToolDefinition> hermesAgentTools = [
   getHealthDataTool,
   requestPhotoVerificationTool,
   updateProtocolStatusTool,
-];
-
-/// Инструменты Анастасии (компаньон: база знаний + веб + задачи).
-final List<ToolDefinition> nastyaAgentTools = [
-  searchKnowledgeTool,
-  readNoteTool,
-  createNoteTool,
-  webSearchTool,
-  getWebpageTool,
-  setTaskTool,
-  listTasksTool,
-  markTaskDoneTool,
-  journalAddTool,
-  currencyTool,
 ];

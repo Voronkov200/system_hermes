@@ -141,13 +141,13 @@ class LifeController extends Notifier<LifeStateEx> {
       case 6:
         return (s.actionCounts['atm'] ?? 0) > 0;
       case 7:
-        return _fuelBalance() >= 50;
+        return _generalBalance() >= 50;
       case 8:
-        return _assetsBalance() >= 10;
+        return _usdCardBalance() >= 10;
       case 9:
         return (s.actionCounts['freelance'] ?? 0) > 0;
       case 10:
-        return ref.read(habitsProvider).cleanStreak() >= 7;
+        return ref.read(habitsProvider).trainingStreak() >= 7;
       case 11:
         return s.daysInSystem >= 30;
       default:
@@ -209,23 +209,23 @@ class LifeController extends Notifier<LifeStateEx> {
       case 'days_30':
         return s.daysInSystem >= 30;
       case 'clean_7':
-        return ref.read(habitsProvider).cleanStreak() >= 7;
+        return ref.read(habitsProvider).trainingStreak() >= 7;
       case 'first_deposit':
-        return _fuelBalance() >= 50;
+        return _generalBalance() >= 50;
       case 'first_usd':
-        return _assetsBalance() >= 10;
+        return _usdCardBalance() >= 10;
       default:
         return false;
     }
   }
 
-  double _fuelBalance() {
-    final b = ref.read(bankProvider).byId(Account.fuelId);
+  double _generalBalance() {
+    final b = ref.read(bankProvider).generalAccount;
     return b?.balance ?? 0;
   }
 
-  double _assetsBalance() {
-    final b = ref.read(bankProvider).byId(Account.assetsId);
+  double _usdCardBalance() {
+    final b = ref.read(bankProvider).cardFor('USD');
     return b?.balance ?? 0;
   }
 
