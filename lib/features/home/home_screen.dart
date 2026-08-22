@@ -125,12 +125,12 @@ class _StatusBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.circle, size: 12, color: color),
+          const Icon(Icons.circle, size: 12, color: color),
           const SizedBox(width: 12),
-          Expanded(
+          const Expanded(
             child: Text(
               status,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
           Text('$clean дн',

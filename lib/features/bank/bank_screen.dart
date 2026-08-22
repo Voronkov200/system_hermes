@@ -675,7 +675,8 @@ class _TransferDialogState extends State<_TransferDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              value: fromId,
+              key: ValueKey('from-$fromId'),
+              initialValue: fromId,
               decoration: const InputDecoration(labelText: 'Откуда'),
               items: [
                 for (final account in widget.accounts)
@@ -701,7 +702,8 @@ class _TransferDialogState extends State<_TransferDialog> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: toId,
+              key: ValueKey('to-$fromId-$toId'),
+              initialValue: toId,
               decoration: const InputDecoration(labelText: 'Куда'),
               items: [
                 for (final account in widget.accounts)
