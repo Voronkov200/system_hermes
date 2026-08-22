@@ -1,5 +1,7 @@
 // Экран решений заданий с resheba.top: главы → номера → фото решения.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
@@ -85,11 +87,34 @@ class _ReshebaScreenState extends State<ReshebaScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                'Всего заданий: ${book.totalNumbers}. '
-                'Фото решений загружаются при открытии и сохраняются на '
-                'устройство.',
-                style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.verified_outlined,
+                        color: AppColors.accent,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Источник: resheba.top. Найдено заданий: '
+                          '${book.totalNumbers}. Выбери сначала точный раздел, '
+                          'затем номер из этой редакции учебника. Фото '
+                          'проверяется перед сохранением в кэш.',
+                          style: const TextStyle(
+                            color: AppColors.textDim,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               for (final section in book.sections) ...[
@@ -222,11 +247,13 @@ class _PhotoScreen extends StatefulWidget {
 
 class _PhotoScreenState extends State<_PhotoScreen> {
   late int _index;
+  late Future<File> _photoFuture;
 
   @override
   void initState() {
     super.initState();
     _index = widget.index;
+    _photoFuture = _loadCurrent();
   }
 
   int get _current => widget.section.numbers[_index];
@@ -234,7 +261,21 @@ class _PhotoScreenState extends State<_PhotoScreen> {
   void _move(int delta) {
     final next = _index + delta;
     if (next < 0 || next >= widget.section.numbers.length) return;
-    setState(() => _index = next);
+    setState(() {
+      _index = next;
+      _photoFuture = _loadCurrent();
+    });
+  }
+
+  Future<File> _loadCurrent() => ReshebaService().loadPhoto(
+        widget.subjectTitle,
+        widget.book,
+        widget.section,
+        _current,
+      );
+
+  void _retry() {
+    setState(() => _photoFuture = _loadCurrent());
   }
 
   @override
@@ -259,13 +300,8 @@ class _PhotoScreenState extends State<_PhotoScreen> {
           ),
         ],
       ),
-      body: FutureBuilder(
-        future: ReshebaService().loadPhoto(
-          widget.subjectTitle,
-          widget.book,
-          widget.section,
-          _current,
-        ),
+      body: FutureBuilder<File>(
+        future: _photoFuture,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
@@ -274,13 +310,28 @@ class _PhotoScreenState extends State<_PhotoScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Не удалось загрузить решение №$_current:\n${snap.error}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.danger,
-                    fontSize: 13,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.broken_image_outlined,
+                        color: AppColors.danger),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Не удалось загрузить решение №$_current:\n'
+                      '${snap.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      onPressed: _retry,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Повторить'),
+                    ),
+                  ],
                 ),
               ),
             );

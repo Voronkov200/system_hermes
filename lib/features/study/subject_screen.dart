@@ -183,7 +183,9 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
             ListTile(
               leading: const Icon(Icons.library_books),
               title: const Text('Разобрать учебник на параграфы'),
-              subtitle: const Text('PDF → параграфы (создаст заново)'),
+              subtitle: const Text(
+                'Обновит источник, сохранив конспекты и прогресс',
+              ),
               onTap: () => Navigator.pop(ctx, 'parse'),
             ),
             if (ReshebaService.jsPathFor(subject.title) != null)

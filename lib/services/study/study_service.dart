@@ -22,6 +22,7 @@ import '../agent/file_tools.dart';
 import '../settings_service.dart';
 import '../plan/docs_service.dart' show splitSections;
 import '../plan/llm.dart';
+import 'study_content_quality.dart';
 
 /// Предмет (или дополнительная литература) в «Учёбе».
 @HiveType(typeId: 12)
@@ -255,7 +256,7 @@ class StudyController extends Notifier<StudyState> {
   bool _bundledStarted = false;
   bool _bundleNeedsRefresh = false;
 
-  static const int _bundleVersion = 2;
+  static const int _bundleVersion = 3;
 
   static const Map<String, String> _bookCatalogMap = {
     '1155': 'История (часть 1)',
@@ -406,6 +407,39 @@ class StudyController extends Notifier<StudyState> {
     return list;
   }
 
+  StudyParagraph? _paragraphById(String id) {
+    final direct = _pbox.get(id);
+    if (direct != null) return direct;
+    for (final paragraph in _pbox.values) {
+      if (paragraph.id == id) return paragraph;
+    }
+    return null;
+  }
+
+  /// Сохраняет запись по её id и заодно удаляет старый ошибочный Hive-ключ.
+  /// В ранней версии импорта ключ и `StudyParagraph.id` создавались двумя
+  /// разными вызовами `genId()`, поэтому обычный `_pbox.get(id)` не работал.
+  Future<void> _putParagraph(StudyParagraph paragraph) async {
+    final staleKeys = _pbox.keys
+        .where(
+          (key) => key != paragraph.id && _pbox.get(key)?.id == paragraph.id,
+        )
+        .toList();
+    await _pbox.put(paragraph.id, paragraph);
+    for (final key in staleKeys) {
+      await _pbox.delete(key);
+    }
+  }
+
+  Future<void> _deleteParagraphById(String id) async {
+    final keys = _pbox.keys
+        .where((key) => key == id || _pbox.get(key)?.id == id)
+        .toList();
+    for (final key in keys) {
+      await _pbox.delete(key);
+    }
+  }
+
   Future<StudySubject> addSubject({
     required String title,
     String icon = 'book',
@@ -435,8 +469,12 @@ class StudyController extends Notifier<StudyState> {
 
   Future<void> removeSubject(String id) async {
     await _box.delete(id);
-    for (final p in _pbox.values.where((p) => p.subjectId == id)) {
-      await _pbox.delete(p.id);
+    final paragraphIds = _pbox.values
+        .where((paragraph) => paragraph.subjectId == id)
+        .map((paragraph) => paragraph.id)
+        .toSet();
+    for (final paragraphId in paragraphIds) {
+      await _deleteParagraphById(paragraphId);
     }
     _emit();
   }
@@ -477,20 +515,76 @@ class StudyController extends Notifier<StudyState> {
     return p;
   }
 
+  StudyParagraph? _findImportedParagraph(String subjectId, String title) {
+    final identity = StudyContentQuality.paragraphIdentity(
+      subjectId: subjectId,
+      title: title,
+    );
+    for (final paragraph in _pbox.values) {
+      final candidate = StudyContentQuality.paragraphIdentity(
+        subjectId: paragraph.subjectId,
+        title: paragraph.title,
+      );
+      if (candidate == identity) return paragraph;
+    }
+    return null;
+  }
+
+  /// Идемпотентно обновляет распознанный источник, сохраняя пользовательский
+  /// конспект, флаг изучения и стабильный id параграфа.
+  Future<bool> _upsertImportedParagraph({
+    required StudySubject subject,
+    required String title,
+    required String chapter,
+    required String pages,
+    required String sourceText,
+    required int order,
+  }) async {
+    final existing = _findImportedParagraph(subject.id, title);
+    if (existing != null) {
+      final updated = existing.copyWith(
+        chapter: chapter.isEmpty ? existing.chapter : chapter,
+        pages: pages.isEmpty ? existing.pages : pages,
+        sourceText: sourceText.isEmpty ? existing.sourceText : sourceText,
+        updatedAt: DateTime.now(),
+      );
+      await _putParagraph(updated);
+      return false;
+    }
+
+    final id = genId();
+    await _pbox.put(
+      id,
+      StudyParagraph(
+        id: id,
+        subjectId: subject.id,
+        title: title,
+        chapter: chapter,
+        pages: pages,
+        sourceText: sourceText,
+        updatedAt: DateTime.now(),
+        order: order,
+      ),
+    );
+    return true;
+  }
+
   Future<void> updateParagraph(StudyParagraph p) async {
-    await _pbox.put(p.id, p);
+    await _putParagraph(p);
     _emit();
   }
 
   Future<void> toggleLearned(String id) async {
-    final p = _pbox.get(id);
+    final p = _paragraphById(id);
     if (p == null) return;
-    await _pbox.put(id, p.copyWith(learned: !p.learned, updatedAt: DateTime.now()));
+    await _putParagraph(
+      p.copyWith(learned: !p.learned, updatedAt: DateTime.now()),
+    );
     _emit();
   }
 
   Future<void> removeParagraph(String id) async {
-    await _pbox.delete(id);
+    await _deleteParagraphById(id);
     _emit();
   }
 
@@ -545,16 +639,21 @@ class StudyController extends Notifier<StudyState> {
 
     final catalogItem = _matchCatalog(pdfLower);
     final subject = await _subjectForPdf(pdfName, pdfLower, catalogItem, method);
-    final now = DateTime.now();
     var order = _nextOrder(subject.id);
     for (final item in paragraphList) {
-      final m = item as Map<String, dynamic>;
+      if (item is! Map) continue;
+      final m = Map<String, dynamic>.from(item);
       final title = (m['title'] as String? ?? '').trim();
       if (title.isEmpty) continue;
-      final exists = _pbox.values.any((p) => p.subjectId == subject.id && p.title == title);
-      if (exists) continue;
-      final pid = genId();
-      await _pbox.put(pid, StudyParagraph(id: pid, subjectId: subject.id, title: title, chapter: (m['chapter'] as String? ?? '').trim(), pages: (m['pages'] as String? ?? '').trim(), sourceText: (m['text'] as String? ?? '').trim(), updatedAt: now, order: order++));
+      final created = await _upsertImportedParagraph(
+        subject: subject,
+        title: title,
+        chapter: (m['chapter'] as String? ?? '').trim(),
+        pages: (m['pages'] as String? ?? '').trim(),
+        sourceText: (m['text'] as String? ?? '').trim(),
+        order: order,
+      );
+      if (created) order++;
     }
     state = state.copyWith(busy: false, clearError: true);
     _emit();
@@ -571,16 +670,21 @@ class StudyController extends Notifier<StudyState> {
     }
     subject ??= await addSubject(title: item.title, icon: item.icon, kind: item.kind, category: item.category, subtitle: item.subtitle);
     final s = subject;
-    final now = DateTime.now();
     var order = _nextOrder(s.id);
     for (final raw in paragraphList) {
-      final m = raw as Map<String, dynamic>;
+      if (raw is! Map) continue;
+      final m = Map<String, dynamic>.from(raw);
       final title = (m['title'] as String? ?? '').trim();
       if (title.isEmpty) continue;
-      final exists = _pbox.values.any((p) => p.subjectId == s.id && p.title == title);
-      if (exists) continue;
-      final pid = genId();
-      await _pbox.put(pid, StudyParagraph(id: pid, subjectId: s.id, title: title, chapter: (m['chapter'] as String? ?? '').trim(), pages: (m['pages'] as String? ?? '').trim(), sourceText: (m['text'] as String? ?? '').trim(), updatedAt: now, order: order++));
+      final created = await _upsertImportedParagraph(
+        subject: s,
+        title: title,
+        chapter: (m['chapter'] as String? ?? '').trim(),
+        pages: (m['pages'] as String? ?? '').trim(),
+        sourceText: (m['text'] as String? ?? '').trim(),
+        order: order,
+      );
+      if (created) order++;
     }
     _emit();
     return s;
@@ -740,14 +844,22 @@ class StudyController extends Notifier<StudyState> {
       final parts = splitPdfToParagraphs(text);
       if (parts.isEmpty) throw Exception('Не удалось распознать текст учебника на параграфы. Возможно, это скан без OCR-слоя.');
       var order = _nextOrder(subject.id);
+      var processed = 0;
       for (final part in parts) {
-        final duplicate = _pbox.values.any((p) => p.subjectId == subject.id && p.title == part.title && p.pages == part.pages);
-        if (duplicate) continue;
-        await _pbox.put(genId(), StudyParagraph(id: genId(), subjectId: subject.id, title: part.title, chapter: part.chapter, pages: part.pages, sourceText: part.text, updatedAt: DateTime.now(), order: order++));
+        final created = await _upsertImportedParagraph(
+          subject: subject,
+          title: part.title,
+          chapter: part.chapter,
+          pages: part.pages,
+          sourceText: part.text,
+          order: order,
+        );
+        if (created) order++;
+        processed++;
       }
       state = state.copyWith(busy: false, clearError: true);
       _emit();
-      return parts.length;
+      return processed;
     } catch (e) {
       state = state.copyWith(busy: false, error: '$e');
       rethrow;
@@ -755,9 +867,8 @@ class StudyController extends Notifier<StudyState> {
   }
 
   Future<int> reparsePdf(StudySubject subject) async {
-    for (final p in _pbox.values.where((p) => p.subjectId == subject.id)) {
-      await _pbox.delete(p.id);
-    }
+    // Повторный разбор обновляет источник идемпотентно. Удаление здесь
+    // уничтожало конспекты, прогресс и стабильные ссылки на параграфы.
     return parsePdf(subject);
   }
 
@@ -776,43 +887,81 @@ class StudyController extends Notifier<StudyState> {
   Future<String> analyzeParagraph(StudyParagraph p, {String mode = modeConspectus}) async {
     final subject = subjectOf(p.subjectId);
     if (subject == null) throw Exception('Предмет не найден.');
+    final report = StudyContentQuality.inspect(p.sourceText);
+    if (!report.canAnalyze) {
+      final message = '${report.label}. Прикрепи или повторно разбери PDF; '
+          'Hermes не будет составлять материал только по названию темы.';
+      state = state.copyWith(
+        busy: false,
+        error: message,
+        workingId: p.id,
+      );
+      throw StateError(message);
+    }
     final s = ref.read(settingsProvider);
-    final source = p.sourceText.trim().isEmpty ? (p.content.trim().isEmpty ? 'Параграф: ${p.title}' : p.content) : p.sourceText;
+    final source = StudyContentQuality.prepareForAnalysis(p.sourceText);
     final sys = _systemPrompt(subject, mode);
-    final user = 'Учебник: ${subject.title}${subject.subtitle.isEmpty ? '' : ' (${subject.subtitle})'}\nГлава: ${p.chapter.isEmpty ? '—' : p.chapter}\nПараграф: ${p.title}${p.pages.isEmpty ? '' : ' · ${p.pages}'}\n\nТекст параграфа:\n$source';
+    final user = 'Учебник: ${subject.title}'
+        '${subject.subtitle.isEmpty ? '' : ' (${subject.subtitle})'}\n'
+        'Глава: ${p.chapter.isEmpty ? '—' : p.chapter}\n'
+        'Параграф: ${p.title}'
+        '${p.pages.isEmpty ? '' : ' · ${p.pages}'}\n'
+        'Качество извлечения: ${report.label}.\n\n'
+        'Текст параграфа:\n$source';
     state = state.copyWith(busy: true, error: null, workingId: p.id);
     try {
       final answer = await llmComplete(s, system: sys, user: user, maxTokens: 3000, timeoutSeconds: 180, temperature: 0.3);
-      await _pbox.put(p.id, p.copyWith(content: answer, updatedAt: DateTime.now()));
+      await _putParagraph(
+        p.copyWith(content: answer, updatedAt: DateTime.now()),
+      );
       state = state.copyWith(busy: false, clearError: true, clearWorking: true);
       return answer;
     } catch (e) {
-      state = state.copyWith(busy: false, error: '$e', clearWorking: true);
+      state = state.copyWith(busy: false, error: '$e', workingId: p.id);
       rethrow;
     }
   }
 
   String _systemPrompt(StudySubject subject, String mode) {
-    final base = 'Ты — репетитор по предмету «${subject.title}» за 11 класс белорусской школы. Отвечай по-русски, по существу, только по приведённому тексту учебника, ничего не выдумывай. Оформляй markdown: заголовки, списки, таблицы. Указывай страницы учебника, если они видны в тексте (маркеры «--- стр. N ---»). Не переписывай исходник дословно.\n\n';
+    final base = 'Ты — репетитор по предмету «${subject.title}» за 11 класс '
+        'белорусской школы. Используй только приведённый текст учебника. '
+        'Не восстанавливай повреждённые OCR-формулы по догадке и не создавай '
+        'несуществующие факты, номера, вопросы или задания. Если фрагмент '
+        'нечитаем, прямо напиши «Не удалось надёжно распознать фрагмент». '
+        'Оформляй результат корректным Markdown: заголовки и списки. Не '
+        'используй псевдотаблицы с вертикальными чертами. Не выводи команды '
+        'LaTeX вроде \\frac, \\sqrt и \\cdot: формулы записывай читаемым '
+        'обычным текстом или Unicode. Страницу указывай только тогда, когда '
+        'она подтверждена источником. Не переписывай исходник дословно.\n\n';
     switch (mode) {
       case modeRules:
         return '$base Собери правила, определения, теоремы, формулы и выводы. Для каждого укажи страницу, если она известна, и пример только если он есть в источнике.';
       case modeTasks:
-        return '$base Разбери задания/упражнения по шагам. Не придумывай номера. Для каждого пункта: условие → решение → ответ.';
+        return '$base Найди только реально присутствующие задания. Сохрани '
+            'исходные номера и подпункты а/б/в. Разбирай по схеме: точное '
+            'условие → шаги решения → ответ. Если условие или формула '
+            'повреждены, не решай задание и укажи причину.';
       case modeAnswers:
-        return '$base Дай ответы на вопросы в конце параграфа. Если вопросов нет, сформулируй несколько проверочных вопросов по материалу.';
+        return '$base Дай ответы только на вопросы, которые действительно '
+            'присутствуют после параграфа. Если вопросов в источнике нет, '
+            'так и напиши; не создавай свои вопросы в этом режиме.';
       case modeSummary:
         return '$base Для литературы дай краткое содержание, героев, тему, идею и ключевые моменты без выдуманных деталей.';
       case modeConspectus:
       default:
-        return '$base Составь короткий конспект для тетради 11 класса: план, главное по пунктам, определения/правила/даты/формулы, вопросы с краткими ответами и вывод.';
+        return '$base Составь короткий конспект для тетради: цель темы, '
+            '3–7 основных тезисов, точные определения/правила/даты/формулы '
+            'из источника, один подтверждённый пример и итог. Не дублируй '
+            'одну мысль в нескольких разделах.';
     }
   }
 
   Future<void> clearParagraphContent(String id) async {
-    final p = _pbox.get(id);
+    final p = _paragraphById(id);
     if (p == null) return;
-    await _pbox.put(id, p.copyWith(content: '', updatedAt: DateTime.now()));
+    await _putParagraph(
+      p.copyWith(content: '', updatedAt: DateTime.now()),
+    );
     _emit();
   }
 }

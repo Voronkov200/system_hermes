@@ -1,9 +1,11 @@
 // Экран параграфа «Учёба»: конспект, разбор правил/задач/вопросов.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
+import '../../services/study/study_content_quality.dart';
 import '../../services/study/study_service.dart';
 
 class ParagraphScreen extends ConsumerStatefulWidget {
@@ -41,10 +43,16 @@ class _ParagraphScreenState extends ConsumerState<ParagraphScreen> {
     }
     final busy = st.workingId == p.id && st.busy;
     final subject = notifier.subjectOf(p.subjectId);
+    final sourceReport = StudyContentQuality.inspect(p.sourceText);
+    final canAnalyze = sourceReport.canAnalyze;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Параграф'),
+        title: Text(
+          p.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(
             tooltip: 'Выучено',
@@ -96,6 +104,8 @@ class _ParagraphScreenState extends ConsumerState<ParagraphScreen> {
               ),
             ),
           const SizedBox(height: 12),
+          _SourceQualityCard(report: sourceReport, pages: p.pages),
+          const SizedBox(height: 12),
           if (busy) ...[
             const LinearProgressIndicator(),
             const SizedBox(height: 4),
@@ -116,15 +126,41 @@ class _ParagraphScreenState extends ConsumerState<ParagraphScreen> {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
-              child: p.content.trim().isEmpty
-                  ? const Text(
-                      'Конспект ещё не создан. Выбери режим разбора ниже:',
-                      style: TextStyle(color: AppColors.textDim, fontSize: 13),
-                    )
-                  : SelectableText(
-                      p.content,
-                      style: const TextStyle(fontSize: 13, height: 1.5),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Конспект Hermes',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (p.content.trim().isEmpty)
+                    Text(
+                      canAnalyze
+                          ? 'Конспект ещё не создан. Выбери режим разбора ниже.'
+                          : 'Разбор заблокирован, пока нет пригодного текста '
+                              'учебника.',
+                      style: const TextStyle(
+                        color: AppColors.textDim,
+                        fontSize: 13,
+                      ),
+                    )
+                  else
+                    MarkdownBody(
+                      data: p.content,
+                      selectable: true,
+                      styleSheet: MarkdownStyleSheet.fromTheme(
+                        Theme.of(context),
+                      ).copyWith(
+                        p: const TextStyle(fontSize: 13, height: 1.5),
+                        listBullet: const TextStyle(fontSize: 13, height: 1.5),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -143,61 +179,86 @@ class _ParagraphScreenState extends ConsumerState<ParagraphScreen> {
             children: [
               _ModeChip(
                 icon: Icons.notes,
-                label: 'Конспект',
-                onTap: busy
+                label: 'Создать конспект',
+                onTap: busy || !canAnalyze
                     ? null
-                    : () => notifier.analyzeParagraph(
-                          p,
-                          mode: StudyController.modeConspectus,
-                        ),
+                    : () => _analyze(p, StudyController.modeConspectus),
               ),
               _ModeChip(
                 icon: Icons.rule,
                 label: 'Правила и теоремы',
-                onTap: busy
+                onTap: busy || !canAnalyze
                     ? null
-                    : () => notifier.analyzeParagraph(
-                          p,
-                          mode: StudyController.modeRules,
-                        ),
+                    : () => _analyze(p, StudyController.modeRules),
               ),
               _ModeChip(
                 icon: Icons.calculate,
                 label: 'Задания с решением',
-                onTap: busy
+                onTap: busy || !canAnalyze
                     ? null
-                    : () => notifier.analyzeParagraph(
-                          p,
-                          mode: StudyController.modeTasks,
-                        ),
+                    : () => _analyze(p, StudyController.modeTasks),
               ),
               _ModeChip(
                 icon: Icons.question_answer,
                 label: 'Вопросы после параграфа',
-                onTap: busy
+                onTap: busy || !canAnalyze
                     ? null
-                    : () => notifier.analyzeParagraph(
-                          p,
-                          mode: StudyController.modeAnswers,
-                        ),
+                    : () => _analyze(p, StudyController.modeAnswers),
               ),
               if (subject?.analysis == 'literature')
                 _ModeChip(
                   icon: Icons.auto_stories,
                   label: 'Краткое содержание',
-                  onTap: busy
+                  onTap: busy || !canAnalyze
                       ? null
-                      : () => notifier.analyzeParagraph(
-                            p,
-                            mode: StudyController.modeSummary,
-                          ),
+                      : () => _analyze(p, StudyController.modeSummary),
                 ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ExpansionTile(
+              leading: const Icon(Icons.menu_book, color: AppColors.cyan),
+              title: const Text(
+                'Исходный текст учебника',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+              subtitle: const Text(
+                'Для сверки конспекта и формул',
+                style: TextStyle(fontSize: 11),
+              ),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                  child: SelectableText(
+                    p.sourceText.trim().isEmpty
+                        ? 'Исходный текст отсутствует.'
+                        : StudyContentQuality.preview(p.sourceText),
+                    style: const TextStyle(fontSize: 12, height: 1.45),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
         ],
       ),
     );
+  }
+
+  Future<void> _analyze(StudyParagraph paragraph, String mode) async {
+    try {
+      await ref.read(studyProvider.notifier).analyzeParagraph(
+            paragraph,
+            mode: mode,
+          );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Разбор не выполнен: $error')),
+      );
+    }
   }
 
   Future<void> _onMenu(String v, StudyParagraph p) async {
@@ -228,6 +289,63 @@ class _ParagraphScreenState extends ConsumerState<ParagraphScreen> {
           if (mounted) Navigator.of(context).pop();
         }
     }
+  }
+}
+
+class _SourceQualityCard extends StatelessWidget {
+  final StudySourceReport report;
+  final String pages;
+
+  const _SourceQualityCard({required this.report, required this.pages});
+
+  @override
+  Widget build(BuildContext context) {
+    final warning = report.quality != StudySourceQuality.ready;
+    final color = warning ? AppColors.warning : AppColors.accent;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              warning ? Icons.warning_amber_rounded : Icons.verified_outlined,
+              color: color,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    report.label,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    [
+                      if (pages.isNotEmpty) pages,
+                      '${report.characterCount} символов',
+                      if (report.quality == StudySourceQuality.noisy)
+                        'нечёткие формулы нельзя восстанавливать по догадке',
+                    ].join(' · '),
+                    style: const TextStyle(
+                      color: AppColors.textDim,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
