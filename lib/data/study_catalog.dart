@@ -49,10 +49,22 @@ const List<StudyCatalogItem> studyCatalog = [
     aliases: ['грамадазнаўства'],
   ),
   StudyCatalogItem(
+    title: 'Беларуская мова',
+    subtitle: 'Г. М. Валочка, Л. С. Васюковіч и др.',
+    icon: 'lang_bel',
+    category: 'Языки',
+  ),
+  StudyCatalogItem(
     title: 'Беларуская літаратура',
     subtitle: 'З. П. Мельнікава, Г. М. Трафімава',
     icon: 'lit_bel',
     category: 'Гуманитарные',
+  ),
+  StudyCatalogItem(
+    title: 'Русский язык',
+    subtitle: 'В. Л. Леонович и др.',
+    icon: 'lang_ru',
+    category: 'Языки',
   ),
   StudyCatalogItem(
     title: 'Русская литература',

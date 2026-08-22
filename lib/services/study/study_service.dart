@@ -254,14 +254,16 @@ class StudyController extends Notifier<StudyState> {
   bool _bundledStarted = false;
   bool _bundleNeedsRefresh = false;
 
-  static const int _bundleVersion = 4;
+  static const int _bundleVersion = 5;
 
   static const Map<String, String> _bookCatalogMap = {
     '1155': 'История (часть 1)',
     '1176': 'История (часть 2)',
     '938': 'Обществоведение',
+    '920': 'Беларуская мова',
     '904': 'Беларуская літаратура',
     '1202': 'Беларуская літаратура',
+    '914': 'Русский язык',
     '915': 'Русская литература',
     '1207': 'Русская литература',
     '1208': 'Русская литература',
@@ -278,8 +280,7 @@ class StudyController extends Notifier<StudyState> {
   };
 
   static const Set<String> _excludedBookIds = {
-    '914', '920', '1014', '1025', '1027', '903', '924', '949', '959',
-    '1037', '1057',
+    '1014', '1025', '1027', '903', '924', '949', '959', '1037', '1057',
     '1040', '1044', '917', '946', '776', '777', '911', '913', '730', '770',
     '798', '939', '945', '965', '1177', '804', '806', '809', '810', '916',
     '901', '905', '898', '922', '896', '931', '918', '940', '1172', '1188',
@@ -317,22 +318,6 @@ class StudyController extends Notifier<StudyState> {
   }
 
   void _ensureCatalog() {
-    // Эти два предмета входили в ранний встроенный комплект по ошибке.
-    // Удаляем только записи без прикреплённого пользовательского PDF.
-    const removedBuiltInLanguages = {'Беларуская мова', 'Русский язык'};
-    for (final subject in _box.values.toList()) {
-      if (!removedBuiltInLanguages.contains(subject.title) ||
-          subject.filePath != null) {
-        continue;
-      }
-      final paragraphKeys = _pbox.keys
-          .where((key) => _pbox.get(key)?.subjectId == subject.id)
-          .toList();
-      for (final key in paragraphKeys) {
-        unawaited(_pbox.delete(key));
-      }
-      unawaited(_box.delete(subject.id));
-    }
     for (final item in studyCatalog) {
       StudySubject? existing;
       for (final s in _box.values) {
@@ -606,7 +591,6 @@ class StudyController extends Notifier<StudyState> {
   }
 
   static const _excludedSubjects = [
-    'беларуская мова', 'белорусский язык', 'русский язык', 'руская мова',
     'немецкий', 'нямецкая', 'французский', 'французская', 'испанский',
     'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский',
     'польский', 'польская', 'иностранный язык', 'допризывн', 'дапрызыўн',
