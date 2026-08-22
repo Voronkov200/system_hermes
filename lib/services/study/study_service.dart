@@ -872,12 +872,6 @@ class StudyController extends Notifier<StudyState> {
     return parsePdf(subject);
   }
 
-  static int _pageCount(String text) {
-    final re = RegExp(r'---\s*стр\.\s*(\d+)\s*---');
-    final nums = re.allMatches(text).map((m) => int.parse(m.group(1)!));
-    return nums.isEmpty ? 0 : nums.reduce((a, b) => a > b ? a : b);
-  }
-
   static const modeConspectus = 'conspectus';
   static const modeRules = 'rules';
   static const modeTasks = 'tasks';

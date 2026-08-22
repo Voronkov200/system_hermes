@@ -1,6 +1,6 @@
 // Схемы инструментов (function calling) для Hermes и Анастасии.
 
-import 'agent_loop.dart';
+import 'tool_definition.dart';
 
 const ToolDefinition webSearchTool = ToolDefinition(
   name: 'web_search',

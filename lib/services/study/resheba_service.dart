@@ -179,7 +179,9 @@ class ReshebaService {
         final from = int.parse(range.group(1)!);
         final to = int.parse(range.group(2)!);
         if (to >= from && to - from <= 5000) {
-          for (var n = from; n <= to; n++) result.add(n);
+          for (var n = from; n <= to; n++) {
+            result.add(n);
+          }
         }
       } else {
         final n = int.tryParse(value);
