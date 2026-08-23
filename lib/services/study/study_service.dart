@@ -22,6 +22,7 @@ import '../settings_service.dart';
 import '../plan/docs_service.dart' show splitSections;
 import 'study_content_quality.dart';
 import 'study_rule_images_service.dart';
+import 'study_textbook_catalog.dart';
 
 /// Предмет (или дополнительная литература) в «Учёбе».
 @HiveType(typeId: 12)
@@ -255,7 +256,7 @@ class StudyController extends Notifier<StudyState> {
   bool _bundledStarted = false;
   bool _bundleNeedsRefresh = false;
 
-  static const int _bundleVersion = 7;
+  static const int _bundleVersion = 8;
 
   static const Map<String, String> _bookCatalogMap = {
     '1155': 'История (часть 1)',
@@ -522,19 +523,31 @@ class StudyController extends Notifier<StudyState> {
     return p;
   }
 
-  StudyParagraph? _findImportedParagraph(String subjectId, String title) {
+  StudyParagraph? _findImportedParagraph(
+    String subjectId,
+    String title, {
+    String? sourceBookId,
+  }) {
     final identity = StudyContentQuality.paragraphIdentity(
       subjectId: subjectId,
       title: title,
     );
+    StudyParagraph? legacy;
     for (final paragraph in _pbox.values) {
       final candidate = StudyContentQuality.paragraphIdentity(
         subjectId: paragraph.subjectId,
         title: paragraph.title,
       );
-      if (candidate == identity) return paragraph;
+      if (candidate != identity) continue;
+      if (sourceBookId == null) return paragraph;
+      final candidateBook =
+          StudyTextbookCatalog.bookIdFromChapter(paragraph.chapter);
+      if (candidateBook == sourceBookId) return paragraph;
+      // Старая версия не сохраняла id книги. Используем такую запись один
+      // раз как миграцию, а не создаём дубликат параграфа.
+      if (candidateBook == null) legacy ??= paragraph;
     }
-    return null;
+    return legacy;
   }
 
   /// Идемпотентно обновляет распознанный источник, сохраняя пользовательский
@@ -546,11 +559,20 @@ class StudyController extends Notifier<StudyState> {
     required String pages,
     required String sourceText,
     required int order,
+    String? sourceBookId,
   }) async {
-    final existing = _findImportedParagraph(subject.id, title);
+    final existing = _findImportedParagraph(
+      subject.id,
+      title,
+      sourceBookId: sourceBookId,
+    );
+    final storedChapter = StudyTextbookCatalog.chapterWithBook(
+      chapter,
+      sourceBookId,
+    );
     if (existing != null) {
       final updated = existing.copyWith(
-        chapter: chapter.isEmpty ? existing.chapter : chapter,
+        chapter: storedChapter.isEmpty ? existing.chapter : storedChapter,
         pages: pages.isEmpty ? existing.pages : pages,
         sourceText: sourceText.isEmpty ? existing.sourceText : sourceText,
         updatedAt: DateTime.now(),
@@ -566,7 +588,7 @@ class StudyController extends Notifier<StudyState> {
         id: id,
         subjectId: subject.id,
         title: title,
-        chapter: chapter,
+        chapter: storedChapter,
         pages: pages,
         sourceText: sourceText,
         updatedAt: DateTime.now(),
@@ -635,7 +657,7 @@ class StudyController extends Notifier<StudyState> {
       if (bookId == null || _excludedBookIds.contains(bookId) || !_bookCatalogMap.containsKey(bookId)) return null;
       final catalogTitle = _bookCatalogMap[bookId]!;
       final catalogItem = studyCatalog.firstWhere((i) => i.title == catalogTitle);
-      return _importBook(catalogItem, paragraphList, method);
+      return _importBook(catalogItem, paragraphList, method, bookId: bookId);
     }
 
     for (final marker in _excludedSubjects) {
@@ -647,7 +669,7 @@ class StudyController extends Notifier<StudyState> {
     final catalogTitle = bookId == null ? null : _bookCatalogMap[bookId];
     if (catalogTitle != null) {
       final catalogItem = studyCatalog.firstWhere((i) => i.title == catalogTitle);
-      return _importBook(catalogItem, paragraphList, method);
+      return _importBook(catalogItem, paragraphList, method, bookId: bookId!);
     }
 
     final catalogItem = _matchCatalog(pdfLower);
@@ -665,6 +687,7 @@ class StudyController extends Notifier<StudyState> {
         pages: (m['pages'] as String? ?? '').trim(),
         sourceText: (m['text'] as String? ?? '').trim(),
         order: order,
+        sourceBookId: bookId,
       );
       if (created) order++;
     }
@@ -673,7 +696,12 @@ class StudyController extends Notifier<StudyState> {
     return subject;
   }
 
-  Future<StudySubject> _importBook(StudyCatalogItem item, List<dynamic> paragraphList, String method) async {
+  Future<StudySubject> _importBook(
+    StudyCatalogItem item,
+    List<dynamic> paragraphList,
+    String method, {
+    required String bookId,
+  }) async {
     StudySubject? subject;
     for (final s in _box.values) {
       if (s.title == item.title) {
@@ -696,6 +724,7 @@ class StudyController extends Notifier<StudyState> {
         pages: (m['pages'] as String? ?? '').trim(),
         sourceText: (m['text'] as String? ?? '').trim(),
         order: order,
+        sourceBookId: bookId,
       );
       if (created) order++;
     }

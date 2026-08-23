@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../services/study/resheba_service.dart';
 import '../../services/study/study_service.dart';
+import '../../services/study/study_textbook_catalog.dart';
 import 'resheba_screen.dart';
 
 class SubjectScreen extends ConsumerStatefulWidget {
@@ -45,7 +46,9 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
         .where((p) =>
             query.isEmpty ||
             p.title.toLowerCase().contains(query) ||
-            p.chapter.toLowerCase().contains(query))
+            StudyTextbookCatalog.visibleChapter(p.chapter)
+                .toLowerCase()
+                .contains(query))
         .toList();
     final learned = allParagraphs.where((p) => p.learned).length;
     final hasGdz = ReshebaService.jsPathFor(subject.title) != null;
@@ -502,6 +505,7 @@ class _ParagraphTile extends ConsumerWidget {
     final st = ref.watch(studyProvider);
     final busy = st.workingId == paragraph.id && st.busy;
     final p = paragraph;
+    final chapter = StudyTextbookCatalog.visibleChapter(p.chapter);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -534,11 +538,11 @@ class _ParagraphTile extends ConsumerWidget {
                         color: p.learned ? AppColors.textDim : null,
                       ),
                     ),
-                    if (p.pages.isNotEmpty || p.chapter.isNotEmpty) ...[
+                    if (p.pages.isNotEmpty || chapter.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
                         [
-                          if (p.chapter.isNotEmpty) p.chapter,
+                          if (chapter.isNotEmpty) chapter,
                           if (p.pages.isNotEmpty) p.pages,
                         ].join(' · '),
                         style: const TextStyle(

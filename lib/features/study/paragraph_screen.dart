@@ -1,17 +1,17 @@
 // Экран параграфа: полностью локальный разбор вложенного текста учебника.
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 import '../../core/theme.dart';
 import '../../services/study/local_study_content.dart';
 import '../../services/study/resheba_service.dart';
 import '../../services/study/study_content_quality.dart';
-import '../../services/study/study_rule_images_service.dart';
 import '../../services/study/study_service.dart';
+import '../../services/study/study_textbook_catalog.dart';
+import '../../services/study/study_textbook_service.dart';
 import 'resheba_screen.dart';
 
 class ParagraphScreen extends ConsumerWidget {
@@ -59,6 +59,15 @@ class ParagraphScreen extends ConsumerWidget {
     };
     final hasSolutionPhotos = subject != null &&
         ReshebaService.jsPathFor(subject.title) != null;
+    final textbookRange = StudyTextbookCatalog.rangeFor(
+      chapter: paragraph.chapter,
+      pages: paragraph.pages,
+      siblings: state.paragraphs
+          .where((item) => item.subjectId == paragraph.subjectId)
+          .map((item) => (chapter: item.chapter, pages: item.pages)),
+    );
+    final visibleChapter =
+        StudyTextbookCatalog.visibleChapter(paragraph.chapter);
 
     return Scaffold(
       appBar: AppBar(
@@ -109,7 +118,7 @@ class ParagraphScreen extends ConsumerWidget {
                 [
                   subject.title,
                   if (subject.subtitle.isNotEmpty) subject.subtitle,
-                  if (paragraph.chapter.isNotEmpty) paragraph.chapter,
+                  if (visibleChapter.isNotEmpty) visibleChapter,
                   if (paragraph.pages.isNotEmpty) paragraph.pages,
                 ].join(' · '),
                 style: const TextStyle(
@@ -124,8 +133,10 @@ class ParagraphScreen extends ConsumerWidget {
             label: studyMode,
             exactScience: exactScience,
           ),
-          const SizedBox(height: 12),
-          _RuleImagesCard(paragraphId: paragraph.id),
+          if (textbookRange != null) ...[
+            const SizedBox(height: 12),
+            _TextbookPagesCard(range: textbookRange),
+          ],
           const SizedBox(height: 12),
           if (exactScience) ...[
             const _ExactScienceNotice(),
@@ -329,224 +340,244 @@ class _StudyModeBanner extends StatelessWidget {
   }
 }
 
-class _RuleImagesCard extends ConsumerWidget {
-  final String paragraphId;
+class _TextbookPagesCard extends ConsumerWidget {
+  final StudyTextbookPageRange range;
 
-  const _RuleImagesCard({required this.paragraphId});
+  const _TextbookPagesCard({required this.range});
 
-  Future<void> _add(BuildContext context, WidgetRef ref) async {
-    try {
-      final count = await ref
-          .read(studyRuleImagesServiceProvider)
-          .addFromGallery(paragraphId);
-      ref.invalidate(studyRuleImagesProvider(paragraphId));
-      if (!context.mounted || count == 0) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Сохранено фото: $count')),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось сохранить фото: $error')),
-      );
-    }
-  }
-
-  Future<void> _remove(
-    BuildContext context,
-    WidgetRef ref,
-    StudyRuleImage image,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Удалить фото?'),
-        content: const Text(
-          'Удалится только локальная копия внутри Hermes. '
-          'Оригинал в галерее останется.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await ref
-        .read(studyRuleImagesServiceProvider)
-        .remove(paragraphId, image);
-    ref.invalidate(studyRuleImagesProvider(paragraphId));
-  }
-
-  void _open(BuildContext context, StudyRuleImage image) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => Dialog.fullscreen(
-        backgroundColor: Colors.black,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: InteractiveViewer(
-                minScale: .7,
-                maxScale: 5,
-                child: Center(
-                  child: Image.file(
-                    File(image.path),
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Text(
-                      'Фото недоступно',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SafeArea(
-              child: IconButton.filledTonal(
-                tooltip: 'Закрыть',
-                onPressed: () => Navigator.pop(dialogContext),
-                icon: const Icon(Icons.close),
-              ),
-            ),
-          ],
-        ),
+  void _open(BuildContext context, String path) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _TextbookViewerScreen(path: path, range: range),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final images = ref.watch(studyRuleImagesProvider(paragraphId));
+    final file = ref.watch(
+      studyTextbookFileProvider(range.source.bookId),
+    );
     return Card(
       margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.photo_library_outlined,
-                  color: AppColors.violet,
-                ),
+                const Icon(Icons.menu_book_rounded, color: AppColors.accent),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Фото правил и страниц',
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                      const Text(
+                        'Оригинальные страницы учебника',
+                        style: TextStyle(fontWeight: FontWeight.w900),
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        'Копии хранятся только на телефоне',
-                        style: TextStyle(
+                        '${range.source.title} · ${range.printedLabel}',
+                        style: const TextStyle(
                           color: AppColors.textDim,
                           fontSize: 11,
+                          height: 1.35,
                         ),
                       ),
                     ],
                   ),
                 ),
-                IconButton.filledTonal(
-                  tooltip: 'Добавить из галереи',
-                  onPressed: () => _add(context, ref),
-                  icon: const Icon(Icons.add_photo_alternate_outlined),
-                ),
+                const _AutomaticBadge(),
               ],
             ),
-            images.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.only(top: 12),
-                child: LinearProgressIndicator(),
-              ),
-              error: (error, _) => Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Text(
-                  'Не удалось открыть локальные фото: $error',
-                  style: const TextStyle(
-                    color: AppColors.danger,
-                    fontSize: 11,
-                  ),
+            const SizedBox(height: 12),
+            file.when(
+              loading: () => const _TextbookLoading(),
+              error: (error, _) => _TextbookError(
+                message: error.toString(),
+                onRetry: () => ref.invalidate(
+                  studyTextbookFileProvider(range.source.bookId),
                 ),
               ),
-              data: (items) {
-                if (items.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.only(top: 10),
-                    child: Text(
-                      'Добавь снимок правила, схемы или нужной страницы. '
-                      'Это надёжнее OCR для формул и таблиц.',
-                      style: TextStyle(
-                        color: AppColors.textDim,
-                        fontSize: 11.5,
-                        height: 1.4,
+              data: (localFile) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Material(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(14),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _open(context, localFile.path),
+                      child: SizedBox(
+                        height: 390,
+                        child: IgnorePointer(
+                          child: pdfrx.PdfDocumentViewBuilder.file(
+                            localFile.path,
+                            builder: (context, document) {
+                              if (document == null ||
+                                  document.pages.isEmpty) {
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              }
+                              final page = range.pdfStart
+                                  .clamp(1, document.pages.length)
+                                  .toInt();
+                              return pdfrx.PdfPageView(
+                                document: document,
+                                pageNumber: page,
+                                alignment: Alignment.center,
+                              );
+                            },
+                          ),
+                        ),
                       ),
                     ),
-                  );
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                      childAspectRatio: .82,
-                    ),
-                    itemCount: items.length,
-                    itemBuilder: (_, index) {
-                      final image = items[index];
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(13),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Material(
-                              color: AppColors.surfaceAlt,
-                              child: InkWell(
-                                onTap: () => _open(context, image),
-                                child: Image.file(
-                                  File(image.path),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.broken_image_outlined,
-                                    color: AppColors.textDim,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              right: 4,
-                              top: 4,
-                              child: IconButton.filled(
-                                tooltip: 'Удалить локальную копию',
-                                visualDensity: VisualDensity.compact,
-                                onPressed: () =>
-                                    _remove(context, ref, image),
-                                icon: const Icon(Icons.close, size: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
                   ),
-                );
-              },
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    onPressed: () => _open(context, localFile.path),
+                    icon: const Icon(Icons.fullscreen_rounded),
+                    label: Text(
+                      range.printedStart == range.printedEnd
+                          ? 'Открыть страницу полностью'
+                          : 'Открыть все страницы параграфа',
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  const Text(
+                    'PDF уже сохранён на телефоне. Для следующих параграфов этой книги интернет не нужен.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textDim,
+                      fontSize: 10.5,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AutomaticBadge extends StatelessWidget {
+  const _AutomaticBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.accent.withValues(alpha: .35)),
+      ),
+      child: const Text(
+        'АВТО',
+        style: TextStyle(
+          color: AppColors.accent,
+          fontSize: 8.5,
+          fontWeight: FontWeight.w900,
+          letterSpacing: .5,
+        ),
+      ),
+    );
+  }
+}
+
+class _TextbookLoading extends StatelessWidget {
+  const _TextbookLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LinearProgressIndicator(),
+        SizedBox(height: 10),
+        Text(
+          'Hermes сам загружает учебник. Ничего выбирать в галерее не нужно. Это выполняется один раз.',
+          style: TextStyle(
+            color: AppColors.textDim,
+            fontSize: 11.5,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TextbookError extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _TextbookError({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: AppColors.danger.withValues(alpha: .30)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            message,
+            style: const TextStyle(fontSize: 11.5, height: 1.4),
+          ),
+          const SizedBox(height: 9),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Повторить загрузку'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TextbookViewerScreen extends StatelessWidget {
+  final String path;
+  final StudyTextbookPageRange range;
+
+  const _TextbookViewerScreen({required this.path, required this.range});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Страницы учебника'),
+            Text(
+              range.printedLabel,
+              style: const TextStyle(
+                color: AppColors.textDim,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: pdfrx.PdfViewer.file(
+        path,
+        initialPageNumber: range.pdfStart,
       ),
     );
   }
@@ -572,9 +603,9 @@ class _ExactScienceNotice extends StatelessWidget {
           Expanded(
             child: Text(
               'Повреждённый OCR для точных предметов больше не показывается: '
-              'он ломал степени, корни, дроби и знаки. Открывай фотографию '
-              'решения или добавь фото правила из учебника — на изображении '
-              'формулы остаются в исходном виде.',
+              'он ломал степени, корни, дроби и знаки. Выше Hermes '
+              'автоматически показывает оригинальную страницу учебника, '
+              'поэтому формулы остаются в исходном виде.',
               style: TextStyle(fontSize: 12, height: 1.45),
             ),
           ),
