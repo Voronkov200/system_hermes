@@ -82,7 +82,8 @@ class StudyTextbookPageImageService {
       final page = document.pages[actualPage - 1];
       final scale = _targetWidth / page.width;
       final width = _targetWidth;
-      final height = (page.height * scale).round().clamp(1, 4000);
+      final height =
+          (page.height * scale).round().clamp(1, 4000).toInt();
 
       final rendered = await page.render(
         width: width,
