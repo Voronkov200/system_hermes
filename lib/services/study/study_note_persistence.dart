@@ -4,12 +4,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class StudyNoteTextData {
   final String ownExample;
+  final String conclusion;
   final String teacherNotes;
   final String unclear;
   final List<String> errors;
 
   const StudyNoteTextData({
     this.ownExample = '',
+    this.conclusion = '',
     this.teacherNotes = '',
     this.unclear = '',
     this.errors = const [],
@@ -17,6 +19,7 @@ class StudyNoteTextData {
 
   Map<String, dynamic> toJson() => {
         'ownExample': ownExample,
+        'conclusion': conclusion,
         'teacherNotes': teacherNotes,
         'unclear': unclear,
         'errors': errors,
@@ -26,6 +29,7 @@ class StudyNoteTextData {
     final rawErrors = json['errors'];
     return StudyNoteTextData(
       ownExample: json['ownExample'] as String? ?? '',
+      conclusion: json['conclusion'] as String? ?? '',
       teacherNotes: json['teacherNotes'] as String? ?? '',
       unclear: json['unclear'] as String? ?? '',
       errors: rawErrors is List
