@@ -154,8 +154,8 @@ class _HermesTitle extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'HERMES',
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+              'SYSTEM: HERMES',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
             ),
             Text(
               'ЛИЧНАЯ СИСТЕМА',
