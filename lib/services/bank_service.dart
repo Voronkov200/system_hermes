@@ -226,10 +226,16 @@ class BankController extends Notifier<BankState> {
   /// счёт после выбранного дня выплаты. Повторный запуск не дублирует запись.
   Future<void> checkPension({DateTime? at}) async {
     final settings = ref.read(settingsProvider);
+    final preferences = ref.read(sharedPreferencesProvider);
     final now = at ?? DateTime.now();
     final month =
         '${now.year}-${now.month.toString().padLeft(2, '0')}';
     final legacyMonth = '${now.year}-${now.month}';
+    final resetMonth = preferences.getString(PrefKeys.pensionResetMonth);
+    if (resetMonth == month) return;
+    if (resetMonth != null && resetMonth.isNotEmpty) {
+      await preferences.remove(PrefKeys.pensionResetMonth);
+    }
     if (settings.lastPensionMonth == month ||
         settings.lastPensionMonth == legacyMonth ||
         now.day < settings.pensionDay) {
@@ -278,6 +284,38 @@ class BankController extends Notifier<BankState> {
       'Создана локальная виртуальная карта $code',
     );
     state = _readState(lastEvent: 'Карта $code создана');
+    return null;
+  }
+
+  /// Ручное пополнение локального планового баланса. Это запись факта для
+  /// личного учёта: метод не обращается к банку и не перемещает деньги.
+  Future<String?> deposit({
+    required String accountId,
+    required double amount,
+    String note = '',
+  }) async {
+    final account = _storedById(accountId);
+    if (account == null) return 'Счёт или карта не найдены';
+    if (!amount.isFinite || amount <= 0) {
+      return 'Сумма должна быть больше нуля';
+    }
+
+    account.balance += amount;
+    await _accounts.put(account.id, account);
+    final cleanNote = note.trim();
+    _logTransaction(
+      'deposit',
+      amount,
+      account.currency,
+      cleanNote.isEmpty
+          ? 'Ручное пополнение → ${account.name}'
+          : '$cleanNote → ${account.name}',
+    );
+    state = _readState(
+      depositFlash: DateTime.now(),
+      lastEvent: 'Пополнено: ${fmtAmount(amount)} ${account.currency} → '
+          '${account.name}',
+    );
     return null;
   }
 

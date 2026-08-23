@@ -21,6 +21,7 @@ void main() {
         result.sections.expand((section) => section.items).join('\n');
 
     expect(types, contains(LocalStudySectionType.rules));
+    expect(types, contains(LocalStudySectionType.overview));
     expect(types, contains(LocalStudySectionType.examples));
     expect(types, contains(LocalStudySectionType.tasks));
     expect(types, contains(LocalStudySectionType.questions));
@@ -34,5 +35,22 @@ void main() {
     final result = LocalStudyContent.build('   ');
     expect(result.isEmpty, isTrue);
     expect(result.sections, isEmpty);
+  });
+
+  test('устный предмет превращается в конспект без списка упражнений', () {
+    const biology = '''
+Клетка является основной структурной и функциональной единицей живого.
+Клеточная мембрана отделяет содержимое клетки от внешней среды и регулирует обмен веществ.
+Цитоплазма представляет собой внутреннюю среду клетки, где расположены органоиды.
+Главная особенность ядра состоит в хранении наследственной информации.
+Таким образом, согласованная работа частей клетки поддерживает её жизнедеятельность.
+1.1. Перечислите органоиды клетки и подпишите рисунок.
+''';
+
+    final result = LocalStudyContent.build(biology, analysis: 'science');
+    final types = result.sections.map((section) => section.type).toSet();
+    expect(types, contains(LocalStudySectionType.overview));
+    expect(types, contains(LocalStudySectionType.terms));
+    expect(types, isNot(contains(LocalStudySectionType.tasks)));
   });
 }

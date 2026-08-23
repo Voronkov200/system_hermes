@@ -87,6 +87,8 @@ class PrefKeys {
   static const String githubOwner = 'github_owner';
   static const String githubRepo = 'github_repo';
   static const String lastPensionMonth = 'last_pension_month';
+  /// Месяц полного сброса: не начислять пенсию повторно сразу после очистки.
+  static const String pensionResetMonth = 'pension_reset_month';
   static const String workoutBonusDay = 'workout_bonus_day';
   static const String hermesLlmUrl = 'hermes_llm_url';
   static const String hermesLlmApiKey = 'hermes_llm_api_key';

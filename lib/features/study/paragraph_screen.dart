@@ -1,5 +1,7 @@
 // Экран параграфа: полностью локальный разбор вложенного текста учебника.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import '../../core/theme.dart';
 import '../../services/study/local_study_content.dart';
 import '../../services/study/resheba_service.dart';
 import '../../services/study/study_content_quality.dart';
+import '../../services/study/study_rule_images_service.dart';
 import '../../services/study/study_service.dart';
 import 'resheba_screen.dart';
 
@@ -47,6 +50,13 @@ class ParagraphScreen extends ConsumerWidget {
       analysis: subject?.analysis ?? 'humanities',
     );
     final exactScience = subject?.analysis == 'exact';
+    final studyMode = switch (subject?.analysis) {
+      'languages' => 'ПРАВИЛА И ПРАКТИКА',
+      'exact' => 'ФОРМУЛЫ И ЗАДАНИЯ',
+      'literature' => 'ЛИТЕРАТУРНЫЙ КОНСПЕКТ',
+      'science' => 'НАУЧНЫЙ КОНСПЕКТ',
+      _ => 'КОНСПЕКТ ПАРАГРАФА',
+    };
     final hasSolutionPhotos = subject != null &&
         ReshebaService.jsPathFor(subject.title) != null;
 
@@ -110,6 +120,13 @@ class ParagraphScreen extends ConsumerWidget {
               ),
             ),
           const SizedBox(height: 12),
+          _StudyModeBanner(
+            label: studyMode,
+            exactScience: exactScience,
+          ),
+          const SizedBox(height: 12),
+          _RuleImagesCard(paragraphId: paragraph.id),
+          const SizedBox(height: 12),
           if (exactScience) ...[
             const _ExactScienceNotice(),
             if (hasSolutionPhotos) ...[
@@ -125,8 +142,10 @@ class ParagraphScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             _SourceQualityCard(report: sourceReport, pages: paragraph.pages),
             const SizedBox(height: 18),
-            const Text(
-              'Локальный разбор',
+            Text(
+              subject?.analysis == 'languages'
+                  ? 'Правила и упражнения'
+                  : 'Конспект параграфа',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 4),
@@ -184,7 +203,8 @@ class ParagraphScreen extends ConsumerWidget {
               ),
             ),
           ],
-          if (!exactScience) ...[
+          if (!exactScience &&
+              sourceReport.quality == StudySourceQuality.ready) ...[
             const SizedBox(height: 10),
             Card(
               clipBehavior: Clip.antiAlias,
@@ -255,6 +275,280 @@ class ParagraphScreen extends ConsumerWidget {
   }
 }
 
+class _StudyModeBanner extends StatelessWidget {
+  final String label;
+  final bool exactScience;
+
+  const _StudyModeBanner({
+    required this.label,
+    required this.exactScience,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = exactScience ? AppColors.warning : AppColors.accent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: .28)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            exactScience ? Icons.functions_rounded : Icons.notes_rounded,
+            color: color,
+            size: 19,
+          ),
+          const SizedBox(width: 9),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: .7,
+            ),
+          ),
+          const Spacer(),
+          const Text(
+            'ЛОКАЛЬНО',
+            style: TextStyle(
+              color: AppColors.textDim,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuleImagesCard extends ConsumerWidget {
+  final String paragraphId;
+
+  const _RuleImagesCard({required this.paragraphId});
+
+  Future<void> _add(BuildContext context, WidgetRef ref) async {
+    try {
+      final count = await ref
+          .read(studyRuleImagesServiceProvider)
+          .addFromGallery(paragraphId);
+      ref.invalidate(studyRuleImagesProvider(paragraphId));
+      if (!context.mounted || count == 0) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Сохранено фото: $count')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось сохранить фото: $error')),
+      );
+    }
+  }
+
+  Future<void> _remove(
+    BuildContext context,
+    WidgetRef ref,
+    StudyRuleImage image,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Удалить фото?'),
+        content: const Text(
+          'Удалится только локальная копия внутри Hermes. '
+          'Оригинал в галерее останется.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref
+        .read(studyRuleImagesServiceProvider)
+        .remove(paragraphId, image);
+    ref.invalidate(studyRuleImagesProvider(paragraphId));
+  }
+
+  void _open(BuildContext context, StudyRuleImage image) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: .7,
+                maxScale: 5,
+                child: Center(
+                  child: Image.file(
+                    File(image.path),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Text(
+                      'Фото недоступно',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: IconButton.filledTonal(
+                tooltip: 'Закрыть',
+                onPressed: () => Navigator.pop(dialogContext),
+                icon: const Icon(Icons.close),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final images = ref.watch(studyRuleImagesProvider(paragraphId));
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.photo_library_outlined,
+                  color: AppColors.violet,
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Фото правил и страниц',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        'Копии хранятся только на телефоне',
+                        style: TextStyle(
+                          color: AppColors.textDim,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton.filledTonal(
+                  tooltip: 'Добавить из галереи',
+                  onPressed: () => _add(context, ref),
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                ),
+              ],
+            ),
+            images.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: LinearProgressIndicator(),
+              ),
+              error: (error, _) => Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  'Не удалось открыть локальные фото: $error',
+                  style: const TextStyle(
+                    color: AppColors.danger,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              data: (items) {
+                if (items.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.only(top: 10),
+                    child: Text(
+                      'Добавь снимок правила, схемы или нужной страницы. '
+                      'Это надёжнее OCR для формул и таблиц.',
+                      style: TextStyle(
+                        color: AppColors.textDim,
+                        fontSize: 11.5,
+                        height: 1.4,
+                      ),
+                    ),
+                  );
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: .82,
+                    ),
+                    itemCount: items.length,
+                    itemBuilder: (_, index) {
+                      final image = items[index];
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(13),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Material(
+                              color: AppColors.surfaceAlt,
+                              child: InkWell(
+                                onTap: () => _open(context, image),
+                                child: Image.file(
+                                  File(image.path),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.textDim,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              right: 4,
+                              top: 4,
+                              child: IconButton.filled(
+                                tooltip: 'Удалить локальную копию',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () =>
+                                    _remove(context, ref, image),
+                                icon: const Icon(Icons.close, size: 16),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ExactScienceNotice extends StatelessWidget {
   const _ExactScienceNotice();
 
@@ -276,7 +570,8 @@ class _ExactScienceNotice extends StatelessWidget {
             child: Text(
               'Повреждённый OCR для точных предметов больше не показывается: '
               'он ломал степени, корни, дроби и знаки. Открывай фотографию '
-              'решения — на ней формулы остаются в исходном виде.',
+              'решения или добавь фото правила из учебника — на изображении '
+              'формулы остаются в исходном виде.',
               style: TextStyle(fontSize: 12, height: 1.45),
             ),
           ),
@@ -382,6 +677,10 @@ class _LocalSectionCard extends StatelessWidget {
     switch (section.type) {
       case LocalStudySectionType.overview:
         return Icons.subject;
+      case LocalStudySectionType.keyPoints:
+        return Icons.format_list_bulleted_rounded;
+      case LocalStudySectionType.terms:
+        return Icons.translate_rounded;
       case LocalStudySectionType.rules:
         return Icons.rule;
       case LocalStudySectionType.examples:
@@ -397,6 +696,10 @@ class _LocalSectionCard extends StatelessWidget {
     switch (section.type) {
       case LocalStudySectionType.overview:
         return AppColors.cyan;
+      case LocalStudySectionType.keyPoints:
+        return AppColors.accent;
+      case LocalStudySectionType.terms:
+        return AppColors.violet;
       case LocalStudySectionType.rules:
         return AppColors.violet;
       case LocalStudySectionType.examples:

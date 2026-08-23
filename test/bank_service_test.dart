@@ -134,4 +134,38 @@ void main() {
       'Пенсия → Общий счёт',
     );
   });
+
+  test('ручное пополнение меняет выбранный баланс и пишет операцию', () async {
+    final scope = await makeContainer();
+    final controller = scope.read(bankProvider.notifier);
+
+    final error = await controller.deposit(
+      accountId: Account.generalId,
+      amount: 125.50,
+      note: 'Фриланс-заказ',
+    );
+
+    final state = scope.read(bankProvider);
+    expect(error, isNull);
+    expect(state.generalAccount?.balance, 125.50);
+    final deposit =
+        state.transactions.firstWhere((entry) => entry.type == 'deposit');
+    expect(deposit.amount, 125.50);
+    expect(deposit.description, 'Фриланс-заказ → Общий счёт');
+  });
+
+  test('ручное пополнение отклоняет нулевую и отрицательную сумму', () async {
+    final scope = await makeContainer();
+    final controller = scope.read(bankProvider.notifier);
+
+    expect(
+      await controller.deposit(accountId: Account.generalId, amount: 0),
+      isNotNull,
+    );
+    expect(
+      await controller.deposit(accountId: Account.generalId, amount: -10),
+      isNotNull,
+    );
+    expect(scope.read(bankProvider).generalAccount?.balance, 0);
+  });
 }

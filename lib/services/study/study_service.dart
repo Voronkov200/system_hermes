@@ -21,6 +21,7 @@ import '../agent/file_tools.dart';
 import '../settings_service.dart';
 import '../plan/docs_service.dart' show splitSections;
 import 'study_content_quality.dart';
+import 'study_rule_images_service.dart';
 
 /// Предмет (или дополнительная литература) в «Учёбе».
 @HiveType(typeId: 12)
@@ -254,7 +255,7 @@ class StudyController extends Notifier<StudyState> {
   bool _bundledStarted = false;
   bool _bundleNeedsRefresh = false;
 
-  static const int _bundleVersion = 6;
+  static const int _bundleVersion = 7;
 
   static const Map<String, String> _bookCatalogMap = {
     '1155': 'История (часть 1)',
@@ -359,12 +360,25 @@ class StudyController extends Notifier<StudyState> {
   }
 
   static String _analysisFor(String title) {
+    final lower = title.toLowerCase();
     const lit = ['литератур', 'літаратур'];
-    if (lit.any(title.toLowerCase().contains)) return 'literature';
-    const exact = ['алгебра', 'геометрия', 'физика', 'химия', 'биология', 'информатика', 'астрономия', 'математика'];
-    if (exact.any(title.toLowerCase().contains)) return 'exact';
-    const langs = ['язык', 'мова', 'английский', 'белорусский', 'русский'];
-    if (langs.any(title.toLowerCase().contains)) return 'languages';
+    if (lit.any(lower.contains)) return 'literature';
+    const langs = [
+      'язык',
+      'мова',
+      'английский',
+      'белорусский',
+      'русский',
+    ];
+    if (langs.any(lower.contains)) return 'languages';
+    // Физика, химия, биология и астрономия изучаются как теоретические
+    // предметы: для них нужны конспект, термины, законы и формулы. Режим
+    // exact оставляем только там, где повреждённый OCR выражений опаснее
+    // текстового разбора.
+    const science = ['физик', 'хими', 'биолог', 'астроном'];
+    if (science.any(lower.contains)) return 'science';
+    const exact = ['алгебр', 'геометр', 'математик', 'информатик'];
+    if (exact.any(lower.contains)) return 'exact';
     return 'humanities';
   }
 
@@ -464,6 +478,9 @@ class StudyController extends Notifier<StudyState> {
         .map((paragraph) => paragraph.id)
         .toSet();
     for (final paragraphId in paragraphIds) {
+      await ref
+          .read(studyRuleImagesServiceProvider)
+          .removeAll(paragraphId);
       await _deleteParagraphById(paragraphId);
     }
     _emit();
@@ -574,6 +591,7 @@ class StudyController extends Notifier<StudyState> {
   }
 
   Future<void> removeParagraph(String id) async {
+    await ref.read(studyRuleImagesServiceProvider).removeAll(id);
     await _deleteParagraphById(id);
     _emit();
   }

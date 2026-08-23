@@ -9,49 +9,156 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
+import '../../services/app_reset_service.dart';
 import '../../services/bank_service.dart';
 import '../../services/habits_service.dart';
 import '../../services/hermes_service.dart';
 import '../../services/journal_service.dart';
 import '../../services/llm_connection_service.dart';
 import '../../services/obsidian_service.dart';
+import '../../services/plan/agent_run.dart';
+import '../../services/plan/docs_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/study/study_service.dart';
 import '../../services/tasks_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   Future<void> _resetAll(BuildContext context, WidgetRef ref) async {
+    final phraseController = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Сбросить все данные?'),
-        content: const Text(
-            'Будут удалены: локальные счета, карты, транзакции, привычки и '
-            'история чата. '
-            'Это действие необратимо.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Абсолютный сброс'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Будут удалены локальные счета и операции, задачи, '
+                  'привычки, чат, документы, учебный прогресс, добавленные '
+                  'фото, кэш ГДЗ, настройки и API-ключи.',
+                  style: TextStyle(height: 1.45),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(11),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: .07),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(
+                      color: AppColors.accent.withValues(alpha: .22),
+                    ),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.shield_outlined,
+                        color: AppColors.accent,
+                        size: 19,
+                      ),
+                      SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'Файлы внешнего Obsidian Vault не удаляются. '
+                          'Hermes только забудет путь к нему.',
+                          style: TextStyle(fontSize: 11.5, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Для подтверждения напиши СБРОС',
+                  style: TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: phraseController,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(hintText: 'СБРОС'),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+              ],
+            ),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Сбросить'),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              style:
+                  FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: phraseController.text.trim().toUpperCase() == 'СБРОС'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: const Text('Удалить всё'),
+            ),
+          ],
+        ),
       ),
     );
+    phraseController.dispose();
     if (confirmed != true) return;
-    await ref.read(bankProvider.notifier).reset();
-    await ref.read(habitsProvider.notifier).reset();
-    await ref.read(chatProvider.notifier).reset();
-    await ref.read(tasksProvider.notifier).reset();
-    await ref.read(journalProvider.notifier).clear();
+
     if (context.mounted) {
-      toast(context, 'Все данные сброшены');
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Expanded(child: Text('Удаляю локальные данные…')),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    try {
+      await ref.read(appResetServiceProvider).resetAll();
+
+      // Возвращаем системные пустые состояния. Встроенный каталог Учёбы
+      // появится заново, но пользовательские книги и прогресс уже удалены.
+      ref.invalidate(settingsProvider);
+      await ref.read(bankProvider.notifier).reset();
+      await ref.read(habitsProvider.notifier).reset();
+      await ref.read(chatProvider.notifier).reset();
+      await ref.read(tasksProvider.notifier).reset();
+      await ref.read(journalProvider.notifier).clear();
+      ref.invalidate(docsProvider);
+      ref.invalidate(studyProvider);
+      ref.invalidate(searchRunProvider);
+      ref.invalidate(obsidianProvider);
+      PaintingBinding.instance.imageCache
+        ..clear()
+        ..clearLiveImages();
+
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        toast(context, 'Локальные данные полностью сброшены');
+      }
+    } catch (error) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        toast(context, 'Сброс не завершён: $error');
+      }
     }
   }
 
@@ -307,7 +414,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onPressed: () => _resetAll(context, ref),
             icon: const Icon(Icons.delete_forever_outlined),
-            label: const Text('Сбросить все данные'),
+            label: const Text('Абсолютный сброс данных'),
           ),
           const SizedBox(height: 32),
         ],

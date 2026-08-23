@@ -100,6 +100,29 @@ class BankScreen extends ConsumerWidget {
     toast(context, error ?? 'Внутренний перевод выполнен');
   }
 
+  Future<void> _deposit(
+    BuildContext context,
+    WidgetRef ref,
+    BankState bank,
+  ) async {
+    if (bank.accounts.isEmpty) {
+      toast(context, 'Счета пока недоступны');
+      return;
+    }
+    final request = await showDialog<_DepositRequest>(
+      context: context,
+      builder: (dialogContext) => _DepositDialog(accounts: bank.accounts),
+    );
+    if (request == null) return;
+    final error = await ref.read(bankProvider.notifier).deposit(
+          accountId: request.accountId,
+          amount: request.amount,
+          note: request.note,
+        );
+    if (!context.mounted) return;
+    toast(context, error ?? 'Плановый баланс пополнен');
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bank = ref.watch(bankProvider);
@@ -137,18 +160,29 @@ class BankScreen extends ConsumerWidget {
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _createCard(context, ref, bank),
-                    icon: const Icon(Icons.add_card_rounded),
-                    label: const Text('Создать карту'),
+                  child: _MoneyAction(
+                    icon: Icons.add_circle_outline_rounded,
+                    label: 'Пополнить',
+                    color: AppColors.accent,
+                    onTap: () => _deposit(context, ref, bank),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 9),
                 Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => _transfer(context, ref, bank, rates),
-                    icon: const Icon(Icons.swap_horiz_rounded),
-                    label: const Text('Перевести'),
+                  child: _MoneyAction(
+                    icon: Icons.swap_horiz_rounded,
+                    label: 'Перевести',
+                    color: AppColors.cyan,
+                    onTap: () => _transfer(context, ref, bank, rates),
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: _MoneyAction(
+                    icon: Icons.add_card_rounded,
+                    label: 'Карта',
+                    color: AppColors.violet,
+                    onTap: () => _createCard(context, ref, bank),
                   ),
                 ),
               ],
@@ -236,6 +270,52 @@ class BankScreen extends ConsumerWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MoneyAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _MoneyAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withValues(alpha: .09),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: color.withValues(alpha: .26)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 5),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 23),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                maxLines: 1,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -727,6 +807,139 @@ class _TransactionTile extends StatelessWidget {
         '${transaction.amount.toStringAsFixed(2)} ${transaction.currency}',
         style: TextStyle(color: color, fontWeight: FontWeight.w800),
       ),
+    );
+  }
+}
+
+class _DepositRequest {
+  final String accountId;
+  final double amount;
+  final String note;
+
+  const _DepositRequest({
+    required this.accountId,
+    required this.amount,
+    required this.note,
+  });
+}
+
+class _DepositDialog extends StatefulWidget {
+  final List<Account> accounts;
+
+  const _DepositDialog({required this.accounts});
+
+  @override
+  State<_DepositDialog> createState() => _DepositDialogState();
+}
+
+class _DepositDialogState extends State<_DepositDialog> {
+  late String accountId;
+  final amountController = TextEditingController();
+  final noteController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final general = widget.accounts.where((a) => a.id == Account.generalId);
+    accountId = general.isEmpty ? widget.accounts.first.id : general.first.id;
+    amountController.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    amountController
+      ..removeListener(_refresh)
+      ..dispose();
+    noteController.dispose();
+    super.dispose();
+  }
+
+  void _refresh() => setState(() {});
+
+  Account get account =>
+      widget.accounts.firstWhere((entry) => entry.id == accountId);
+
+  double? get amount =>
+      double.tryParse(amountController.text.trim().replaceAll(',', '.'));
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Пополнить баланс'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Добавь уже полученные деньги в локальный учёт. '
+              'Hermes не выполняет реальную банковскую операцию.',
+              style: TextStyle(
+                color: AppColors.textDim,
+                fontSize: 11.5,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: accountId,
+              decoration: const InputDecoration(labelText: 'Счёт или карта'),
+              items: [
+                for (final item in widget.accounts)
+                  DropdownMenuItem(
+                    value: item.id,
+                    child: Text(
+                      '${item.name} · ${item.currency}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => accountId = value);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amountController,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Сумма в ${account.currency}',
+                suffixText: account.currency,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteController,
+              maxLength: 80,
+              decoration: const InputDecoration(
+                labelText: 'Источник или заметка',
+                hintText: 'Например: перевод, наличные, заказ',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: amount == null || amount! <= 0
+              ? null
+              : () => Navigator.pop(
+                    context,
+                    _DepositRequest(
+                      accountId: accountId,
+                      amount: amount!,
+                      note: noteController.text.trim(),
+                    ),
+                  ),
+          child: const Text('Пополнить'),
+        ),
+      ],
     );
   }
 }
