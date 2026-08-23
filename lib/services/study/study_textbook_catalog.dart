@@ -167,6 +167,26 @@ class StudyTextbookCatalog {
     ),
   };
 
+  static const Map<String, String> _defaultBookBySubject = {
+    'астрономия': '888',
+    'алгебра': '894',
+    'география': '897',
+    'химия': '899',
+    'физика': '900',
+    'геометрия': '902',
+    'беларуская літаратура': '904',
+    'русский язык': '914',
+    'русская литература': '915',
+    'беларуская мова': '920',
+    'биология': '921',
+    'информатика': '923',
+    'обществоведение': '938',
+    'английский язык часть 1': '986',
+    'английский язык часть 2': '1015',
+    'история часть 1': '1155',
+    'история часть 2': '1176',
+  };
+
   static StudyTextbookSource _source(
     String id,
     String title,
@@ -202,22 +222,49 @@ class StudyTextbookCatalog {
     return match == null ? null : int.tryParse(match.group(0)!);
   }
 
+  static String _normalizeSubject(String value) => value
+      .toLowerCase()
+      .replaceAll('ё', 'е')
+      .replaceAll('ў', 'у')
+      .replaceAll(RegExp(r'[·()–—\-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  /// Резервная привязка для старых локальных записей, у которых миграция ещё
+  /// не успела добавить `[hermes-book:*]`. Явный маркер всегда важнее.
+  static String? bookIdForSubject(String? subjectTitle) {
+    if (subjectTitle == null) return null;
+    final normalized = _normalizeSubject(subjectTitle);
+    return _defaultBookBySubject[normalized];
+  }
+
   /// Вычисляет диапазон параграфа: от его первой страницы до страницы перед
   /// следующим параграфом этой же книги. Если следующей страницы нет,
   /// показывается хотя бы первая страница.
+  ///
+  /// `subjectTitle` используется только как страховка для старых записей без
+  /// служебного bookId. Для вручную созданного неизвестного предмета источник
+  /// не придумывается.
   static StudyTextbookPageRange? rangeFor({
     required String chapter,
     required String pages,
     required Iterable<({String chapter, String pages})> siblings,
+    String? subjectTitle,
   }) {
-    final bookId = bookIdFromChapter(chapter);
+    final explicitBookId = bookIdFromChapter(chapter);
+    final bookId = explicitBookId ?? bookIdForSubject(subjectTitle);
     final source = bookId == null ? null : sources[bookId];
     final start = printedPageFrom(pages);
     if (source == null || start == null || start < 1) return null;
 
     int? nextStart;
     for (final sibling in siblings) {
-      if (bookIdFromChapter(sibling.chapter) != bookId) continue;
+      final siblingBookId = bookIdFromChapter(sibling.chapter);
+      if (explicitBookId != null) {
+        if (siblingBookId != bookId) continue;
+      } else if (siblingBookId != null && siblingBookId != bookId) {
+        continue;
+      }
       final candidate = printedPageFrom(sibling.pages);
       if (candidate == null || candidate <= start) continue;
       if (nextStart == null || candidate < nextStart) nextStart = candidate;
