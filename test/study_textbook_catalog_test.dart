@@ -35,10 +35,42 @@ void main() {
       expect(range.pdfEnd, 12);
     });
 
+    test('recovers an official textbook from the subject title', () {
+      final range = StudyTextbookCatalog.rangeFor(
+        chapter: 'Глава 1',
+        pages: 'с. 4',
+        subjectTitle: 'Алгебра',
+        siblings: const [
+          (chapter: 'Глава 1', pages: 'с. 4'),
+          (chapter: 'Глава 1', pages: 'с. 9'),
+        ],
+      );
+
+      expect(range, isNotNull);
+      expect(range!.source.bookId, '894');
+      expect(range.printedStart, 4);
+      expect(range.printedEnd, 8);
+      expect(range.pdfStart, 8);
+      expect(range.pdfEnd, 12);
+    });
+
+    test('explicit marker wins over subject fallback', () {
+      final range = StudyTextbookCatalog.rangeFor(
+        chapter: '[hermes-book:1207] Произведение',
+        pages: 'с. 10',
+        subjectTitle: 'Русская литература',
+        siblings: const [],
+      );
+
+      expect(range, isNotNull);
+      expect(range!.source.bookId, '1207');
+    });
+
     test('does not invent a source for a manual paragraph', () {
       final range = StudyTextbookCatalog.rangeFor(
         chapter: 'Моя глава',
         pages: 'с. 10',
+        subjectTitle: 'Мой предмет',
         siblings: const [],
       );
 
