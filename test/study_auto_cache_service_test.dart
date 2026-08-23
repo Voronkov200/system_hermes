@@ -19,14 +19,32 @@ void main() {
       );
     });
 
-    test('warms the whole family for a base subject', () {
+    test('excludes collections from automatic preload', () {
       expect(
-        StudyAutoCacheService.bookIdsForSubject('Русская литература').toSet(),
-        {'915', '1207', '1208'},
+        StudyAutoCacheService.bookIdsForSubject('Русская литература'),
+        ['915'],
       );
       expect(
-        StudyAutoCacheService.bookIdsForSubject('Беларуская літаратура').toSet(),
-        {'904', '1202'},
+        StudyAutoCacheService.bookIdsForSubject('Беларуская літаратура'),
+        ['904'],
+      );
+    });
+
+    test('primary preload contains all 17 physical textbooks', () {
+      expect(StudyAutoCacheService.primaryBookIds.length, 17);
+      expect(StudyAutoCacheService.primaryBookIds, containsAll(<String>{
+        '986',
+        '1015',
+        '1155',
+        '1176',
+      }));
+      expect(
+        StudyAutoCacheService.primaryBookIds.intersection(<String>{
+          '1202',
+          '1207',
+          '1208',
+        }),
+        isEmpty,
       );
     });
   });
