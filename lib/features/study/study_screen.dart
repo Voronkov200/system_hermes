@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
+import '../../services/study/resheba_service.dart';
 import '../../services/study/study_service.dart';
 
 /// Маппинг ключей иконок каталога на Material-иконки.
@@ -29,34 +30,125 @@ IconData studyIcon(String key) => switch (key) {
       _ => Icons.book,
     };
 
-class StudyScreen extends ConsumerWidget {
+class StudyScreen extends ConsumerStatefulWidget {
   const StudyScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StudyScreen> createState() => _StudyScreenState();
+}
+
+class _StudyScreenState extends ConsumerState<StudyScreen> {
+  String _query = '';
+  String _category = 'Все';
+
+  @override
+  Widget build(BuildContext context) {
     final st = ref.watch(studyProvider);
-    final subjects = st.subjects.where((s) => s.kind == 'subject').toList();
-    final guides = st.subjects.where((s) => s.kind == 'guide').toList();
+    bool matches(StudySubject subject) {
+      final query = _query.trim().toLowerCase();
+      final queryMatches = query.isEmpty ||
+          subject.title.toLowerCase().contains(query) ||
+          subject.subtitle.toLowerCase().contains(query);
+      final categoryMatches =
+          _category == 'Все' || subject.category == _category;
+      return queryMatches && categoryMatches;
+    }
+
+    final subjects = st.subjects
+        .where((s) => s.kind == 'subject' && matches(s))
+        .toList();
+    final guides = st.subjects
+        .where((s) => s.kind == 'guide' && matches(s))
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Учёба'),
         actions: [
-          IconButton(
-            tooltip: 'Импортировать готовый разбор (JSON)',
-            icon: const Icon(Icons.upload_file),
-            onPressed: () => _importJson(context, ref),
+          PopupMenuButton<String>(
+            tooltip: 'Дополнительно',
+            onSelected: (value) {
+              if (value == 'import') _importJson(context, ref);
+              if (value == 'subject') _addManualSubject(context, ref);
+              if (value == 'guide') _addGuide(context, ref);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'import',
+                child: ListTile(
+                  leading: Icon(Icons.upload_file),
+                  title: Text('Импорт JSON'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'subject',
+                child: ListTile(
+                  leading: Icon(Icons.add),
+                  title: Text('Добавить предмет'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'guide',
+                child: ListTile(
+                  leading: Icon(Icons.library_add_outlined),
+                  title: Text('Добавить пособие'),
+                ),
+              ),
+            ],
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addManualSubject(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Предмет'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _StudyOverview(state: st),
+          const SizedBox(height: 14),
+          TextField(
+            onChanged: (value) => setState(() => _query = value),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Найти предмет',
+            ),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final category in const [
+                  'Все',
+                  'Точные науки',
+                  'Языки',
+                  'Гуманитарные',
+                ]) ...[
+                  ChoiceChip(
+                    label: Text(category),
+                    selected: _category == category,
+                    onSelected: (_) =>
+                        setState(() => _category = category),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ],
+            ),
+          ),
+          if (st.error != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: .1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                st.error!,
+                style: const TextStyle(
+                  color: AppColors.warning,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
           if (st.bundledTotal > 0 && st.bundledDone < st.bundledTotal) ...[
             Card(
               child: Padding(
@@ -85,46 +177,39 @@ class StudyScreen extends ConsumerWidget {
             const SizedBox(height: 12),
           ],
           if (subjects.isNotEmpty) ...[
-            const _Header('Предметы 11 класса'),
+            const SizedBox(height: 18),
+            _Header('Предметы 11 класса · ${subjects.length}'),
             const SizedBox(height: 8),
             for (final s in subjects) ...[
               _SubjectCard(subject: s),
               const SizedBox(height: 10),
             ],
           ],
-          const SizedBox(height: 8),
-          const _Header('Дополнительная литература'),
-          const SizedBox(height: 8),
-          for (final g in guides) ...[
-            _SubjectCard(subject: g),
-            const SizedBox(height: 10),
-          ],
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => _addGuide(context, ref),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(Icons.library_add, color: AppColors.warning),
-                    SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        'Добавить пособие / справочник / сборник',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    Icon(Icons.chevron_right, color: AppColors.textDim),
-                  ],
-                ),
+          if (subjects.isEmpty && guides.isEmpty) ...[
+            const SizedBox(height: 24),
+            const Center(
+              child: Column(
+                children: [
+                  Icon(Icons.search_off, color: AppColors.textDim, size: 36),
+                  SizedBox(height: 8),
+                  Text(
+                    'Ничего не найдено',
+                    style: TextStyle(color: AppColors.textDim),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 80),
+          ],
+          if (guides.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const _Header('Дополнительная литература'),
+            const SizedBox(height: 8),
+            for (final g in guides) ...[
+              _SubjectCard(subject: g),
+              const SizedBox(height: 10),
+            ],
+          ],
+          const SizedBox(height: 28),
         ],
       ),
     );
@@ -234,6 +319,100 @@ class StudyScreen extends ConsumerWidget {
   }
 }
 
+class _StudyOverview extends StatelessWidget {
+  final StudyState state;
+
+  const _StudyOverview({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final subjectCount = state.subjects.where((s) => s.kind == 'subject').length;
+    final learned = state.paragraphs.where((p) => p.learned).length;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.accent.withValues(alpha: .2),
+            AppColors.cyan.withValues(alpha: .06),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.accent.withValues(alpha: .32)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.school_outlined, color: AppColors.accent),
+              SizedBox(width: 9),
+              Text(
+                '11 класс · локальная библиотека',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Тексты учебников находятся на телефоне. Фото ГДЗ загружаются '
+            'по номеру один раз и сохраняются в кэше.',
+            style: TextStyle(
+              color: AppColors.textDim,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _StudyMetric(value: '$subjectCount', label: 'предметов'),
+              const SizedBox(width: 8),
+              _StudyMetric(value: '${state.paragraphs.length}', label: 'параграфов'),
+              const SizedBox(width: 8),
+              _StudyMetric(value: '$learned', label: 'изучено'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StudyMetric extends StatelessWidget {
+  final String value;
+  final String label;
+
+  const _StudyMetric({required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.surface.withValues(alpha: .72),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  color: AppColors.accent,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(color: AppColors.textDim, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
 class _Header extends StatelessWidget {
   final String text;
   const _Header(this.text);
@@ -263,6 +442,10 @@ class _SubjectCard extends ConsumerWidget {
     final count = st.paragraphs
         .where((p) => p.subjectId == subject.id)
         .length;
+    final learned = st.paragraphs
+        .where((p) => p.subjectId == subject.id && p.learned)
+        .length;
+    final hasGdz = ReshebaService.jsPathFor(subject.title) != null;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -314,6 +497,7 @@ class _SubjectCard extends ConsumerWidget {
                     if (count > 0) ...[
                       const SizedBox(height: 4),
                       Text(
+                        '$learned/$count изучено · '
                         '$count параграф${_plural(count)}',
                         style: const TextStyle(
                           color: AppColors.cyan,
@@ -324,10 +508,22 @@ class _SubjectCard extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (subject.filePath != null)
-                const Padding(
-                  padding: EdgeInsets.only(right: 6),
-                  child: Icon(Icons.picture_as_pdf, size: 18, color: AppColors.danger),
+              if (hasGdz)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.cyan.withValues(alpha: .1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'ФОТО ГДЗ',
+                    style: TextStyle(
+                      color: AppColors.cyan,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               const Icon(Icons.chevron_right, color: AppColors.textDim),
             ],

@@ -72,7 +72,7 @@ class ParagraphScreen extends ConsumerWidget {
             onSelected: (value) =>
                 _onMenu(context, ref, value, paragraph),
             itemBuilder: (_) => [
-              if (paragraph.content.trim().isNotEmpty)
+              if (!exactScience && paragraph.content.trim().isNotEmpty)
                 const PopupMenuItem(
                   value: 'clear_legacy',
                   child: Text('Удалить старый конспект'),
@@ -148,7 +148,7 @@ class ParagraphScreen extends ConsumerWidget {
                 const SizedBox(height: 10),
               ],
           ],
-          if (paragraph.content.trim().isNotEmpty) ...[
+          if (!exactScience && paragraph.content.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             Card(
               clipBehavior: Clip.antiAlias,
@@ -184,36 +184,36 @@ class ParagraphScreen extends ConsumerWidget {
               ),
             ),
           ],
-          const SizedBox(height: 10),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ExpansionTile(
-              leading: const Icon(Icons.menu_book, color: AppColors.cyan),
-              title: const Text(
-                'Распознанный текст учебника',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(
-                local.isEmpty
-                    ? 'Текст отсутствует'
-                    : exactScience
-                        ? '${local.sourceText.length} символов · формулы могут быть повреждены'
-                        : '${local.sourceText.length} символов · локально',
-                style: const TextStyle(fontSize: 11),
-              ),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                  child: SelectableText(
-                    local.isEmpty
-                        ? 'Исходный текст отсутствует.'
-                        : local.sourceText,
-                    style: const TextStyle(fontSize: 12, height: 1.48),
-                  ),
+          if (!exactScience) ...[
+            const SizedBox(height: 10),
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: ExpansionTile(
+                leading: const Icon(Icons.menu_book, color: AppColors.cyan),
+                title: const Text(
+                  'Исходный текст учебника',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                 ),
-              ],
+                subtitle: Text(
+                  local.isEmpty
+                      ? 'Текст отсутствует'
+                      : '${local.sourceText.length} символов · локально',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                    child: SelectableText(
+                      local.isEmpty
+                          ? 'Исходный текст отсутствует.'
+                          : local.sourceText,
+                      style: const TextStyle(fontSize: 12, height: 1.48),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 24),
         ],
       ),
@@ -274,9 +274,9 @@ class _ExactScienceNotice extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Для точных предметов автоматический текстовый разбор отключён: '
-              'PDF-распознавание ломает степени, корни, дроби и знаки. '
-              'Используй оригинальный учебник и фотографии решений.',
+              'Повреждённый OCR для точных предметов больше не показывается: '
+              'он ломал степени, корни, дроби и знаки. Открывай фотографию '
+              'решения — на ней формулы остаются в исходном виде.',
               style: TextStyle(fontSize: 12, height: 1.45),
             ),
           ),

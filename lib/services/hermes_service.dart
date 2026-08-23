@@ -128,9 +128,9 @@ class ChatController extends Notifier<ChatState> {
     final s = ref.read(settingsProvider);
     String reply;
     try {
-      if (s.hermesUrl.trim().isNotEmpty) {
+      if (s.usesHermesServer) {
         reply = await _remoteRequest(trimmed, s);
-      } else if (s.llmKey.isNotEmpty) {
+      } else if (s.usesDirectLlm) {
         reply = await _llmRequest(trimmed, s);
       } else {
         reply = await _offlineRequest(trimmed);

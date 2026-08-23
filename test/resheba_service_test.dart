@@ -10,11 +10,11 @@ void main() {
       );
       expect(
         ReshebaService.jsPathFor('Биология'),
-        'biologija-11',
+        'biologija-11-klass-dashkov',
       );
       expect(
         ReshebaService.jsPathFor('Русский язык'),
-        'russkij-jazyk-11-klass-2021',
+        'russkij-jazyk-11-klass',
       );
       expect(
         ReshebaService.jsPathFor('Беларуская мова'),
@@ -25,6 +25,34 @@ void main() {
         'anglijskij-jazyk-11-klass',
       );
       expect(ReshebaService.jsPathFor('Астрономия'), isNull);
+      expect(
+        ReshebaService.jsPathsFor('Геометрия'),
+        ['geometrija-11-klass', 'geom-11-2021'],
+      );
+    });
+
+    test('parses nested sections and list numbers', () {
+      const source = '''
+        var GDZ = {
+          tree: [{
+            folder: "GDZ/book",
+            childrens: [{
+              text: "Глава 1",
+              folder: "chapter-1",
+              childrens: [{
+                text: "Параграф 2",
+                folder: "paragraph-2",
+                numbers: [1, "3-4"]
+              }]
+            }]
+          }]
+        };
+      ''';
+
+      final book = ReshebaService.parseBook(source);
+      expect(book.sections.single.text, 'Глава 1 · Параграф 2');
+      expect(book.sections.single.folder, 'chapter-1/paragraph-2');
+      expect(book.sections.single.numbers, [1, 3, 4]);
     });
 
     test('parses chapters and ranges without renumbering', () {

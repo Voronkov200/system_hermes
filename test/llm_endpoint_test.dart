@@ -30,4 +30,22 @@ void main() {
       );
     });
   });
+
+  group('API key and errors', () {
+    test('removes accidental Bearer prefix', () {
+      expect(normalizeApiKey('  Bearer secret-key  '), 'secret-key');
+      expect(normalizeApiKey('secret-key'), 'secret-key');
+    });
+
+    test('shows provider error detail without dumping JSON', () {
+      expect(
+        llmApiErrorMessage(
+          401,
+          '{"error":{"message":"Invalid API key"}}',
+        ),
+        contains('Invalid API key'),
+      );
+      expect(llmApiErrorMessage(429, ''), contains('Лимит запросов'));
+    });
+  });
 }

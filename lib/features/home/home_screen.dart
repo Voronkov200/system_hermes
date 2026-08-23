@@ -90,23 +90,45 @@ class _StatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const status = 'СИСТЕМА ГОТОВА — выбери один небольшой следующий шаг';
     const color = AppColors.accent;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: .20),
+            AppColors.cyan.withValues(alpha: .06),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.circle, size: 12, color: color),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(Icons.bolt_rounded, color: color),
+          ),
           const SizedBox(width: 12),
           const Expanded(
-            child: Text(
-              status,
-              style: TextStyle(fontWeight: FontWeight.w600),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Система готова',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Выбери один небольшой следующий шаг',
+                  style: TextStyle(color: AppColors.textDim, fontSize: 11),
+                ),
+              ],
             ),
           ),
           Text(

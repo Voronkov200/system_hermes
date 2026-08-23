@@ -31,35 +31,45 @@ class AppShell extends StatelessWidget {
     final index = _indexFor(GoRouterState.of(context).uri.path);
     return Scaffold(
       body: child,
-      bottomNavigationBar: NavigationBar(
-        key: const ValueKey('main-navigation'),
-        selectedIndex: index,
-        onDestinationSelected: (i) {
-          const paths = ['/', '/work', '/money', '/more'];
-          context.go(paths[i]);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Главная',
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: Theme.of(context).dividerColor,
+              width: .8,
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.work_outline),
-            selectedIcon: Icon(Icons.work),
-            label: 'Работа',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet),
-            label: 'Деньги',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.more_horiz),
-            selectedIcon: Icon(Icons.apps),
-            label: 'Ещё',
-          ),
-        ],
+        ),
+        child: NavigationBar(
+          key: const ValueKey('main-navigation'),
+          selectedIndex: index,
+          onDestinationSelected: (i) {
+            const paths = ['/', '/work', '/money', '/more'];
+            context.go(paths[i]);
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.dashboard_outlined),
+              selectedIcon: Icon(Icons.dashboard_rounded),
+              label: 'Главная',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.work_outline_rounded),
+              selectedIcon: Icon(Icons.work_rounded),
+              label: 'Работа',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.account_balance_wallet_outlined),
+              selectedIcon: Icon(Icons.account_balance_wallet_rounded),
+              label: 'Деньги',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.more_horiz_rounded),
+              selectedIcon: Icon(Icons.grid_view_rounded),
+              label: 'Ещё',
+            ),
+          ],
+        ),
       ),
     );
   }

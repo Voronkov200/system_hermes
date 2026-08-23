@@ -91,6 +91,7 @@ class PrefKeys {
   static const String hermesLlmUrl = 'hermes_llm_url';
   static const String hermesLlmApiKey = 'hermes_llm_api_key';
   static const String hermesLlmModel = 'hermes_llm_model';
+  static const String hermesMode = 'hermes_mode';
   static const String whisperApiKey = 'whisper_api_key';
   static const String searchSearxngUrl = 'search_searxng_url';
   static const String searchOffline = 'search_offline';

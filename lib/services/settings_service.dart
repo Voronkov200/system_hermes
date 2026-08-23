@@ -7,6 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
+import 'llm_endpoint.dart';
+
+class HermesModes {
+  HermesModes._();
+
+  static const direct = 'direct';
+  static const server = 'server';
+}
 
 /// Доступ к SharedPreferences (переопределяется в main()).
 final sharedPreferencesProvider = Provider<SharedPreferences>(
@@ -28,6 +36,7 @@ class SettingsState {
   String hermesLlmUrl; // Base URL OpenAI-совместимой модели Hermes
   String hermesLlmApiKey;
   String hermesLlmModel;
+  String hermesMode; // direct | server
   String whisperApiKey; // отдельный ключ Groq только для Whisper
   String searchSearxngUrl; // свой SearXNG-инстанс для модуля «Поиск»
   bool searchOffline; // «Не искать в интернете» (3.12, 5.1.9): пропускать поиск
@@ -46,12 +55,17 @@ class SettingsState {
     this.hermesLlmUrl = AppConstants.hermesLlmDefaultUrl,
     this.hermesLlmApiKey = '',
     this.hermesLlmModel = AppConstants.hermesLlmDefaultModel,
+    this.hermesMode = HermesModes.direct,
     this.whisperApiKey = '',
     this.searchSearxngUrl = '',
     this.searchOffline = false,
   });
 
-  String get llmKey => hermesLlmApiKey.trim();
+  String get llmKey => normalizeApiKey(hermesLlmApiKey);
+  bool get usesHermesServer =>
+      hermesMode == HermesModes.server && hermesUrl.trim().isNotEmpty;
+  bool get usesDirectLlm =>
+      hermesMode == HermesModes.direct && llmKey.isNotEmpty;
 
   SettingsState copyWith({
     ThemeMode? themeMode,
@@ -67,6 +81,7 @@ class SettingsState {
     String? hermesLlmUrl,
     String? hermesLlmApiKey,
     String? hermesLlmModel,
+    String? hermesMode,
     String? whisperApiKey,
     String? searchSearxngUrl,
     bool? searchOffline,
@@ -85,6 +100,7 @@ class SettingsState {
       hermesLlmUrl: hermesLlmUrl ?? this.hermesLlmUrl,
       hermesLlmApiKey: hermesLlmApiKey ?? this.hermesLlmApiKey,
       hermesLlmModel: hermesLlmModel ?? this.hermesLlmModel,
+      hermesMode: hermesMode ?? this.hermesMode,
       whisperApiKey: whisperApiKey ?? this.whisperApiKey,
       searchSearxngUrl: searchSearxngUrl ?? this.searchSearxngUrl,
       searchOffline: searchOffline ?? this.searchOffline,
@@ -112,12 +128,14 @@ class SettingsController extends Notifier<SettingsState> {
       unawaited(prefs.setDouble(PrefKeys.pensionAmount, pensionAmount));
     }
     final serverApiKey = prefs.getString(PrefKeys.hermesApiKey) ?? '';
+    final serverUrl = prefs.getString(PrefKeys.hermesUrl) ?? '';
     final storedLlmUrl = prefs.getString(PrefKeys.hermesLlmUrl) ??
         prefs.getString(legacyLlmUrlKey) ??
         AppConstants.hermesLlmDefaultUrl;
-    final llmApiKey = prefs.getString(PrefKeys.hermesLlmApiKey) ??
+    final rawLlmApiKey = prefs.getString(PrefKeys.hermesLlmApiKey) ??
         prefs.getString(legacyLlmApiKey) ??
-        serverApiKey;
+        (serverUrl.trim().isEmpty ? serverApiKey : '');
+    final llmApiKey = normalizeApiKey(rawLlmApiKey);
     final storedLlmModel = prefs.getString(PrefKeys.hermesLlmModel) ??
         prefs.getString(legacyLlmModelKey) ??
         AppConstants.hermesLlmDefaultModel;
@@ -137,9 +155,22 @@ class SettingsController extends Notifier<SettingsState> {
     }
     if (!prefs.containsKey(PrefKeys.hermesLlmApiKey)) {
       unawaited(prefs.setString(PrefKeys.hermesLlmApiKey, llmApiKey));
+    } else if (rawLlmApiKey != llmApiKey) {
+      unawaited(prefs.setString(PrefKeys.hermesLlmApiKey, llmApiKey));
     }
     if (!prefs.containsKey(PrefKeys.hermesLlmModel) || migrateUntouchedGroq) {
       unawaited(prefs.setString(PrefKeys.hermesLlmModel, llmModel));
+    }
+    final storedMode = prefs.getString(PrefKeys.hermesMode);
+    final hermesMode = storedMode == HermesModes.server ||
+            storedMode == HermesModes.direct
+        ? storedMode!
+        : (serverUrl.trim().isNotEmpty &&
+                llmApiKey.isEmpty
+            ? HermesModes.server
+            : HermesModes.direct);
+    if (storedMode != hermesMode) {
+      unawaited(prefs.setString(PrefKeys.hermesMode, hermesMode));
     }
     return SettingsState(
       themeMode: prefs.getString(PrefKeys.themeMode) == 'light'
@@ -148,7 +179,7 @@ class SettingsController extends Notifier<SettingsState> {
       pensionDay: prefs.getInt(PrefKeys.pensionDay) ?? AppConstants.defaultPensionDay,
       pensionAmount: pensionAmount,
       vaultPath: prefs.getString(PrefKeys.vaultPath) ?? '',
-      hermesUrl: prefs.getString(PrefKeys.hermesUrl) ?? '',
+      hermesUrl: serverUrl,
       hermesApiKey: serverApiKey,
       githubOwner: prefs.getString(PrefKeys.githubOwner) ?? '',
       githubRepo: prefs.getString(PrefKeys.githubRepo) ?? '',
@@ -158,6 +189,7 @@ class SettingsController extends Notifier<SettingsState> {
       hermesLlmUrl: llmUrl,
       hermesLlmApiKey: llmApiKey,
       hermesLlmModel: llmModel,
+      hermesMode: hermesMode,
       whisperApiKey: whisperApiKey,
       searchSearxngUrl: prefs.getString(PrefKeys.searchSearxngUrl) ?? '',
       searchOffline: prefs.getBool(PrefKeys.searchOffline) ?? false,
@@ -182,6 +214,7 @@ class SettingsController extends Notifier<SettingsState> {
       hermesLlmUrl: s.hermesLlmUrl,
       hermesLlmApiKey: s.hermesLlmApiKey,
       hermesLlmModel: s.hermesLlmModel,
+      hermesMode: s.hermesMode,
       whisperApiKey: s.whisperApiKey,
       searchSearxngUrl: s.searchSearxngUrl,
       searchOffline: s.searchOffline,
@@ -202,6 +235,7 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.hermesLlmUrl, next.hermesLlmUrl);
     await prefs.setString(PrefKeys.hermesLlmApiKey, next.hermesLlmApiKey);
     await prefs.setString(PrefKeys.hermesLlmModel, next.hermesLlmModel);
+    await prefs.setString(PrefKeys.hermesMode, next.hermesMode);
     await prefs.setString(PrefKeys.whisperApiKey, next.whisperApiKey);
     await prefs.setString(PrefKeys.searchSearxngUrl, next.searchSearxngUrl);
     await prefs.setBool(PrefKeys.searchOffline, next.searchOffline);
@@ -220,7 +254,14 @@ class SettingsController extends Notifier<SettingsState> {
   }
 
   Future<void> setHermesUrl(String url) async {
-    await _save((n) => n.hermesUrl = url);
+    await _save((n) {
+      n.hermesUrl = url.trim();
+      if (n.hermesUrl.isNotEmpty) {
+        n.hermesMode = HermesModes.server;
+      } else if (n.llmKey.isNotEmpty) {
+        n.hermesMode = HermesModes.direct;
+      }
+    });
   }
 
   Future<void> setHermesApiKey(String key) async {
@@ -243,15 +284,24 @@ class SettingsController extends Notifier<SettingsState> {
   }
 
   Future<void> setHermesLlmUrl(String url) async {
-    await _save((n) => n.hermesLlmUrl = url);
+    await _save((n) {
+      n.hermesLlmUrl = url.trim();
+      n.hermesMode = HermesModes.direct;
+    });
   }
 
   Future<void> setHermesLlmApiKey(String key) async {
-    await _save((n) => n.hermesLlmApiKey = key);
+    await _save((n) {
+      n.hermesLlmApiKey = normalizeApiKey(key);
+      if (n.hermesLlmApiKey.isNotEmpty) n.hermesMode = HermesModes.direct;
+    });
   }
 
   Future<void> setHermesLlmModel(String model) async {
-    await _save((n) => n.hermesLlmModel = model);
+    await _save((n) {
+      n.hermesLlmModel = model.trim();
+      n.hermesMode = HermesModes.direct;
+    });
   }
 
   Future<void> setHermesLlmProvider({
@@ -261,7 +311,13 @@ class SettingsController extends Notifier<SettingsState> {
     await _save((n) {
       n.hermesLlmUrl = baseUrl.trim();
       n.hermesLlmModel = model.trim();
+      n.hermesMode = HermesModes.direct;
     });
+  }
+
+  Future<void> setHermesMode(String mode) async {
+    if (mode != HermesModes.direct && mode != HermesModes.server) return;
+    await _save((n) => n.hermesMode = mode);
   }
 
   Future<void> setWhisperApiKey(String key) async {

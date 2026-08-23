@@ -54,7 +54,7 @@ Future<String> llmComplete(
         openAiChatCompletionsUri(apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
+          'Authorization': 'Bearer ${normalizeApiKey(apiKey)}',
         },
         body: jsonEncode({
           'model': usedModel,
@@ -69,12 +69,10 @@ Future<String> llmComplete(
       .timeout(Duration(seconds: timeoutSeconds));
 
   if (res.statusCode != 200) {
-    final reason = switch (res.statusCode) {
-      401 => 'неверный API-ключ (401)',
-      404 => 'неверный URL или модель (404)',
-      429 => 'превышен лимит запросов (429)',
-      _ => 'ошибка сервера ИИ (HTTP ${res.statusCode})',
-    };
+    final reason = llmApiErrorMessage(
+      res.statusCode,
+      utf8.decode(res.bodyBytes, allowMalformed: true),
+    );
     throw LlmHttpException(res.statusCode, reason);
   }
 

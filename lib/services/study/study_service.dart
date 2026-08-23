@@ -254,7 +254,7 @@ class StudyController extends Notifier<StudyState> {
   bool _bundledStarted = false;
   bool _bundleNeedsRefresh = false;
 
-  static const int _bundleVersion = 5;
+  static const int _bundleVersion = 6;
 
   static const Map<String, String> _bookCatalogMap = {
     '1155': 'История (часть 1)',
@@ -343,13 +343,15 @@ class StudyController extends Notifier<StudyState> {
         );
       } else if (existing.subtitle != item.subtitle ||
           existing.icon != item.icon ||
-          existing.category != item.category) {
+          existing.category != item.category ||
+          existing.analysis != _analysisFor(item.title)) {
         _box.put(
           existing.id,
           existing.copyWith(
             subtitle: item.subtitle,
             icon: item.icon,
             category: item.category,
+            analysis: _analysisFor(item.title),
           ),
         );
       }

@@ -21,6 +21,8 @@ class SubjectScreen extends ConsumerStatefulWidget {
 }
 
 class _SubjectScreenState extends ConsumerState<SubjectScreen> {
+  String _query = '';
+
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(studyProvider);
@@ -34,10 +36,19 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
         body: const Center(child: Text('Предмет не найден')),
       );
     }
-    final paragraphs = st.paragraphs
+    final allParagraphs = st.paragraphs
         .where((p) => p.subjectId == subject.id)
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
+    final query = _query.trim().toLowerCase();
+    final paragraphs = allParagraphs
+        .where((p) =>
+            query.isEmpty ||
+            p.title.toLowerCase().contains(query) ||
+            p.chapter.toLowerCase().contains(query))
+        .toList();
+    final learned = allParagraphs.where((p) => p.learned).length;
+    final hasGdz = ReshebaService.jsPathFor(subject.title) != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -53,15 +64,22 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _SubjectHeader(
+            subject: subject,
+            learned: learned,
+            total: allParagraphs.length,
+            hasGdz: hasGdz,
+          ),
+          const SizedBox(height: 12),
           if (subject.filePath != null) ...[
             _PdfBanner(subject: subject, onParse: () => _parsePdf(subject)),
             const SizedBox(height: 12),
           ],
-          if (ReshebaService.jsPathFor(subject.title) != null) ...[
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => Navigator.of(context).push(
+          if (hasGdz) ...[
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => ReshebaScreen(
                       subjectTitle: subject.title,
@@ -69,26 +87,54 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
                     ),
                   ),
                 ),
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('Фото решений по заданиям'),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: st.busy ? null : () => _addParagraph(subject),
-                  icon: const Icon(Icons.add),
-                  label: Text(
-                    subject.analysis == 'literature'
-                        ? 'Добавить произведение'
-                        : 'Параграф вручную',
+                child: Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.cyan.withValues(alpha: .18),
+                        AppColors.accent.withValues(alpha: .06),
+                      ],
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.photo_library_outlined,
+                          color: AppColors.cyan),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Фото решений без OCR',
+                              style: TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Поиск по номеру · открытые фото остаются в кэше',
+                              style: TextStyle(
+                                color: AppColors.textDim,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
+            const SizedBox(height: 12),
+          ],
+          TextField(
+            onChanged: (value) => setState(() => _query = value),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Найти параграф или главу',
+            ),
           ),
           const SizedBox(height: 16),
           if (st.workingId != null && st.busy) ...[
@@ -96,12 +142,13 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
             const SizedBox(height: 12),
           ],
           if (paragraphs.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 32),
               child: Center(
                 child: Text(
-                  'Параграфов ещё нет.\nПрикрепи PDF-учебник и нажми '
-                  '«Разобрать учебник»\nили добавь параграф вручную.',
+                  allParagraphs.isEmpty
+                      ? 'Параграфы ещё загружаются или отсутствуют.'
+                      : 'Параграф не найден. Попробуй другой запрос.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textDim, fontSize: 13),
                 ),
@@ -206,6 +253,11 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
               ),
               onTap: () => Navigator.pop(ctx, 'parse'),
             ),
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('Добавить параграф вручную'),
+              onTap: () => Navigator.pop(ctx, 'add'),
+            ),
             if (ReshebaService.jsPathFor(subject.title) != null)
               ListTile(
                 leading: const Icon(Icons.assignment_turned_in),
@@ -235,6 +287,9 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
         break;
       case 'parse':
         await _parsePdf(subject);
+        break;
+      case 'add':
+        await _addParagraph(subject);
         break;
       case 'resheba':
         await Navigator.of(context).push(
@@ -327,6 +382,85 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
   }
 }
 
+class _SubjectHeader extends StatelessWidget {
+  final StudySubject subject;
+  final int learned;
+  final int total;
+  final bool hasGdz;
+
+  const _SubjectHeader({
+    required this.subject,
+    required this.learned,
+    required this.total,
+    required this.hasGdz,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = total == 0 ? 0.0 : learned / total;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF233141)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  subject.subtitle.isEmpty
+                      ? subject.category
+                      : subject.subtitle,
+                  style: const TextStyle(
+                    color: AppColors.textDim,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              if (hasGdz)
+                const Text(
+                  'ФОТО ГДЗ',
+                  style: TextStyle(
+                    color: AppColors.cyan,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 7,
+                    backgroundColor: AppColors.surfaceAlt,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '$learned/$total',
+                style: const TextStyle(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PdfBanner extends ConsumerWidget {
   final StudySubject subject;
   final VoidCallback onParse;
@@ -413,19 +547,6 @@ class _ParagraphTile extends ConsumerWidget {
                         ),
                       ),
                     ],
-                    if (p.content.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          p.content.replaceAll(RegExp(r'[#*_`>\[\]]'), ' '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.cyan,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),

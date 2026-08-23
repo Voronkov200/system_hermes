@@ -159,7 +159,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final hermes = ref.watch(chatProvider);
     final settings = ref.watch(settingsProvider);
-    final offline = settings.hermesUrl.trim().isEmpty && settings.llmKey.isEmpty;
+    final offline = !settings.usesHermesServer && !settings.usesDirectLlm;
 
     return Scaffold(
       appBar: AppBar(
@@ -235,13 +235,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
             ),
-          if (!offline && settings.hermesUrl.trim().isEmpty)
+          if (!offline)
             Container(
               margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
               decoration: BoxDecoration(
                 color: AppColors.accent.withValues(alpha: .10),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: AppColors.accent.withValues(alpha: .45),
                 ),
@@ -256,9 +256,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Настроена модель: ${settings.hermesLlmModel}',
-                      style: const TextStyle(fontSize: 12),
+                      settings.usesHermesServer
+                          ? 'Hermes подключён к собственному серверу'
+                          : 'B.ai подключён · ${settings.hermesLlmModel}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Настройки подключения',
+                    onPressed: () => context.push('/settings'),
+                    icon: const Icon(Icons.tune, size: 18),
                   ),
                 ],
               ),

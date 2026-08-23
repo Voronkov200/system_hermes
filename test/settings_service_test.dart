@@ -20,6 +20,26 @@ void main() {
     expect(settings.hermesLlmUrl, 'https://api.b.ai/v1');
     expect(settings.hermesLlmModel, 'deepseek-v4-flash');
     expect(settings.whisperApiKey, isEmpty);
+    expect(settings.hermesMode, HermesModes.direct);
+  });
+
+  test('ключ с Bearer нормализуется и включает прямую модель', () async {
+    final settings = await readSettings({
+      PrefKeys.hermesLlmApiKey: 'Bearer private-test-key',
+      PrefKeys.hermesUrl: 'https://old-server.test/hermes',
+    });
+    expect(settings.llmKey, 'private-test-key');
+    expect(settings.hermesMode, HermesModes.direct);
+    expect(settings.usesDirectLlm, isTrue);
+  });
+
+  test('старый сервер без ключа остаётся активным сервером', () async {
+    final settings = await readSettings({
+      PrefKeys.hermesUrl: 'https://server.test/hermes',
+      PrefKeys.hermesLlmApiKey: '',
+    });
+    expect(settings.hermesMode, HermesModes.server);
+    expect(settings.usesHermesServer, isTrue);
   });
 
   test('нетронутый Groq без ключа переводится на B.ai', () async {

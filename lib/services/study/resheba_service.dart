@@ -28,12 +28,16 @@ class ReshebaBook {
   final int maxPhotos;
   final bool mixedFormats;
   final List<ReshebaSection> sections;
+  final String sourceSlug;
+  final bool fromCache;
 
   const ReshebaBook({
     required this.root,
     required this.maxPhotos,
     required this.mixedFormats,
     required this.sections,
+    this.sourceSlug = '',
+    this.fromCache = false,
   });
 
   int get totalNumbers =>
@@ -49,23 +53,37 @@ class ReshebaService {
   /// Идентификатор структуры ГДЗ на resheba.top для поддерживаемых
   /// предметов 11 класса. Названия предметов в приложении могут меняться,
   /// поэтому используем нормализацию и синонимы.
-  static String? jsPathFor(String subjectTitle) {
+  static List<String> jsPathsFor(String subjectTitle) {
     final t = _normalize(subjectTitle);
     if (t.contains('английск') || t.contains('англiйск') || t.contains('англ')) {
-      return 'anglijskij-jazyk-11-klass';
+      return const ['anglijskij-jazyk-11-klass'];
     }
-    if (t.contains('алгебр')) return 'algebra-11-klass';
-    if (t.contains('геометр')) return 'geom-11-2021';
+    if (t.contains('алгебр')) return const ['algebra-11-klass'];
+    if (t.contains('геометр')) {
+      return const ['geometrija-11-klass', 'geom-11-2021'];
+    }
     if (t.contains('русск') && t.contains('язык')) {
-      return 'russkij-jazyk-11-klass-2021';
+      return const [
+        'russkij-jazyk-11-klass',
+        'russkij-jazyk-11-klass-2021',
+      ];
     }
     if ((t.contains('беларус') || t.contains('белорус')) && t.contains('мов')) {
-      return 'belorusskij-jazyk-11-klass';
+      return const ['belorusskij-jazyk-11-klass'];
     }
-    if (t.contains('физик')) return 'fizika-11-2021';
-    if (t.contains('хими')) return 'himija-11-klass';
-    if (t.contains('биолог')) return 'biologija-11';
-    return null;
+    if (t.contains('физик')) {
+      return const ['fizika-11-klass', 'fizika-11-2021'];
+    }
+    if (t.contains('хими')) return const ['himija-11-klass'];
+    if (t.contains('биолог')) {
+      return const ['biologija-11-klass-dashkov', 'biologija-11'];
+    }
+    return const [];
+  }
+
+  static String? jsPathFor(String subjectTitle) {
+    final paths = jsPathsFor(subjectTitle);
+    return paths.isEmpty ? null : paths.first;
   }
 
   static String _normalize(String value) => value
@@ -76,8 +94,8 @@ class ReshebaService {
       .trim();
 
   Future<ReshebaBook> loadBook(String subjectTitle) async {
-    final js = jsPathFor(subjectTitle);
-    if (js == null) {
+    final candidates = jsPathsFor(subjectTitle);
+    if (candidates.isEmpty) {
       throw StateError(
         'Для «$subjectTitle» сейчас нет настроенного источника ГДЗ. '
         'Можно использовать внешний поиск из Hermes.',
@@ -86,18 +104,45 @@ class ReshebaService {
 
     final appDir = await FileTools.root();
     final catalogDir = Directory('${appDir.path}/resheba/catalogs');
-    final cachedCatalog = File('${catalogDir.path}/$js.js');
-    try {
-      final body = await _getText('$_base/answers/$js.js');
-      final book = parseBook(body);
-      await catalogDir.create(recursive: true);
-      await cachedCatalog.writeAsString(body, flush: true);
-      return book;
-    } catch (_) {
-      if (!await cachedCatalog.exists()) rethrow;
-      final cached = await cachedCatalog.readAsString();
-      return parseBook(cached);
+    Object? lastError;
+
+    for (final slug in candidates) {
+      try {
+        final body = await _getText('$_base/answers/$slug.js');
+        final book = parseBook(body, sourceSlug: slug);
+        await catalogDir.create(recursive: true);
+        await File('${catalogDir.path}/$slug.js')
+            .writeAsString(body, flush: true);
+        return book;
+      } catch (error) {
+        lastError = error;
+      }
     }
+
+    // Сначала пробуем свежие адреса, затем старый каталог из кэша. Благодаря
+    // этому уже открытые решебники продолжают работать без интернета.
+    for (final slug in candidates) {
+      final cachedCatalog = File('${catalogDir.path}/$slug.js');
+      if (!await cachedCatalog.exists()) continue;
+      try {
+        final cached = await cachedCatalog.readAsString();
+        final parsed = parseBook(cached, sourceSlug: slug);
+        return ReshebaBook(
+          root: parsed.root,
+          maxPhotos: parsed.maxPhotos,
+          mixedFormats: parsed.mixedFormats,
+          sections: parsed.sections,
+          sourceSlug: parsed.sourceSlug,
+          fromCache: true,
+        );
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw Exception(
+      'Не удалось открыть каталог решений для «$subjectTitle». '
+      'Проверь интернет и повтори. Последняя ошибка: $lastError',
+    );
   }
 
   Future<String> _getText(String url) async {
@@ -124,7 +169,7 @@ class ReshebaService {
 
   /// Парсинг `var GDZ = {...}`. Допускаются JS-ключи без кавычек и
   /// завершающие запятые, которые встречаются в опубликованных структурах.
-  static ReshebaBook parseBook(String js) {
+  static ReshebaBook parseBook(String js, {String sourceSlug = ''}) {
     final start = js.indexOf('{');
     final end = js.lastIndexOf('}');
     if (start < 0 || end <= start) {
@@ -153,24 +198,14 @@ class ReshebaService {
     final children = rawChildren is List ? rawChildren : const [];
 
     final sections = <ReshebaSection>[];
-    for (final rawChild in children) {
-      if (rawChild is! Map) continue;
-      final c = rawChild.cast<String, dynamic>();
-      final text = (c['text'] as String? ?? '').trim();
-      final folder = (c['folder'] as String? ?? '').trim();
-      final numbers = _parseNumbers(c['numbers']);
-      if (text.isNotEmpty || folder.isNotEmpty) {
-        sections.add(
-          ReshebaSection(text: text, folder: folder, numbers: numbers),
-        );
-      }
-    }
+    _collectSections(children, sections);
 
     final book = ReshebaBook(
       root: rootFolder,
       maxPhotos: (decoded['maxPhotos'] as num?)?.toInt() ?? 1,
       mixedFormats: decoded['mixedFormats'] == true,
       sections: sections,
+      sourceSlug: sourceSlug,
     );
     if (book.root.isEmpty ||
         book.sections.isEmpty ||
@@ -180,13 +215,61 @@ class ReshebaService {
     return book;
   }
 
+  static void _collectSections(
+    List<dynamic> nodes,
+    List<ReshebaSection> output, {
+    String parentText = '',
+    String parentFolder = '',
+  }) {
+    for (final rawNode in nodes) {
+      if (rawNode is! Map) continue;
+      final node = rawNode.cast<String, dynamic>();
+      final ownText = (node['text'] as String? ?? '').trim();
+      final ownFolder = (node['folder'] as String? ?? '').trim();
+      final text = parentText.isEmpty || ownText.isEmpty
+          ? '$parentText$ownText'.trim()
+          : '$parentText · $ownText';
+      final folder = parentFolder.isEmpty || ownFolder.contains('/')
+          ? ownFolder
+          : ownFolder.isEmpty
+              ? parentFolder
+              : '$parentFolder/$ownFolder';
+      final numbers = _parseNumbers(node['numbers']);
+      if (numbers.isNotEmpty && folder.isNotEmpty) {
+        output.add(
+          ReshebaSection(
+            text: text.isEmpty ? 'Задания' : text,
+            folder: folder,
+            numbers: numbers,
+          ),
+        );
+      }
+      final rawChildren = node['childrens'] ?? node['children'];
+      if (rawChildren is List && rawChildren.isNotEmpty) {
+        _collectSections(
+          rawChildren,
+          output,
+          parentText: text,
+          parentFolder: folder,
+        );
+      }
+    }
+  }
+
   static List<int> _parseNumbers(Object? rawValue) {
+    if (rawValue is List) {
+      final numbers = <int>[];
+      for (final value in rawValue) {
+        numbers.addAll(_parseNumbers(value));
+      }
+      return numbers.toSet().toList()..sort();
+    }
     final raw = rawValue?.toString().trim() ?? '';
     if (raw.isEmpty) return const [];
     final result = <int>[];
     for (final part in raw.split(',')) {
       final value = part.trim();
-      final range = RegExp(r'^(\d+)\s*-\s*(\d+)$').firstMatch(value);
+      final range = RegExp(r'^(\d+)\s*[-–—]\s*(\d+)$').firstMatch(value);
       if (range != null) {
         final from = int.parse(range.group(1)!);
         final to = int.parse(range.group(2)!);
@@ -221,8 +304,9 @@ class ReshebaService {
         Directory('${appDir.path}/resheba/${book.root}/${section.folder}');
     await cacheDir.create(recursive: true);
 
-    final exts = <String>['png'];
-    if (book.mixedFormats) exts.add('jpg');
+    // На сайте встречаются разные форматы даже в каталогах без флага
+    // mixedFormats. Проверяем их в предсказуемом порядке.
+    final exts = <String>['png', 'jpg', 'jpeg', 'webp'];
 
     for (final ext in exts) {
       final cached = File('${cacheDir.path}/$number.$ext');
@@ -236,7 +320,12 @@ class ReshebaService {
       try {
         final res = await http.get(
           Uri.parse(url),
-          headers: {'User-Agent': _userAgent, 'Accept': 'image/avif,image/webp,image/*,*/*'},
+          headers: {
+            'User-Agent': _userAgent,
+            'Accept': 'image/avif,image/webp,image/*,*/*',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.7',
+            'Referer': sourcePageUrl(book),
+          },
         ).timeout(const Duration(seconds: 25));
         if (res.statusCode == 200 && _isImageResponse(res)) {
           final file = File('${cacheDir.path}/$number.$ext');
@@ -260,9 +349,14 @@ class ReshebaService {
     return '$_base/${book.root}/${section.folder}/$number.$extension';
   }
 
+  static String sourcePageUrl(ReshebaBook book) => book.sourceSlug.isEmpty
+      ? '$_base/gdz/11-klass'
+      : '$_base/${book.sourceSlug}';
+
   static bool _isImageResponse(http.Response response) {
     final contentType = response.headers['content-type']?.toLowerCase() ?? '';
-    return contentType.startsWith('image/') &&
+    return (contentType.startsWith('image/') ||
+            contentType.contains('octet-stream')) &&
         _hasImageSignature(response.bodyBytes);
   }
 
@@ -285,6 +379,15 @@ class ReshebaService {
         bytes[0] == 0xFF &&
         bytes[1] == 0xD8 &&
         bytes[2] == 0xFF;
-    return png || jpeg;
+    final webp = bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50;
+    return png || jpeg || webp;
   }
 }
