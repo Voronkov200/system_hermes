@@ -21,7 +21,7 @@ const _androidFontDirectories = <String>[
 /// издательские гарнитуры вроде Cambria Math, Symbol или Times New Roman.
 /// Он не меняет PDF: только даёт PDFium ближайший локальный Android-шрифт.
 class _HermesAndroidFontResolver extends PdfFontResolver {
-  const _HermesAndroidFontResolver();
+  _HermesAndroidFontResolver();
 
   @override
   FutureOr<PdfFontResolution?> resolve(
@@ -77,7 +77,7 @@ class _HermesAndroidFontResolver extends PdfFontResolver {
 }
 
 final hermesPdfFontManager = PdfFontManager(
-  resolvers: const [_HermesAndroidFontResolver()],
+  resolvers: [_HermesAndroidFontResolver()],
 );
 
 Future<void> initializeHermesPdfEngine() async {
