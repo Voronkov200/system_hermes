@@ -1,11 +1,8 @@
 // Экран параграфа с устойчивым отображением оригинальных страниц учебника.
-//
-// PDF используется только как первоисточник. Нужные страницы один раз
-// рендерятся в PNG и дальше показываются из локального кэша, поэтому формулы,
-// таблицы и рисунки не зависят от повторного live-рендера PDF-виджета.
+// PDF используется только как первоисточник: нужная страница один раз
+// рендерится в PNG и затем открывается из локального кэша.
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
@@ -47,15 +44,12 @@ class CachedParagraphScreen extends ConsumerWidget {
     }
 
     final subject = notifier.subjectOf(paragraph.subjectId);
-    final sourceReport = StudyContentQuality.inspect(paragraph.sourceText);
     final local = LocalStudyContent.build(
       paragraph.sourceText,
       analysis: subject?.analysis ?? 'humanities',
     );
-    final exactScience = subject?.analysis == 'exact';
-    final hasSolutionPhotos = subject != null &&
-        ReshebaService.jsPathFor(subject.title) != null;
-    final textbookRange = StudyTextbookCatalog.rangeFor(
+    final quality = StudyContentQuality.inspect(paragraph.sourceText);
+    final range = StudyTextbookCatalog.rangeFor(
       chapter: paragraph.chapter,
       pages: paragraph.pages,
       subjectTitle: subject?.title,
@@ -65,6 +59,7 @@ class CachedParagraphScreen extends ConsumerWidget {
     );
     final visibleChapter =
         StudyTextbookCatalog.visibleChapter(paragraph.chapter);
+    final exact = subject?.analysis == 'exact';
 
     return Scaffold(
       appBar: AppBar(
@@ -84,20 +79,10 @@ class CachedParagraphScreen extends ConsumerWidget {
               color: paragraph.learned ? AppColors.accent : null,
             ),
           ),
-          PopupMenuButton<String>(
-            onSelected: (value) =>
-                _onMenu(context, ref, value, paragraph),
-            itemBuilder: (_) => [
-              if (paragraph.content.trim().isNotEmpty)
-                const PopupMenuItem(
-                  value: 'clear_legacy',
-                  child: Text('Удалить старый конспект'),
-                ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Text('Удалить параграф'),
-              ),
-            ],
+          IconButton(
+            tooltip: 'Удалить параграф',
+            onPressed: () => _delete(context, ref, paragraph),
+            icon: const Icon(Icons.delete_outline),
           ),
         ],
       ),
@@ -112,8 +97,6 @@ class CachedParagraphScreen extends ConsumerWidget {
           Text(
             [
               if (subject != null) subject.title,
-              if (subject != null && subject.subtitle.isNotEmpty)
-                subject.subtitle,
               if (visibleChapter.isNotEmpty) visibleChapter,
               if (paragraph.pages.isNotEmpty) paragraph.pages,
             ].join(' · '),
@@ -124,37 +107,33 @@ class CachedParagraphScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const _StableOriginalBanner(),
-          if (textbookRange != null) ...[
+          const _OriginalPageBanner(),
+          const SizedBox(height: 12),
+          if (range != null)
+            _CachedTextbookCard(range: range)
+          else
+            const _NoPageCard(),
+          if (subject != null &&
+              ReshebaService.jsPathFor(subject.title) != null) ...[
             const SizedBox(height: 12),
-            _CachedTextbookPagesCard(range: textbookRange),
-          ] else ...[
-            const SizedBox(height: 12),
-            const _NoTextbookPageCard(),
-          ],
-          if (hasSolutionPhotos && subject != null) ...[
-            const SizedBox(height: 12),
-            _SolutionPhotosCard(subject: subject),
+            _SolutionCard(subject: subject),
           ],
           const SizedBox(height: 12),
-          _SourceQualityCard(report: sourceReport, pages: paragraph.pages),
+          _QualityCard(report: quality, pages: paragraph.pages),
           const SizedBox(height: 16),
-          if (exactScience)
-            const _ExactScienceNotice()
+          if (exact)
+            const _ExactNotice()
+          else if (local.isEmpty)
+            const _MissingTextCard()
           else ...[
-            Text(
-              subject?.analysis == 'languages'
-                  ? 'Правила и упражнения'
-                  : 'Конспект параграфа',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 4),
             const Text(
-              'Текст ниже используется для поиска и конспекта. Формулы, '
-              'таблицы и рисунки сверяй с оригинальной страницей выше.',
+              'Локальный конспект',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Текст используется для поиска и конспекта. Формулы, таблицы '
+              'и рисунки берутся с оригинальной страницы выше.',
               style: TextStyle(
                 color: AppColors.textDim,
                 fontSize: 12,
@@ -162,49 +141,10 @@ class CachedParagraphScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 10),
-            if (local.isEmpty)
-              const _MissingSourceCard()
-            else
-              for (final section in local.sections) ...[
-                _LocalSectionCard(section: section),
-                const SizedBox(height: 10),
-              ],
-          ],
-          if (paragraph.content.trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: ExpansionTile(
-                leading: const Icon(
-                  Icons.history_edu_outlined,
-                  color: AppColors.violet,
-                ),
-                title: const Text(
-                  'Сохранённый прежний конспект',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                ),
-                subtitle: const Text(
-                  'Сохранён для совместимости и по умолчанию скрыт',
-                  style: TextStyle(fontSize: 11),
-                ),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                    child: MarkdownBody(
-                      data: paragraph.content,
-                      selectable: true,
-                      styleSheet: MarkdownStyleSheet.fromTheme(
-                        Theme.of(context),
-                      ).copyWith(
-                        p: const TextStyle(fontSize: 13, height: 1.5),
-                        listBullet:
-                            const TextStyle(fontSize: 13, height: 1.5),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            for (final section in local.sections) ...[
+              _TextSection(section: section),
+              const SizedBox(height: 10),
+            ],
           ],
           const SizedBox(height: 24),
         ],
@@ -212,19 +152,11 @@ class CachedParagraphScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _onMenu(
+  Future<void> _delete(
     BuildContext context,
     WidgetRef ref,
-    String value,
     StudyParagraph paragraph,
   ) async {
-    final notifier = ref.read(studyProvider.notifier);
-    if (value == 'clear_legacy') {
-      await notifier.clearParagraphContent(paragraph.id);
-      return;
-    }
-    if (value != 'delete') return;
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -242,13 +174,13 @@ class CachedParagraphScreen extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
-    await notifier.removeParagraph(paragraph.id);
+    await ref.read(studyProvider.notifier).removeParagraph(paragraph.id);
     if (context.mounted) Navigator.of(context).pop();
   }
 }
 
-class _StableOriginalBanner extends StatelessWidget {
-  const _StableOriginalBanner();
+class _OriginalPageBanner extends StatelessWidget {
+  const _OriginalPageBanner();
 
   @override
   Widget build(BuildContext context) {
@@ -266,8 +198,8 @@ class _StableOriginalBanner extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Оригинальная страница рендерится один раз и сохраняется как '
-              'изображение высокой чёткости. Повторно открывается уже из кэша.',
+              'Страница учебника один раз рендерится в PNG высокой чёткости '
+              'и затем открывается из локального кэша.',
               style: TextStyle(fontSize: 12, height: 1.4),
             ),
           ),
@@ -277,17 +209,14 @@ class _StableOriginalBanner extends StatelessWidget {
   }
 }
 
-class _CachedTextbookPagesCard extends ConsumerWidget {
+class _CachedTextbookCard extends ConsumerWidget {
   final StudyTextbookPageRange range;
 
-  const _CachedTextbookPagesCard({required this.range});
+  const _CachedTextbookCard({required this.range});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final request = (
-      bookId: range.source.bookId,
-      pdfPage: range.pdfStart,
-    );
+    final request = (bookId: range.source.bookId, pdfPage: range.pdfStart);
     final page = ref.watch(studyTextbookPageImageProvider(request));
 
     return Card(
@@ -296,39 +225,15 @@ class _CachedTextbookPagesCard extends ConsumerWidget {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.menu_book_rounded, color: AppColors.accent),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Оригинальная страница учебника',
-                        style: TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${range.source.title} · ${range.printedLabel}',
-                        style: const TextStyle(
-                          color: AppColors.textDim,
-                          fontSize: 11,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const _CachedBadge(),
-              ],
+            Text(
+              '${range.source.title} · ${range.printedLabel}',
+              style: const TextStyle(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             page.when(
-              loading: () => const _PagePreparing(),
+              loading: () => const _PreparingPage(),
               error: (error, _) => _PageError(
                 message: error.toString(),
                 onRetry: () =>
@@ -342,13 +247,7 @@ class _CachedTextbookPagesCard extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(14),
                     clipBehavior: Clip.antiAlias,
                     child: InkWell(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => _CachedTextbookViewerScreen(
-                            range: range,
-                          ),
-                        ),
-                      ),
+                      onTap: () => _openViewer(context),
                       child: SizedBox(
                         height: 420,
                         child: Image.file(
@@ -362,13 +261,7 @@ class _CachedTextbookPagesCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
                   FilledButton.icon(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => _CachedTextbookViewerScreen(
-                          range: range,
-                        ),
-                      ),
-                    ),
+                    onPressed: () => _openViewer(context),
                     icon: const Icon(Icons.fullscreen_rounded),
                     label: Text(
                       range.printedStart == range.printedEnd
@@ -376,14 +269,11 @@ class _CachedTextbookPagesCard extends ConsumerWidget {
                           : 'Открыть все страницы параграфа',
                     ),
                   ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 6),
                   const Text(
-                    'После первого рендера эта страница работает без интернета.',
+                    'После первого рендера страница доступна без интернета.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppColors.textDim,
-                      fontSize: 10.5,
-                    ),
+                    style: TextStyle(color: AppColors.textDim, fontSize: 10.5),
                   ),
                 ],
               ),
@@ -393,35 +283,18 @@ class _CachedTextbookPagesCard extends ConsumerWidget {
       ),
     );
   }
-}
 
-class _CachedBadge extends StatelessWidget {
-  const _CachedBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.accent.withValues(alpha: .12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.accent.withValues(alpha: .35)),
-      ),
-      child: const Text(
-        'PNG-КЭШ',
-        style: TextStyle(
-          color: AppColors.accent,
-          fontSize: 8.5,
-          fontWeight: FontWeight.w900,
-          letterSpacing: .4,
-        ),
+  void _openViewer(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _CachedTextbookViewer(range: range),
       ),
     );
   }
 }
 
-class _PagePreparing extends StatelessWidget {
-  const _PagePreparing();
+class _PreparingPage extends StatelessWidget {
+  const _PreparingPage();
 
   @override
   Widget build(BuildContext context) {
@@ -433,11 +306,7 @@ class _PagePreparing extends StatelessWidget {
         Text(
           'Hermes загружает официальный PDF и готовит изображение страницы. '
           'Это выполняется один раз.',
-          style: TextStyle(
-            color: AppColors.textDim,
-            fontSize: 11.5,
-            height: 1.4,
-          ),
+          style: TextStyle(color: AppColors.textDim, fontSize: 11.5, height: 1.4),
         ),
       ],
     );
@@ -452,42 +321,32 @@ class _PageError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.danger.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: AppColors.danger.withValues(alpha: .30)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(message, style: const TextStyle(fontSize: 11.5, height: 1.4)),
-          const SizedBox(height: 9),
-          OutlinedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Подготовить заново'),
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(message, style: const TextStyle(color: AppColors.danger)),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Подготовить заново'),
+        ),
+      ],
     );
   }
 }
 
-class _CachedTextbookViewerScreen extends ConsumerWidget {
+class _CachedTextbookViewer extends ConsumerWidget {
   final StudyTextbookPageRange range;
 
-  const _CachedTextbookViewerScreen({required this.range});
+  const _CachedTextbookViewer({required this.range});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final count = range.pdfEnd - range.pdfStart + 1;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(range.printedLabel),
-      ),
+      appBar: AppBar(title: Text(range.printedLabel)),
       body: ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 12),
         itemCount: count,
@@ -495,7 +354,7 @@ class _CachedTextbookViewerScreen extends ConsumerWidget {
           final pdfPage = range.pdfStart + index;
           final printedPage = range.printedStart + index;
           final request = (bookId: range.source.bookId, pdfPage: pdfPage);
-          final image = ref.watch(studyTextbookPageImageProvider(request));
+          final page = ref.watch(studyTextbookPageImageProvider(request));
           return Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 14),
             child: Column(
@@ -505,30 +364,15 @@ class _CachedTextbookViewerScreen extends ConsumerWidget {
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
                 const SizedBox(height: 6),
-                image.when(
+                page.when(
                   loading: () => const SizedBox(
                     height: 320,
                     child: Center(child: CircularProgressIndicator()),
                   ),
-                  error: (error, _) => Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    color: AppColors.surface,
-                    child: Column(
-                      children: [
-                        Text(
-                          error.toString(),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.danger),
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton(
-                          onPressed: () => ref.invalidate(
-                            studyTextbookPageImageProvider(request),
-                          ),
-                          child: const Text('Повторить'),
-                        ),
-                      ],
+                  error: (error, _) => _PageError(
+                    message: error.toString(),
+                    onRetry: () => ref.invalidate(
+                      studyTextbookPageImageProvider(request),
                     ),
                   ),
                   data: (file) => InteractiveViewer(
@@ -555,20 +399,53 @@ class _CachedTextbookViewerScreen extends ConsumerWidget {
   }
 }
 
-class _NoTextbookPageCard extends StatelessWidget {
-  const _NoTextbookPageCard();
+class _SolutionCard extends StatelessWidget {
+  final StudySubject subject;
+
+  const _SolutionCard({required this.subject});
 
   @override
   Widget build(BuildContext context) {
     return Card(
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: const Icon(
+          Icons.photo_library_outlined,
+          color: AppColors.accent,
+        ),
+        title: const Text(
+          'Фото решений ГДЗ',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: const Text('Оригинальные изображения без OCR'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ReshebaScreen(
+              subjectTitle: subject.title,
+              subjectId: subject.id,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoPageCard extends StatelessWidget {
+  const _NoPageCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(14),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.info_outline, color: AppColors.warning),
-            const SizedBox(width: 10),
-            const Expanded(
+            Icon(Icons.info_outline, color: AppColors.warning),
+            SizedBox(width: 10),
+            Expanded(
               child: Text(
                 'Для этого параграфа пока не удалось определить оригинальную '
                 'страницу. Hermes не будет показывать случайную страницу.',
@@ -582,156 +459,32 @@ class _NoTextbookPageCard extends StatelessWidget {
   }
 }
 
-class _SolutionPhotosCard extends StatelessWidget {
-  final StudySubject subject;
-
-  const _SolutionPhotosCard({required this.subject});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ReshebaScreen(
-              subjectTitle: subject.title,
-              subjectId: subject.id,
-            ),
-          ),
-        ),
-        child: const Padding(
-          padding: EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Icon(Icons.photo_library_outlined, color: AppColors.accent),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Фото решений ГДЗ',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Оригинальные изображения решений без OCR. Открытые '
-                      'номера сохраняются на телефоне.',
-                      style: TextStyle(
-                        color: AppColors.textDim,
-                        fontSize: 11,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ExactScienceNotice extends StatelessWidget {
-  const _ExactScienceNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: .10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.warning.withValues(alpha: .45)),
-      ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.functions, color: AppColors.warning),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Для точных предметов повреждённый текст формул не используется '
-              'как источник. Основной материал — оригинальная страница выше.',
-              style: TextStyle(fontSize: 12, height: 1.45),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LocalSectionCard extends StatelessWidget {
-  final LocalStudySection section;
-
-  const _LocalSectionCard({required this.section});
-
-  IconData get icon {
-    switch (section.type) {
-      case LocalStudySectionType.overview:
-        return Icons.subject;
-      case LocalStudySectionType.keyPoints:
-        return Icons.format_list_bulleted_rounded;
-      case LocalStudySectionType.terms:
-        return Icons.translate_rounded;
-      case LocalStudySectionType.rules:
-        return Icons.rule;
-      case LocalStudySectionType.examples:
-        return Icons.lightbulb_outline;
-      case LocalStudySectionType.tasks:
-        return Icons.calculate_outlined;
-      case LocalStudySectionType.questions:
-        return Icons.question_answer_outlined;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        initiallyExpanded: section.type == LocalStudySectionType.overview,
-        leading: Icon(icon, color: AppColors.accent),
-        title: Text(
-          section.title,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-        ),
-        children: [
-          for (final item in section.items)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: SelectableText(
-                  item,
-                  style: const TextStyle(fontSize: 13, height: 1.5),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MissingSourceCard extends StatelessWidget {
-  const _MissingSourceCard();
+class _ExactNotice extends StatelessWidget {
+  const _ExactNotice();
 
   @override
   Widget build(BuildContext context) {
     return const Card(
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(14),
+        child: Text(
+          'Для точных предметов повреждённый текст формул не используется как '
+          'источник. Основной материал — оригинальная страница выше.',
+          style: TextStyle(fontSize: 12, height: 1.45),
+        ),
+      ),
+    );
+  }
+}
+
+class _MissingTextCard extends StatelessWidget {
+  const _MissingTextCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(14),
         child: Text(
           'Текстовый слой этого параграфа повреждён или отсутствует. '
           'Оригинальная страница выше остаётся основным источником.',
@@ -742,11 +495,42 @@ class _MissingSourceCard extends StatelessWidget {
   }
 }
 
-class _SourceQualityCard extends StatelessWidget {
+class _TextSection extends StatelessWidget {
+  final LocalStudySection section;
+
+  const _TextSection({required this.section});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        initiallyExpanded: section.type == LocalStudySectionType.overview,
+        leading: const Icon(Icons.notes_rounded, color: AppColors.accent),
+        title: Text(
+          section.title,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        ),
+        children: [
+          for (final item in section.items)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: SelectableText(
+                item,
+                style: const TextStyle(fontSize: 13, height: 1.5),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QualityCard extends StatelessWidget {
   final StudySourceReport report;
   final String pages;
 
-  const _SourceQualityCard({required this.report, required this.pages});
+  const _QualityCard({required this.report, required this.pages});
 
   @override
   Widget build(BuildContext context) {
