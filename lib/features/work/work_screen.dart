@@ -9,6 +9,7 @@ class WorkScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: const ValueKey('work-screen'),
       appBar: AppBar(title: const Text('Работа')),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -51,28 +52,33 @@ class WorkScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          const _WorkSectionTitle('Главное'),
+          const SizedBox(height: 10),
           _WorkTile(
             icon: Icons.school_outlined,
             color: AppColors.accent,
             title: 'Учёба',
             subtitle:
                 'Все учебники и локальный разбор параграфов без интернета',
-            onTap: () => context.go('/study'),
+            onTap: () => context.push('/study'),
           ),
           _WorkTile(
             icon: Icons.checklist_rtl,
             color: AppColors.cyan,
             title: 'План и задачи',
             subtitle: 'Следующие действия, проекты и этапы фриланса',
-            onTap: () => context.go('/plan'),
+            onTap: () => context.push('/plan'),
           ),
           _WorkTile(
             icon: Icons.chat_bubble_outline,
             color: AppColors.warning,
             title: 'Hermes Agent',
             subtitle: 'Помощь, готовые примеры и разбор сложных шагов',
-            onTap: () => context.go('/chat'),
+            onTap: () => context.push('/chat'),
           ),
+          const SizedBox(height: 8),
+          const _WorkSectionTitle('Инструменты'),
+          const SizedBox(height: 10),
           _WorkTile(
             icon: Icons.search,
             color: AppColors.violet,
@@ -96,6 +102,20 @@ class WorkScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WorkSectionTitle extends StatelessWidget {
+  final String text;
+
+  const _WorkSectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
     );
   }
 }

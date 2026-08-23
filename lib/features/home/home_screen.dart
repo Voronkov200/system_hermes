@@ -25,6 +25,7 @@ class HomeScreen extends ConsumerWidget {
     final trainingStreak = habits.trainingStreak();
 
     return Scaffold(
+      key: const ValueKey('home-screen'),
       appBar: AppBar(
         title: const Row(
           children: [
@@ -44,63 +45,38 @@ class HomeScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           _StatusBanner(trainingStreak: trainingStreak),
-          const SizedBox(height: 16),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.25,
-            children: [
-              _ModuleCard(
-                title: 'Работа',
-                subtitle: 'Учёба, план, проекты',
-                icon: Icons.work_outline,
-                color: AppColors.accent,
-                onTap: () => context.go('/work'),
-              ),
-              _ModuleCard(
-                title: 'Деньги',
-                subtitle: '${fmt2(totalByn)} BYN',
-                icon: Icons.account_balance_wallet,
-                color: AppColors.cyan,
-                onTap: () => context.go('/money'),
-              ),
-              _ModuleCard(
-                title: 'Учёба',
-                subtitle: 'Локальные учебники',
-                icon: Icons.school_outlined,
-                color: AppColors.accent,
-                onTap: () => context.go('/study'),
-              ),
-              _ModuleCard(
-                title: 'Жизнь',
-                subtitle: 'Самостоятельные шаги',
-                icon: Icons.self_improvement,
-                color: AppColors.violet,
-                onTap: () => context.go('/life'),
-              ),
-              _ModuleCard(
-                title: 'Hermes Agent',
-                subtitle: 'Чат-контроллер',
-                icon: Icons.chat_bubble_outline,
-                color: AppColors.warning,
-                onTap: () => context.go('/chat'),
-              ),
-              _ModuleCard(
-                title: 'Ещё',
-                subtitle: 'Протокол и настройки',
-                icon: Icons.apps,
-                color: AppColors.textDim,
-                onTap: () => context.go('/more'),
-              ),
-            ],
+          const SizedBox(height: 22),
+          const _SectionTitle('Сводка'),
+          const SizedBox(height: 10),
+          _AreaTile(
+            title: 'Работа',
+            subtitle: 'Учёба, план, проекты и Hermes Agent',
+            icon: Icons.work_outline,
+            color: AppColors.accent,
+            onTap: () => context.go('/work'),
           ),
-          const SizedBox(height: 16),
-          if (rates.isNotEmpty) _RatesCard(rates: rates),
-          const SizedBox(height: 16),
+          _AreaTile(
+            title: 'Деньги',
+            subtitle: 'Плановый капитал: ${fmt2(totalByn)} BYN',
+            icon: Icons.account_balance_wallet_outlined,
+            color: AppColors.cyan,
+            onTap: () => context.go('/money'),
+          ),
+          _AreaTile(
+            title: 'Ещё',
+            subtitle: 'Жизнь, протокол, журнал и настройки',
+            icon: Icons.apps_outlined,
+            color: AppColors.violet,
+            onTap: () => context.go('/more'),
+          ),
+          const SizedBox(height: 12),
+          const _SectionTitle('Сегодня'),
+          const SizedBox(height: 10),
           _HabitStrip(habits: habits),
+          if (rates.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _RatesCard(rates: rates),
+          ],
         ],
       ),
     );
@@ -146,14 +122,28 @@ class _StatusBanner extends StatelessWidget {
   }
 }
 
-class _ModuleCard extends StatelessWidget {
+class _SectionTitle extends StatelessWidget {
+  final String text;
+
+  const _SectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+    );
+  }
+}
+
+class _AreaTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
 
-  const _ModuleCard({
+  const _AreaTile({
     required this.title,
     required this.subtitle,
     required this.icon,
@@ -164,30 +154,39 @@ class _ModuleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(14),
+          child: Row(
             children: [
-              Icon(icon, color: color),
-              const Spacer(),
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              CircleAvatar(
+                backgroundColor: color.withValues(alpha: .13),
+                child: Icon(icon, color: color),
               ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              const Icon(Icons.chevron_right),
             ],
           ),
         ),
@@ -268,6 +267,10 @@ class _HabitStrip extends StatelessWidget {
         ),
       ));
     }
-    return Column(children: items);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => context.push('/habits'),
+      child: Column(children: items),
+    );
   }
 }

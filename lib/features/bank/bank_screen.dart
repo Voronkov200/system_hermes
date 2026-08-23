@@ -109,6 +109,7 @@ class BankScreen extends ConsumerWidget {
     final totalByn = bank.totalByn(rates: rates);
 
     return Scaffold(
+      key: const ValueKey('money-screen'),
       appBar: AppBar(
         title: const Text('Деньги'),
         actions: [

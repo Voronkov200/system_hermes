@@ -33,6 +33,7 @@ class AppShell extends StatelessWidget {
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(
+        key: const ValueKey('main-navigation'),
         selectedIndex: index,
         onDestinationSelected: (i) {
           const paths = ['/', '/work', '/money', '/more'];

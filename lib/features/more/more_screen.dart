@@ -9,6 +9,7 @@ class MoreScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: const ValueKey('more-screen'),
       appBar: AppBar(title: const Text('Ещё')),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -23,14 +24,14 @@ class MoreScreen extends StatelessWidget {
             color: AppColors.accent,
             title: 'Жизнь',
             subtitle: 'Самостоятельные действия, XP и достижения',
-            onTap: () => context.go('/life'),
+            onTap: () => context.push('/life'),
           ),
           _MoreTile(
             icon: Icons.fitness_center,
             color: AppColors.cyan,
             title: 'Протокол',
             subtitle: 'Тренировки и ежедневная стабильность',
-            onTap: () => context.go('/habits'),
+            onTap: () => context.push('/habits'),
           ),
           const SizedBox(height: 14),
           const Text(
@@ -44,13 +45,6 @@ class MoreScreen extends StatelessWidget {
             title: 'Журнал изменений',
             subtitle: 'История действий и важных записей',
             onTap: () => context.push('/journal'),
-          ),
-          _MoreTile(
-            icon: Icons.folder_open_outlined,
-            color: AppColors.violet,
-            title: 'Obsidian Vault',
-            subtitle: 'Локальные заметки и база знаний',
-            onTap: () => context.push('/obsidian'),
           ),
           _MoreTile(
             icon: Icons.settings_outlined,
