@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Иконки iOS-стиля: некоторые Flutter-компоненты ссылаются на этот шрифт.
+  cupertino_icons: ^1.0.8
   # Состояние приложения
   flutter_riverpod: ^2.6.1
   # Навигация
