@@ -130,12 +130,12 @@ class _WorkHero extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: AppColors.accent.withValues(alpha: .3)),
       ),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _MiniPill(text: 'ТРАЕКТОРИЯ', color: AppColors.accent),
-          const SizedBox(height: 18),
-          const Text(
+          _MiniPill(text: 'ТРАЕКТОРИЯ', color: AppColors.accent),
+          SizedBox(height: 18),
+          Text(
             'Учёба → проект →\nпервый собственный доход',
             style: TextStyle(
               fontSize: 23,
@@ -144,14 +144,14 @@ class _WorkHero extends StatelessWidget {
               letterSpacing: -.4,
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
+          SizedBox(height: 8),
+          Text(
             'Сложную цель не нужно держать в голове целиком. Hermes показывает ближайший рабочий участок.',
             style: TextStyle(color: AppColors.textDim, fontSize: 12, height: 1.42),
           ),
-          const SizedBox(height: 18),
+          SizedBox(height: 18),
           Row(
-            children: const [
+            children: [
               Expanded(child: _PathStep(number: '01', label: 'Учёба', active: true)),
               SizedBox(width: 7),
               Expanded(child: _PathStep(number: '02', label: 'Проект')),
