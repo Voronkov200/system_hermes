@@ -19,6 +19,39 @@ import 'services/journal_service.dart';
 import 'services/plan/docs_service.dart';
 import 'services/study/study_service.dart';
 
+/// Менеджер шрифтов PDF живёт всё время работы приложения. На Android
+/// официальные школьные PDF часто ссылаются на шрифты, которых нет внутри
+/// самого файла (особенно математические/символьные гарнитуры). PDFium без
+/// системных путей может тогда показать обычный текст, но потерять формулы.
+final hermesPdfFontManager = PdfFontManager(resolvers: const []);
+
+Future<void> _initializePdfEngine() async {
+  // Инициализация pdfrx асинхронная: её нужно дождаться ДО открытия PDF.
+  await pdfrxFlutterInitialize();
+
+  if (!Platform.isAndroid) {
+    await hermesPdfFontManager.prepare();
+    return;
+  }
+
+  // Android хранит системные Noto/Roboto и символьные шрифты в нескольких
+  // каталогах в зависимости от версии/производителя. Передаём только реально
+  // существующие пути, чтобы PDFium мог подставлять отсутствующие гарнитуры.
+  const candidates = <String>[
+    '/system/fonts',
+    '/product/fonts',
+    '/system/product/fonts',
+    '/vendor/fonts',
+    '/system/vendor/fonts',
+  ];
+  final fontPaths = candidates
+      .where((path) => Directory(path).existsSync())
+      .toList(growable: false);
+  await hermesPdfFontManager.prepare(
+    fontPaths: fontPaths.isEmpty ? null : fontPaths,
+  );
+}
+
 /// Открытие бокса с защитой от повреждённых данных:
 /// при ошибке чтения бокс сбрасывается, и приложение стартует.
 Future<void> _openBoxSafely<T>(String name) async {
@@ -39,7 +72,7 @@ Future<void> _openBoxSafely<T>(String name) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  pdfrxFlutterInitialize();
+  await _initializePdfEngine();
 
   // Hive: инициализация, адаптеры, боксы.
   await Hive.initFlutter();
