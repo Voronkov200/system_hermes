@@ -1,4 +1,4 @@
-﻿888.json
+888.json
 894.json
 897.json
 899.json
