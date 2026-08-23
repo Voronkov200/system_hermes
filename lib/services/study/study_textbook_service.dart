@@ -92,7 +92,7 @@ class StudyTextbookService {
         );
       }
       if (await target.exists()) await target.delete();
-      return partial.rename(target.path);
+      return await partial.rename(target.path);
     } on StudyTextbookDownloadException {
       if (await partial.exists()) await partial.delete();
       rethrow;
