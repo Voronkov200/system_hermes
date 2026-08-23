@@ -10,6 +10,7 @@ import '../../services/study/local_study_content.dart';
 import '../../services/study/resheba_service.dart';
 import '../../services/study/study_content_quality.dart';
 import '../../services/study/study_service.dart';
+import '../../services/study/study_pdf_service.dart';
 import '../../services/study/study_textbook_catalog.dart';
 import '../../services/study/study_textbook_service.dart';
 import 'resheba_screen.dart';
@@ -424,6 +425,7 @@ class _TextbookPagesCard extends ConsumerWidget {
                                   child: CircularProgressIndicator(),
                                 );
                               }
+                              associateHermesPdfFonts(document);
                               final page = range.pdfStart
                                   .clamp(1, document.pages.length)
                                   .toInt();
@@ -578,6 +580,10 @@ class _TextbookViewerScreen extends StatelessWidget {
       body: pdfrx.PdfViewer.file(
         path,
         initialPageNumber: range.pdfStart,
+        fontManager: hermesPdfFontManager,
+        params: const pdfrx.PdfViewerParams(
+          textSelectionParams: pdfrx.PdfTextSelectionParams(enabled: false),
+        ),
       ),
     );
   }

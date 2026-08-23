@@ -7,7 +7,12 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
+
+const _bundledMathFontAsset = 'assets/fonts/NotoSansMath-Regular.ttf';
+File? _bundledMathFont;
 
 const _androidFontDirectories = <String>[
   '/system/fonts',
@@ -37,6 +42,14 @@ class _HermesAndroidFontResolver extends PdfFontResolver {
         face.contains('stix') ||
         face.contains('mt extra') ||
         face.startsWith('cm');
+    final bundledMath = _bundledMathFont;
+    if (isMath && bundledMath != null && bundledMath.existsSync()) {
+      return PdfFontResolution.localFontFile(
+        fontFilePath: bundledMath.path,
+        targetFace: query.face,
+        resolvedFace: 'Noto Sans Math',
+      );
+    }
     final isSerif = face.contains('serif') ||
         face.contains('times') ||
         face.contains('georgia') ||
@@ -81,6 +94,32 @@ final hermesPdfFontManager = PdfFontManager(
   resolvers: [_HermesAndroidFontResolver()],
 );
 
+final _fontAssociations = Expando<PdfFontManagerAssociation>();
+
+/// Подключает fallback-шрифты именно к открытому документу. prepare() сам по
+/// себе этого не делает; без association PdfPageView не загружает пропавшие
+/// Cambria Math/Symbol/STIX glyphs.
+PdfFontManagerAssociation associateHermesPdfFonts(PdfDocument document) {
+  final existing = _fontAssociations[document];
+  if (existing != null) return existing;
+  final association = document.associateFontManager(hermesPdfFontManager);
+  _fontAssociations[document] = association;
+  return association;
+}
+
+Future<File> _materializeBundledMathFont() async {
+  final support = await getApplicationSupportDirectory();
+  final directory = Directory('${support.path}/pdf_fonts');
+  await directory.create(recursive: true);
+  final target = File('${directory.path}/NotoSansMath-Regular.ttf');
+  final data = await rootBundle.load(_bundledMathFontAsset);
+  final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  if (!await target.exists() || await target.length() != bytes.length) {
+    await target.writeAsBytes(bytes, flush: true);
+  }
+  return target;
+}
+
 File? _firstAndroidFont(List<String> names) {
   for (final directory in _androidFontDirectories) {
     for (final name in names) {
@@ -95,8 +134,8 @@ File? _firstAndroidFont(List<String> names) {
 /// математических/офисных шрифтов как алиасы к системным Noto/Roboto, чтобы
 /// формулы работали и в PdfPageView, и в PdfViewer без отдельной настройки
 /// каждого предмета или каждой страницы.
-Future<void> _registerAndroidFontAliases() async {
-  final math = _firstAndroidFont(const [
+Future<void> _registerAndroidFontAliases(File bundledMath) async {
+  final math = bundledMath.existsSync() ? bundledMath : _firstAndroidFont(const [
     'NotoSansMath-Regular.ttf',
     'NotoSansSymbols2-Regular.ttf',
     'NotoSansSymbols-Regular.ttf',
@@ -178,8 +217,9 @@ Future<void> initializeHermesPdfEngine() async {
       .where((path) => Directory(path).existsSync())
       .toList(growable: false);
 
+  _bundledMathFont = await _materializeBundledMathFont();
   await hermesPdfFontManager.prepare(
     fontPaths: fontPaths.isEmpty ? null : fontPaths,
   );
-  await _registerAndroidFontAliases();
+  await _registerAndroidFontAliases(_bundledMathFont!);
 }
