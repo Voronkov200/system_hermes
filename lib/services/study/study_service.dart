@@ -5,7 +5,6 @@
 // прикрепляется PDF-учебник; его текст извлекается, режется на параграфы,
 // а затем структурируется локально на телефоне без вызова LLM.
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -256,7 +255,10 @@ class StudyController extends Notifier<StudyState> {
   bool _bundledStarted = false;
   bool _bundleNeedsRefresh = false;
 
-  static const int _bundleVersion = 8;
+  // v9 повторно мигрирует встроенные параграфы после добавления автоматических
+  // страниц учебников. Версия считается применённой только после полного
+  // успешного импорта, иначе следующий запуск повторит миграцию.
+  static const int _bundleVersion = 9;
 
   static const Map<String, String> _bookCatalogMap = {
     '1155': 'История (часть 1)',
@@ -308,15 +310,16 @@ class StudyController extends Notifier<StudyState> {
   /// Проверяет версию встроенного контента, но НИКОГДА не удаляет
   /// пользовательские данные. Новая версия только запускает идемпотентный
   /// импорт: существующие параграфы сохраняются, новые добавляются.
+  ///
+  /// Важно: здесь нельзя заранее записывать новую версию. Раньше приложение
+  /// помечало импорт завершённым до того, как JSON действительно загрузились.
+  /// Если Android закрывал приложение или один asset падал, следующий запуск
+  /// уже не повторял миграцию — из-за этого у старых параграфов не появлялся
+  /// bookId и карточка оригинальной страницы учебника была невидимой.
   void _checkBundleVersion() {
     final prefs = ref.read(sharedPreferencesProvider);
     final previous = prefs.getInt('study_bundle_v');
-    if (previous == _bundleVersion) return;
-    _bundleNeedsRefresh = true;
-    // В старой реализации здесь очищались обе Hive-базы. Это уничтожало
-    // импортированные книги, конспекты и флаг learned при обновлении APK.
-    // Версия теперь является только маркером контента.
-    unawaited(prefs.setInt('study_bundle_v', _bundleVersion));
+    _bundleNeedsRefresh = previous != _bundleVersion;
   }
 
   void _ensureCatalog() {
@@ -742,7 +745,8 @@ class StudyController extends Notifier<StudyState> {
 
   Future<void> importBundledBooks() async {
     try {
-      final manifest = await rootBundle.loadString('assets/study/manifest.txt');
+      final manifest = (await rootBundle.loadString('assets/study/manifest.txt'))
+          .replaceFirst('\uFEFF', '');
       final names = manifest.split('\n').map((s) => s.trim()).where((s) => s.endsWith('.json')).toList()..sort((a, b) {
         final ai = int.tryParse(a.split('_').first) ?? 0;
         final bi = int.tryParse(b.split('_').first) ?? 0;
@@ -764,10 +768,18 @@ class StudyController extends Notifier<StudyState> {
       }
       state = state.copyWith(busy: false, clearError: true);
       _emit();
-      if (skipped.isNotEmpty) {
+      if (skipped.isEmpty) {
+        await ref
+            .read(sharedPreferencesProvider)
+            .setInt('study_bundle_v', _bundleVersion);
+      } else {
+        // Версию не фиксируем: следующий запуск снова попробует импортировать
+        // недостающие книги и восстановить bookId для автоматических страниц.
+        _bundleNeedsRefresh = true;
         state = state.copyWith(error: 'Пропущено разборов: ${skipped.length} (${skipped.take(2).join('; ')})');
       }
     } catch (e) {
+      _bundleNeedsRefresh = true;
       state = state.copyWith(busy: false, error: 'Автоимпорт: $e');
     }
   }
