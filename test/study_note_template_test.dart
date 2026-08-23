@@ -36,7 +36,9 @@ void main() {
   test('history uses cause-event-result memory chain', () {
     final template = StudyNoteTemplateEngine.build(
       subjectTitle: 'История (часть 1)',
-      sourceText: 'Причиной события стали перемены. В 1945 году период завершился.',
+      sourceText:
+          'Главной причиной исторического события стали глубокие политические и экономические перемены в обществе. '
+          'В 1945 году этот исторический период завершился важными последствиями для страны.',
       local: empty,
     );
     expect(template.memoryChain, 'причина → событие → результат → последствия');
