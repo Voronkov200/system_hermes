@@ -14,18 +14,24 @@ import 'study_textbook_catalog.dart';
 import 'study_textbook_service.dart';
 
 class StudyAutoCacheService {
+  static const _retryDelay = Duration(minutes: 5);
+
   final StudyTextbookService _textbooks;
   final ReshebaService _resheba;
   final _pdfQueue = _AsyncWorkQueue(2);
   final _gdzQueue = _AsyncWorkQueue(3);
   final Set<String> _scheduledBooks = <String>{};
   final Set<String> _scheduledGdz = <String>{};
+  final Map<String, DateTime> _retryBooksAfter = <String, DateTime>{};
+  final Map<String, DateTime> _retryGdzAfter = <String, DateTime>{};
 
   StudyAutoCacheService(this._textbooks, [ReshebaService? resheba])
       : _resheba = resheba ?? ReshebaService();
 
   /// Запускает фоновую подготовку уже известных учебников и ГДЗ.
   /// Метод можно вызывать на каждом rebuild: дубликаты не ставятся в очередь.
+  /// После сетевой ошибки используется пауза, чтобы rebuild экрана не создавал
+  /// бесконечный цикл запросов при плохом интернете.
   void warmStudy({
     required Iterable<String> subjectTitles,
     required Iterable<String> paragraphChapters,
@@ -33,6 +39,7 @@ class StudyAutoCacheService {
     // Не запускаем реальные сетевые запросы из flutter test.
     if (const bool.fromEnvironment('FLUTTER_TEST')) return;
 
+    final now = DateTime.now();
     final titles = subjectTitles
         .map((title) => title.trim())
         .where((title) => title.isNotEmpty)
@@ -50,14 +57,15 @@ class StudyAutoCacheService {
     }
 
     for (final bookId in bookIds) {
+      if (_isCoolingDown(_retryBooksAfter[bookId], now)) continue;
       if (!_scheduledBooks.add(bookId)) continue;
       _pdfQueue.add(() async {
         try {
           await _textbooks.ensureLocal(bookId);
+          _retryBooksAfter.remove(bookId);
         } catch (_) {
-          // Ошибка не мешает работе экрана. Следующий rebuild или открытие
-          // параграфа сможет повторить загрузку.
           _scheduledBooks.remove(bookId);
+          _retryBooksAfter[bookId] = DateTime.now().add(_retryDelay);
           rethrow;
         }
       });
@@ -67,6 +75,7 @@ class StudyAutoCacheService {
       final paths = ReshebaService.jsPathsFor(title);
       if (paths.isEmpty) continue;
       final key = paths.join('|');
+      if (_isCoolingDown(_retryGdzAfter[key], now)) continue;
       if (!_scheduledGdz.add(key)) continue;
       _gdzQueue.add(() async {
         try {
@@ -79,13 +88,18 @@ class StudyAutoCacheService {
             book,
             limit: 2,
           );
+          _retryGdzAfter.remove(key);
         } catch (_) {
           _scheduledGdz.remove(key);
+          _retryGdzAfter[key] = DateTime.now().add(_retryDelay);
           rethrow;
         }
       });
     }
   }
+
+  static bool _isCoolingDown(DateTime? retryAfter, DateTime now) =>
+      retryAfter != null && now.isBefore(retryAfter);
 
   /// Возвращает официальные учебники, относящиеся к названию предмета.
   /// Пунктуация частей/хрестоматий не важна: «Русская литература» получает
