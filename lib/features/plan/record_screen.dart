@@ -89,9 +89,9 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
       return;
     }
     try {
-      final key = ref.read(settingsProvider).llmKey.trim();
+      final key = ref.read(settingsProvider).whisperApiKey.trim();
       if (key.isEmpty) {
-        throw Exception('Не задан API-ключ LLM: вставь ключ Groq '
+        throw Exception('Не задан отдельный Groq API-ключ для Whisper '
             'в Настройках (Hermes)');
       }
       final text = await _transcriber.transcribe(path, key);

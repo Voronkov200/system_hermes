@@ -64,7 +64,7 @@ class HomeScreen extends ConsumerWidget {
           ),
           _AreaTile(
             title: 'Ещё',
-            subtitle: 'Жизнь, протокол, журнал и настройки',
+            subtitle: 'Протокол, журнал и настройки',
             icon: Icons.apps_outlined,
             color: AppColors.violet,
             onTap: () => context.go('/more'),

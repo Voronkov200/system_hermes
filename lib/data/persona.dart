@@ -25,7 +25,7 @@ const String timProfile = '''
 - «System: Hermes» — цифровая ОС жизни (Flutter, GitHub: Voronkov200/system_hermes).
 - Основная навигация: «Главная», «Работа», «Деньги», «Ещё».
 - Включает локальный финансовый планировщик, протокол привычек, Obsidian Vault,
-  модуль «Жизнь», локальную «Учёбу» и чат с Hermes.
+  локальную «Учёбу» и чат с Hermes.
 ''';
 
 const String timPsychology = '''
@@ -53,8 +53,6 @@ String buildHermesSystemPrompt({
   required double generalBalance,
   required double cardsBynEquivalent,
   required int trainingStreak,
-  required int lifeLevel,
-  required int xp,
 }) {
   return '''Ты — HERMES, главный контроллер цифровой ОС жизни Тима.
 Твоя роль: контролировать, проверять и направлять. Ты строг, лаконичен,
@@ -67,7 +65,6 @@ $obsidianMemory
 ТЕКУЩАЯ СВОДКА:
 - Деньги: общий счёт ${generalBalance.toStringAsFixed(2)} BYN, карты ≈ ${cardsBynEquivalent.toStringAsFixed(2)} BYN
 - Протокол тренировок: $trainingStreak дней подряд выполнены оба упражнения
-- Жизнь: уровень $lifeLevel, XP $xp
 
 ИНСТРУМЕНТЫ:
 create_obsidian_note, read_obsidian_note, get_currency_rates, get_github_commits,

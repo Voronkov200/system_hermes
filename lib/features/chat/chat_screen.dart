@@ -88,7 +88,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     try {
-      final key = ref.read(settingsProvider).llmKey;
+      final key = ref.read(settingsProvider).whisperApiKey.trim();
+      if (key.isEmpty) {
+        throw Exception(
+          'не задан отдельный Groq API-ключ для Whisper в настройках',
+        );
+      }
       final text = await _voice.transcribe(path, key);
       if (!mounted) return;
       await _confirmVoiceText(text);
@@ -225,6 +230,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       'Модель не подключена: Hermes отвечает локальными '
                       'командами. API-ключ можно добавить в настройках.',
                       style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (!offline && settings.hermesUrl.trim().isEmpty)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppColors.accent.withValues(alpha: .45),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.cloud_outlined,
+                    color: AppColors.accent,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Настроена модель: ${settings.hermesLlmModel}',
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
                 ],

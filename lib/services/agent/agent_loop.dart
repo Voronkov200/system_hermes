@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../llm_endpoint.dart';
 import 'agent_policy.dart';
 import 'hermes_tool_registry.dart';
 import 'tool_definition.dart';
@@ -58,7 +59,7 @@ Future<AgentResult> runAgentLoop({
     try {
       res = await http
           .post(
-            Uri.parse(apiUrl),
+            openAiChatCompletionsUri(apiUrl),
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $apiKey',

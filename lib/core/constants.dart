@@ -22,13 +22,11 @@ class AppConstants {
   /// Максимум секунд начисляемых за один "тик" (защита от читов по времени).
   static const Duration maxTickGap = Duration(hours: 12);
 
-  /// URL по умолчанию для LLM Hermes (Groq, OpenAI-совместимый).
-  /// Бесплатный ключ: https://console.groq.com/keys
-  static const String hermesLlmDefaultUrl =
-      'https://api.groq.com/openai/v1/chat/completions';
+  /// Base URL B.ai — OpenAI-совместимого провайдера Hermes.
+  static const String hermesLlmDefaultUrl = 'https://api.b.ai/v1';
 
-  /// Модель по умолчанию (бесплатная на Groq, хорошо знает русский).
-  static const String hermesLlmDefaultModel = 'llama-3.3-70b-versatile';
+  /// Основная текстовая модель Hermes на B.ai.
+  static const String hermesLlmDefaultModel = 'deepseek-v4-flash';
 
   // ===================================================================
   // Поиск и исследования (спецификация, разделы 3.3, 6)
@@ -50,7 +48,7 @@ class AppConstants {
   /// (Tavily/SearXNG/HTML-провайдеры) выполняется параллельно.
   static const int maxConcurrentSearches = 4;
 
-  /// Пул конкурентности (задача 2): сколько вызовов LLM (OpenCode/Groq)
+  /// Пул конкурентности (задача 2): сколько вызовов LLM
   /// выполняется параллельно.
   static const int maxConcurrentLlm = 2;
 
@@ -69,7 +67,6 @@ class BoxNames {
   static const String transactions = 'transactions';
   static const String habits = 'habits';
   static const String chat = 'chat';
-  static const String life = 'life';
   static const String tasks = 'tasks';
   static const String journal = 'journal';
   static const String docs = 'docs';
@@ -94,6 +91,7 @@ class PrefKeys {
   static const String hermesLlmUrl = 'hermes_llm_url';
   static const String hermesLlmApiKey = 'hermes_llm_api_key';
   static const String hermesLlmModel = 'hermes_llm_model';
+  static const String whisperApiKey = 'whisper_api_key';
   static const String searchSearxngUrl = 'search_searxng_url';
   static const String searchOffline = 'search_offline';
 }

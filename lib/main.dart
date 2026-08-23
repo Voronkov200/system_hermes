@@ -48,7 +48,6 @@ Future<void> main() async {
   await _openBoxSafely<Transaction>(BoxNames.transactions);
   await _openBoxSafely<HabitTracker>(BoxNames.habits);
   await _openBoxSafely<ChatMessage>(BoxNames.chat);
-  await _openBoxSafely<LifeState>(BoxNames.life);
   await _openBoxSafely<HermesTask>(BoxNames.tasks);
   await _openBoxSafely<JournalEntry>(BoxNames.journal);
   await _openBoxSafely<SourceDoc>(BoxNames.docs);

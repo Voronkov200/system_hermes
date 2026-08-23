@@ -15,17 +15,10 @@ class MoreScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'Жизнь и система',
+            'Стабильность',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 10),
-          _MoreTile(
-            icon: Icons.self_improvement,
-            color: AppColors.accent,
-            title: 'Жизнь',
-            subtitle: 'Самостоятельные действия, XP и достижения',
-            onTap: () => context.push('/life'),
-          ),
           _MoreTile(
             icon: Icons.fitness_center,
             color: AppColors.cyan,

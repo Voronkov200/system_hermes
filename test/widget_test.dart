@@ -34,7 +34,6 @@ void main() {
       ),
     );
     await Hive.openBox<ChatMessage>(BoxNames.chat);
-    await Hive.openBox<LifeState>(BoxNames.life);
     await Hive.openBox<HermesTask>(BoxNames.tasks);
     await Hive.openBox<JournalEntry>(BoxNames.journal);
     await Hive.openBox<SourceDoc>(BoxNames.docs);

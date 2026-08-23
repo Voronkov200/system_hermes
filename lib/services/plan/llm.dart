@@ -1,4 +1,4 @@
-// Вызов LLM (Groq-совместимый endpoint) для модулей «План»:
+// Вызов OpenAI-совместимой LLM для модулей «План»:
 // Поиск (ответ с цитатами) и Документы (конспекты, вопросы).
 
 import 'dart:convert';
@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/constants.dart';
+import '../llm_endpoint.dart';
 import '../settings_service.dart';
 
 /// Ошибка HTTP от LLM-провайдера с кодом ответа — retry (раздел 6,
@@ -35,21 +37,21 @@ Future<String> llmComplete(
 }) async {
   final apiKey = s.llmKey.trim();
   if (apiKey.isEmpty) {
-    throw Exception('Не задан API-ключ LLM: вставь ключ Groq '
+    throw Exception('Не задан API-ключ LLM: вставь ключ B.ai '
         'в Настройках (Hermes) и попробуй ещё раз.');
   }
   final apiUrl = s.hermesLlmUrl.trim().isNotEmpty
       ? s.hermesLlmUrl.trim()
-      : 'https://api.groq.com/openai/v1/chat/completions';
+      : AppConstants.hermesLlmDefaultUrl;
   final usedModel = model?.trim().isNotEmpty == true
       ? model!.trim()
       : s.hermesLlmModel.trim().isNotEmpty
           ? s.hermesLlmModel.trim()
-          : 'llama-3.3-70b-versatile';
+          : AppConstants.hermesLlmDefaultModel;
 
   final res = await http
       .post(
-        Uri.parse(apiUrl),
+        openAiChatCompletionsUri(apiUrl),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $apiKey',

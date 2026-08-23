@@ -164,37 +164,41 @@ class SettingsScreen extends ConsumerWidget {
           const Padding(
             padding: EdgeInsets.fromLTRB(4, 12, 4, 8),
             child: Text(
-              'Модель Hermes. Без ключа агент работает в локальном '
-              'офлайн-режиме. '
-              'Бесплатный ключ Groq: console.groq.com → API Keys.',
+              'Основной провайдер — B.ai. Создай личный API-ключ на b.ai и '
+              'вставь только сам ключ, без слова Bearer. Не отправляй ключ '
+              'в чат или скриншоты. Без ключа Hermes работает офлайн.',
               style: TextStyle(color: AppColors.textDim, fontSize: 11),
             ),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.key_outlined, color: AppColors.accent),
+            title: const Text('Создать API-ключ B.ai'),
+            subtitle: const Text('Открыть личный кабинет B.ai'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () => context.push('/web', extra: 'https://b.ai/'),
           ),
           const Padding(
             padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
             child: Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
                 _ProviderPreset(
-                  label: 'Groq',
-                  url: 'https://api.groq.com/openai/v1/chat/completions',
-                  model: 'llama-3.3-70b-versatile',
+                  label: 'B.ai Flash',
+                  url: 'https://api.b.ai/v1',
+                  model: 'deepseek-v4-flash',
                 ),
                 _ProviderPreset(
-                  label: 'OpenCode Zen',
-                  url: 'https://opencode.ai/zen/v1/chat/completions',
-                  model: 'deepseek-v4-flash-free',
-                ),
-                _ProviderPreset(
-                  label: 'OpenRouter',
-                  url: 'https://openrouter.ai/api/v1/chat/completions',
-                  model: 'meta-llama/llama-3.3-70b-instruct:free',
+                  label: 'B.ai Vision (exp)',
+                  url: 'https://api.b.ai/v1',
+                  model: 'deepseek-v4-flash-vision-exp',
                 ),
               ],
             ),
           ),
           _TextFieldSetting(
-            label: 'URL модели Hermes',
+            label: 'Base URL модели Hermes',
             initial: s.hermesLlmUrl,
             hint: AppConstants.hermesLlmDefaultUrl,
             onSave: (v) =>
@@ -203,7 +207,7 @@ class SettingsScreen extends ConsumerWidget {
           _TextFieldSetting(
             label: 'API-ключ модели Hermes',
             initial: s.hermesLlmApiKey,
-            hint: 'gsk_… из console.groq.com (без ключа — офлайн-режим)',
+            hint: 'sk-… из b.ai → API (без Bearer)',
             obscure: true,
             onSave: (v) =>
                 ref.read(settingsProvider.notifier).setHermesLlmApiKey(v),
@@ -214,6 +218,23 @@ class SettingsScreen extends ConsumerWidget {
             hint: AppConstants.hermesLlmDefaultModel,
             onSave: (v) =>
                 ref.read(settingsProvider.notifier).setHermesLlmModel(v),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 12, 4, 8),
+            child: Text(
+              'Голосовые сообщения и запись лекций используют Whisper на '
+              'Groq отдельно от B.ai. Поле можно оставить пустым, если голос '
+              'не нужен.',
+              style: TextStyle(color: AppColors.textDim, fontSize: 11),
+            ),
+          ),
+          _TextFieldSetting(
+            label: 'Groq API-ключ для Whisper',
+            initial: s.whisperApiKey,
+            hint: 'gsk_… (необязательно)',
+            obscure: true,
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setWhisperApiKey(v),
           ),
           const Divider(),
 
@@ -416,9 +437,11 @@ class _ProviderPreset extends ConsumerWidget {
         color: active ? AppColors.accent : null,
         fontWeight: active ? FontWeight.w700 : null,
       ),
-      onPressed: () {
-        ref.read(settingsProvider.notifier).setHermesLlmUrl(url);
-        ref.read(settingsProvider.notifier).setHermesLlmModel(model);
+      onPressed: () async {
+        await ref.read(settingsProvider.notifier).setHermesLlmProvider(
+              baseUrl: url,
+              model: model,
+            );
         if (context.mounted) toast(context, '$label: URL и модель подставлены');
       },
     );

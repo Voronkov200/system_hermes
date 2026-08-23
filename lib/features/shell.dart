@@ -17,7 +17,6 @@ class AppShell extends StatelessWidget {
     }
     if (path.startsWith('/money') || path.startsWith('/bank')) return 2;
     if (path.startsWith('/more') ||
-        path.startsWith('/life') ||
         path.startsWith('/habits') ||
         path.startsWith('/obsidian') ||
         path.startsWith('/journal') ||

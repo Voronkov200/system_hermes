@@ -25,9 +25,10 @@ class SettingsState {
   String githubRepo;
   String lastPensionMonth; // '2026-08' — месяц последнего начисления
   String lastWorkoutBonusDay; // '2026-08-07' — день последнего бонуса за тренировки
-  String hermesLlmUrl; // OpenAI-совместимый endpoint модели Hermes
+  String hermesLlmUrl; // Base URL OpenAI-совместимой модели Hermes
   String hermesLlmApiKey;
   String hermesLlmModel;
+  String whisperApiKey; // отдельный ключ Groq только для Whisper
   String searchSearxngUrl; // свой SearXNG-инстанс для модуля «Поиск»
   bool searchOffline; // «Не искать в интернете» (3.12, 5.1.9): пропускать поиск
 
@@ -45,6 +46,7 @@ class SettingsState {
     this.hermesLlmUrl = AppConstants.hermesLlmDefaultUrl,
     this.hermesLlmApiKey = '',
     this.hermesLlmModel = AppConstants.hermesLlmDefaultModel,
+    this.whisperApiKey = '',
     this.searchSearxngUrl = '',
     this.searchOffline = false,
   });
@@ -65,6 +67,7 @@ class SettingsState {
     String? hermesLlmUrl,
     String? hermesLlmApiKey,
     String? hermesLlmModel,
+    String? whisperApiKey,
     String? searchSearxngUrl,
     bool? searchOffline,
   }) {
@@ -82,6 +85,7 @@ class SettingsState {
       hermesLlmUrl: hermesLlmUrl ?? this.hermesLlmUrl,
       hermesLlmApiKey: hermesLlmApiKey ?? this.hermesLlmApiKey,
       hermesLlmModel: hermesLlmModel ?? this.hermesLlmModel,
+      whisperApiKey: whisperApiKey ?? this.whisperApiKey,
       searchSearxngUrl: searchSearxngUrl ?? this.searchSearxngUrl,
       searchOffline: searchOffline ?? this.searchOffline,
     );
@@ -96,6 +100,9 @@ class SettingsController extends Notifier<SettingsState> {
     const legacyLlmUrlKey = 'companion_api_url';
     const legacyLlmApiKey = 'companion_api_key';
     const legacyLlmModelKey = 'companion_model';
+    const legacyGroqUrl =
+        'https://api.groq.com/openai/v1/chat/completions';
+    const legacyGroqModel = 'llama-3.3-70b-versatile';
     final storedPension = prefs.getDouble(PrefKeys.pensionAmount);
     // Пенсия — подтверждённая постоянная величина, а не редактируемый бюджет.
     // Старые 450 BYN и любые тестовые значения исправляются при запуске.
@@ -105,22 +112,33 @@ class SettingsController extends Notifier<SettingsState> {
       unawaited(prefs.setDouble(PrefKeys.pensionAmount, pensionAmount));
     }
     final serverApiKey = prefs.getString(PrefKeys.hermesApiKey) ?? '';
-    final llmUrl = prefs.getString(PrefKeys.hermesLlmUrl) ??
+    final storedLlmUrl = prefs.getString(PrefKeys.hermesLlmUrl) ??
         prefs.getString(legacyLlmUrlKey) ??
         AppConstants.hermesLlmDefaultUrl;
     final llmApiKey = prefs.getString(PrefKeys.hermesLlmApiKey) ??
         prefs.getString(legacyLlmApiKey) ??
         serverApiKey;
-    final llmModel = prefs.getString(PrefKeys.hermesLlmModel) ??
+    final storedLlmModel = prefs.getString(PrefKeys.hermesLlmModel) ??
         prefs.getString(legacyLlmModelKey) ??
         AppConstants.hermesLlmDefaultModel;
-    if (!prefs.containsKey(PrefKeys.hermesLlmUrl)) {
+    final migrateUntouchedGroq = storedLlmUrl == legacyGroqUrl &&
+        storedLlmModel == legacyGroqModel &&
+        llmApiKey.trim().isEmpty;
+    final llmUrl = migrateUntouchedGroq
+        ? AppConstants.hermesLlmDefaultUrl
+        : storedLlmUrl;
+    final llmModel = migrateUntouchedGroq
+        ? AppConstants.hermesLlmDefaultModel
+        : storedLlmModel;
+    final whisperApiKey = prefs.getString(PrefKeys.whisperApiKey) ??
+        (storedLlmUrl == legacyGroqUrl ? llmApiKey : '');
+    if (!prefs.containsKey(PrefKeys.hermesLlmUrl) || migrateUntouchedGroq) {
       unawaited(prefs.setString(PrefKeys.hermesLlmUrl, llmUrl));
     }
     if (!prefs.containsKey(PrefKeys.hermesLlmApiKey)) {
       unawaited(prefs.setString(PrefKeys.hermesLlmApiKey, llmApiKey));
     }
-    if (!prefs.containsKey(PrefKeys.hermesLlmModel)) {
+    if (!prefs.containsKey(PrefKeys.hermesLlmModel) || migrateUntouchedGroq) {
       unawaited(prefs.setString(PrefKeys.hermesLlmModel, llmModel));
     }
     return SettingsState(
@@ -140,6 +158,7 @@ class SettingsController extends Notifier<SettingsState> {
       hermesLlmUrl: llmUrl,
       hermesLlmApiKey: llmApiKey,
       hermesLlmModel: llmModel,
+      whisperApiKey: whisperApiKey,
       searchSearxngUrl: prefs.getString(PrefKeys.searchSearxngUrl) ?? '',
       searchOffline: prefs.getBool(PrefKeys.searchOffline) ?? false,
     );
@@ -163,6 +182,7 @@ class SettingsController extends Notifier<SettingsState> {
       hermesLlmUrl: s.hermesLlmUrl,
       hermesLlmApiKey: s.hermesLlmApiKey,
       hermesLlmModel: s.hermesLlmModel,
+      whisperApiKey: s.whisperApiKey,
       searchSearxngUrl: s.searchSearxngUrl,
       searchOffline: s.searchOffline,
     );
@@ -182,6 +202,7 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.hermesLlmUrl, next.hermesLlmUrl);
     await prefs.setString(PrefKeys.hermesLlmApiKey, next.hermesLlmApiKey);
     await prefs.setString(PrefKeys.hermesLlmModel, next.hermesLlmModel);
+    await prefs.setString(PrefKeys.whisperApiKey, next.whisperApiKey);
     await prefs.setString(PrefKeys.searchSearxngUrl, next.searchSearxngUrl);
     await prefs.setBool(PrefKeys.searchOffline, next.searchOffline);
   }
@@ -231,6 +252,20 @@ class SettingsController extends Notifier<SettingsState> {
 
   Future<void> setHermesLlmModel(String model) async {
     await _save((n) => n.hermesLlmModel = model);
+  }
+
+  Future<void> setHermesLlmProvider({
+    required String baseUrl,
+    required String model,
+  }) async {
+    await _save((n) {
+      n.hermesLlmUrl = baseUrl.trim();
+      n.hermesLlmModel = model.trim();
+    });
+  }
+
+  Future<void> setWhisperApiKey(String key) async {
+    await _save((n) => n.whisperApiKey = key.trim());
   }
 
   Future<void> setSearchSearxngUrl(String url) async {

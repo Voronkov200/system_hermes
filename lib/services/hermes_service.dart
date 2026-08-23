@@ -15,14 +15,12 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/constants.dart';
 import '../core/utils.dart';
-import '../data/life_catalog.dart';
 import '../data/models.dart';
 import '../data/persona.dart';
 import 'bank_service.dart';
 import 'github_api.dart';
 import 'habits_service.dart';
 import 'health_service.dart';
-import 'life_service.dart';
 import 'nbrb_api.dart';
 import 'obsidian_service.dart';
 import 'settings_service.dart';
@@ -62,7 +60,7 @@ class ChatController extends Notifier<ChatState> {
       _box.put(welcomeId, ChatMessage(
         id: welcomeId,
         role: 'hermes',
-        text: 'Система HERMES онлайн. Я контроллер твоей цифровой ОС жизни.\n'
+        text: 'Система HERMES онлайн. Я контроллер твоей системы.\n'
             'Доступные команды: «создай заметку …», «курс валют», «коммиты», '
             '«статус системы», «отметить тренировку», «фото-верификация».',
         date: DateTime.now(),
@@ -236,7 +234,6 @@ class ChatController extends Notifier<ChatState> {
   Future<String> _llmRequest(String text, SettingsState s) async {
     final bank = ref.read(bankProvider);
     final habits = ref.read(habitsProvider);
-    final life = ref.read(lifeProvider).state;
     final general = bank.generalAccount?.balance ?? 0;
     final cardsByn =
         bank.totalByn(rates: NbrbApi.bundledRates) - general;
@@ -245,8 +242,6 @@ class ChatController extends Notifier<ChatState> {
       generalBalance: general,
       cardsBynEquivalent: cardsByn < 0 ? 0 : cardsByn,
       trainingStreak: habits.trainingStreak(),
-      lifeLevel: LifeCatalog.levelForXp(life.xp),
-      xp: life.xp,
     );
 
     final all = _readMessages();

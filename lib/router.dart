@@ -7,7 +7,6 @@ import 'features/chat/chat_screen.dart';
 import 'features/habits/habits_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/journal/journal_screen.dart';
-import 'features/life/life_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/obsidian/note_screen.dart';
 import 'features/obsidian/obsidian_screen.dart';
@@ -37,7 +36,6 @@ final appRouter = GoRouter(
         GoRoute(path: '/money', builder: (context, state) => const BankScreen()),
         GoRoute(path: '/bank', redirect: (context, state) => '/money'),
         GoRoute(path: '/more', builder: (context, state) => const MoreScreen()),
-        GoRoute(path: '/life', builder: (context, state) => const LifeScreen()),
         GoRoute(path: '/habits', builder: (context, state) => const HabitsScreen()),
         GoRoute(path: '/chat', builder: (context, state) => const ChatScreen()),
         GoRoute(path: '/plan', builder: (context, state) => const PlanScreen()),
