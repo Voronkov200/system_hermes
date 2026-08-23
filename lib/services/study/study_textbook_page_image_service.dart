@@ -27,8 +27,6 @@ class StudyTextbookPageImageException implements Exception {
 }
 
 class StudyTextbookPageImageService {
-  // При изменении параметров рендера достаточно увеличить версию: старые PNG
-  // автоматически перестанут использоваться без удаления PDF пользователя.
   static const _cacheVersion = 2;
   static const _targetWidth = 2200;
 
@@ -81,7 +79,7 @@ class StudyTextbookPageImageService {
       final actualPage = pdfPage.clamp(1, document.pages.length).toInt();
       final page = document.pages[actualPage - 1];
       final scale = _targetWidth / page.width;
-      final width = _targetWidth;
+      const width = _targetWidth;
       final height =
           (page.height * scale).round().clamp(1, 4000).toInt();
 
