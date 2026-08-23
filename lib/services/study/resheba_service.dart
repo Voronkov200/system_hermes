@@ -1,9 +1,11 @@
 // Решения заданий с resheba.top (ГДЗ 11 класс).
 //
 // Сайт используется как внешний справочник: структура ГДЗ загружается
-// отдельно, изображения решений — только по запросу и с локальным кэшем.
+// отдельно, изображения решений — по запросу и с локальным кэшем.
+// Каталоги и несколько стартовых фото могут готовиться заранее в фоне.
 // Мы не встраиваем содержимое сайта в APK.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -50,6 +52,14 @@ class ReshebaService {
       'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome Mobile Safari/537.36';
 
+  // Память и in-flight общие для всех экземпляров сервиса. Экран ГДЗ и
+  // фоновый прогрев поэтому не скачивают один и тот же каталог/фото дважды.
+  static final Map<String, ReshebaBook> _bookMemory = <String, ReshebaBook>{};
+  static final Map<String, Future<ReshebaBook>> _bookInFlight =
+      <String, Future<ReshebaBook>>{};
+  static final Map<String, Future<File>> _photoInFlight =
+      <String, Future<File>>{};
+
   /// Идентификатор структуры ГДЗ на resheba.top для поддерживаемых
   /// предметов 11 класса. Названия предметов в приложении могут меняться,
   /// поэтому используем нормализацию и синонимы.
@@ -93,34 +103,48 @@ class ReshebaService {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
-  Future<ReshebaBook> loadBook(String subjectTitle) async {
+  Future<ReshebaBook> loadBook(String subjectTitle) {
     final candidates = jsPathsFor(subjectTitle);
     if (candidates.isEmpty) {
-      throw StateError(
-        'Для «$subjectTitle» сейчас нет настроенного источника ГДЗ. '
-        'Можно использовать внешний поиск из Hermes.',
+      return Future<ReshebaBook>.error(
+        StateError(
+          'Для «$subjectTitle» сейчас нет настроенного источника ГДЗ. '
+          'Можно использовать внешний поиск из Hermes.',
+        ),
       );
     }
 
+    // Один и тот же набор кандидатов означает один и тот же решебник — это
+    // объединяет, например, две части английского в один сетевой запрос.
+    final key = candidates.join('|');
+    final memory = _bookMemory[key];
+    if (memory != null) return Future<ReshebaBook>.value(memory);
+    final active = _bookInFlight[key];
+    if (active != null) return active;
+
+    late final Future<ReshebaBook> tracked;
+    tracked = _loadBook(subjectTitle, candidates).then((book) {
+      _bookMemory[key] = book;
+      return book;
+    }).whenComplete(() {
+      if (identical(_bookInFlight[key], tracked)) {
+        _bookInFlight.remove(key);
+      }
+    });
+    _bookInFlight[key] = tracked;
+    return tracked;
+  }
+
+  Future<ReshebaBook> _loadBook(
+    String subjectTitle,
+    List<String> candidates,
+  ) async {
     final appDir = await FileTools.root();
     final catalogDir = Directory('${appDir.path}/resheba/catalogs');
     Object? lastError;
 
-    for (final slug in candidates) {
-      try {
-        final body = await _getText('$_base/answers/$slug.js');
-        final book = parseBook(body, sourceSlug: slug);
-        await catalogDir.create(recursive: true);
-        await File('${catalogDir.path}/$slug.js')
-            .writeAsString(body, flush: true);
-        return book;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    // Сначала пробуем свежие адреса, затем старый каталог из кэша. Благодаря
-    // этому уже открытые решебники продолжают работать без интернета.
+    // Сначала локальный каталог: после первой подготовки экран ГДЗ открывается
+    // без ожидания сети. Если кэша нет/он повреждён — берём свежую структуру.
     for (final slug in candidates) {
       final cachedCatalog = File('${catalogDir.path}/$slug.js');
       if (!await cachedCatalog.exists()) continue;
@@ -139,6 +163,20 @@ class ReshebaService {
         lastError = error;
       }
     }
+
+    for (final slug in candidates) {
+      try {
+        final body = await _getText('$_base/answers/$slug.js');
+        final book = parseBook(body, sourceSlug: slug);
+        await catalogDir.create(recursive: true);
+        await File('${catalogDir.path}/$slug.js')
+            .writeAsString(body, flush: true);
+        return book;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
     throw Exception(
       'Не удалось открыть каталог решений для «$subjectTitle». '
       'Проверь интернет и повтори. Последняя ошибка: $lastError',
@@ -286,7 +324,66 @@ class ReshebaService {
     return result.toSet().toList()..sort();
   }
 
+  /// Загружает фото решения и сразу начинает подкачивать соседние номера.
   Future<File> loadPhoto(
+    String subjectTitle,
+    ReshebaBook book,
+    ReshebaSection section,
+    int number,
+  ) async {
+    final file = await _ensurePhoto(subjectTitle, book, section, number);
+    _prefetchNeighbors(subjectTitle, book, section, number);
+    return file;
+  }
+
+  /// Небольшой прогрев для экрана ГДЗ: по одному фото из первых разделов.
+  /// Намеренно ограничен, чтобы не скачивать тысячи решений и не занимать
+  /// гигабайты памяти без необходимости.
+  Future<void> prefetchPreviewPhotos(
+    String subjectTitle,
+    ReshebaBook book, {
+    int limit = 2,
+  }) async {
+    if (limit <= 0) return;
+    final pending = <Future<void>>[];
+    for (final section in book.sections) {
+      if (section.numbers.isEmpty) continue;
+      pending.add(
+        _ignoreErrors(
+          _ensurePhoto(
+            subjectTitle,
+            book,
+            section,
+            section.numbers.first,
+          ),
+        ),
+      );
+      if (pending.length >= limit) break;
+    }
+    await Future.wait(pending);
+  }
+
+  Future<File> _ensurePhoto(
+    String subjectTitle,
+    ReshebaBook book,
+    ReshebaSection section,
+    int number,
+  ) {
+    final key = '${book.root}\n${section.folder}\n$number';
+    final active = _photoInFlight[key];
+    if (active != null) return active;
+
+    late final Future<File> tracked;
+    tracked = _loadPhoto(subjectTitle, book, section, number).whenComplete(() {
+      if (identical(_photoInFlight[key], tracked)) {
+        _photoInFlight.remove(key);
+      }
+    });
+    _photoInFlight[key] = tracked;
+    return tracked;
+  }
+
+  Future<File> _loadPhoto(
     String subjectTitle,
     ReshebaBook book,
     ReshebaSection section,
@@ -337,7 +434,40 @@ class ReshebaService {
         lastError = e;
       }
     }
-    throw Exception('Не удалось загрузить решение №$number ($lastError)');
+    throw Exception(
+      'Не удалось загрузить решение №$number для «$subjectTitle» ($lastError)',
+    );
+  }
+
+  void _prefetchNeighbors(
+    String subjectTitle,
+    ReshebaBook book,
+    ReshebaSection section,
+    int number,
+  ) {
+    final index = section.numbers.indexOf(number);
+    if (index < 0) return;
+    for (final nextIndex in [index - 1, index + 1]) {
+      if (nextIndex < 0 || nextIndex >= section.numbers.length) continue;
+      unawaited(
+        _ignoreErrors(
+          _ensurePhoto(
+            subjectTitle,
+            book,
+            section,
+            section.numbers[nextIndex],
+          ),
+        ),
+      );
+    }
+  }
+
+  static Future<void> _ignoreErrors(Future<dynamic> future) async {
+    try {
+      await future;
+    } catch (_) {
+      // Prefetch — best effort. Ошибку нужного фото покажет основной экран.
+    }
   }
 
   static String solutionUrl(

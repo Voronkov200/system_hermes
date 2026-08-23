@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../services/study/resheba_service.dart';
+import '../../services/study/study_auto_cache_service.dart';
 import '../../services/study/study_service.dart';
 
 /// Маппинг ключей иконок каталога на Material-иконки.
@@ -44,6 +45,16 @@ class _StudyScreenState extends ConsumerState<StudyScreen> {
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(studyProvider);
+
+    // Сразу после открытия «Учёбы» ставим официальные PDF и доступные ГДЗ
+    // в фоновую очередь. Метод идемпотентный: rebuild не создаёт дубликаты.
+    ref.read(studyAutoCacheServiceProvider).warmStudy(
+          subjectTitles: st.subjects
+              .where((subject) => subject.kind == 'subject')
+              .map((subject) => subject.title),
+          paragraphChapters: st.paragraphs.map((paragraph) => paragraph.chapter),
+        );
+
     bool matches(StudySubject subject) {
       final query = _query.trim().toLowerCase();
       final queryMatches = query.isEmpty ||
@@ -391,7 +402,7 @@ class _StudyOverview extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Тексты доступны без ИИ. Фото решений загружаются по номеру и после первого открытия остаются в кэше.',
+            'Учебники и каталоги ГДЗ готовятся автоматически в фоне. Первые фото решений и соседние номера заранее остаются в кэше.',
             style: TextStyle(
               color: AppColors.textDim,
               fontSize: 12,
