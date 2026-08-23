@@ -18,7 +18,7 @@ import 'features/plan/tasks_screen.dart';
 import 'features/plan/web_view_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell.dart';
-import 'features/study/cached_paragraph_screen.dart';
+import 'features/study/study_notebook_screen.dart';
 import 'features/study/study_screen.dart';
 import 'features/study/subject_screen.dart';
 import 'features/work/work_screen.dart';
@@ -52,7 +52,7 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/study_paragraph/:id',
-      builder: (context, state) => CachedParagraphScreen(
+      builder: (context, state) => StudyNotebookScreen(
         paragraphId: state.pathParameters['id'] ?? '',
         initial: state.extra as StudyParagraph?,
       ),
