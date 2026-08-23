@@ -63,7 +63,7 @@ class StudyRuleImagesService {
 
   /// Возвращает количество реально сохранённых фотографий.
   Future<int> addFromGallery(String paragraphId) async {
-    final picked = await FilePicker.platform.pickFiles(
+    final picked = await FilePicker.pickFiles(
       dialogTitle: 'Фото правил или страниц',
       type: FileType.image,
       allowMultiple: true,
