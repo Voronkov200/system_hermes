@@ -35,7 +35,8 @@ class _HermesAndroidFontResolver extends PdfFontResolver {
         face.contains('symbol') ||
         face.contains('cambria') ||
         face.contains('stix') ||
-        face.contains('mt extra');
+        face.contains('mt extra') ||
+        face.startsWith('cm');
     final isSerif = face.contains('serif') ||
         face.contains('times') ||
         face.contains('georgia') ||
@@ -80,6 +81,90 @@ final hermesPdfFontManager = PdfFontManager(
   resolvers: [_HermesAndroidFontResolver()],
 );
 
+File? _firstAndroidFont(List<String> names) {
+  for (final directory in _androidFontDirectories) {
+    for (final name in names) {
+      final file = File('$directory/$name');
+      if (file.existsSync()) return file;
+    }
+  }
+  return null;
+}
+
+/// PDFium's own font mapper is global. Регистрируем распространённые имена
+/// математических/офисных шрифтов как алиасы к системным Noto/Roboto, чтобы
+/// формулы работали и в PdfPageView, и в PdfViewer без отдельной настройки
+/// каждого предмета или каждой страницы.
+Future<void> _registerAndroidFontAliases() async {
+  final math = _firstAndroidFont(const [
+    'NotoSansMath-Regular.ttf',
+    'NotoSansSymbols2-Regular.ttf',
+    'NotoSansSymbols-Regular.ttf',
+  ]);
+  final serif = _firstAndroidFont(const [
+    'NotoSerif-Regular.ttf',
+    'RobotoSerif-Regular.ttf',
+    'Roboto-Regular.ttf',
+  ]);
+  final sans = _firstAndroidFont(const [
+    'NotoSans-Regular.ttf',
+    'Roboto-Regular.ttf',
+  ]);
+
+  final entry = PdfrxEntryFunctions.instance;
+  var registered = false;
+
+  Future<void> addAliases(File? file, Iterable<String> faces) async {
+    if (file == null) return;
+    for (final face in faces) {
+      try {
+        await entry.addFontFile(
+          face: face,
+          filePath: file.path,
+          resolvedFace: file.uri.pathSegments.last,
+        );
+        registered = true;
+      } catch (_) {
+        // Некоторые Android-сборки запрещают отдельные системные файлы.
+        // Остальные алиасы и стандартный font mapper продолжат работать.
+      }
+    }
+  }
+
+  await addAliases(math, const [
+    'Cambria Math',
+    'CambriaMath',
+    'Symbol',
+    'SymbolMT',
+    'MT Extra',
+    'STIX',
+    'STIX Math',
+    'STIXGeneral',
+    'Euclid',
+    'Euclid Symbol',
+    'MathematicalPi-One',
+    'CMSY10',
+    'CMEX10',
+    'CMMI10',
+  ]);
+  await addAliases(serif, const [
+    'Times New Roman',
+    'TimesNewRomanPSMT',
+    'Cambria',
+    'Georgia',
+  ]);
+  await addAliases(sans, const [
+    'Arial',
+    'ArialMT',
+    'Helvetica',
+    'Calibri',
+  ]);
+
+  if (registered) {
+    await entry.reloadFonts();
+  }
+}
+
 Future<void> initializeHermesPdfEngine() async {
   // pdfrxFlutterInitialize асинхронный: PDF нельзя открывать до его завершения.
   await pdfrxFlutterInitialize();
@@ -96,4 +181,5 @@ Future<void> initializeHermesPdfEngine() async {
   await hermesPdfFontManager.prepare(
     fontPaths: fontPaths.isEmpty ? null : fontPaths,
   );
+  await _registerAndroidFontAliases();
 }
