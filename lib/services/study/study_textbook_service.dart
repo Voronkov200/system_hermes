@@ -11,14 +11,21 @@ import 'study_textbook_catalog.dart';
 
 class StudyTextbookDownloadException implements Exception {
   final String message;
+  final bool retryable;
 
-  const StudyTextbookDownloadException(this.message);
+  const StudyTextbookDownloadException(
+    this.message, {
+    this.retryable = false,
+  });
 
   @override
   String toString() => message;
 }
 
 class StudyTextbookService {
+  static const _maxAttempts = 3;
+  static const _maxBytes = 250 * 1024 * 1024;
+
   final http.Client _client;
   final Map<String, Future<File>> _inFlight = {};
 
@@ -47,69 +54,114 @@ class StudyTextbookService {
     if (await _isValidPdf(target)) return target;
 
     final partial = File('${target.path}.part');
-    try {
-      if (await partial.exists()) await partial.delete();
-      final request = http.Request('GET', source.pdfUri)
-        ..headers['User-Agent'] = 'SystemHermes/1.0 (Android; textbook cache)'
-        ..headers['Accept'] = 'application/pdf,*/*;q=0.8';
-      final response = await _client
-          .send(request)
-          .timeout(const Duration(seconds: 35));
-      if (response.statusCode != HttpStatus.ok) {
-        throw StudyTextbookDownloadException(
-          'Учебник не загрузился: сервер вернул ${response.statusCode}.',
-        );
-      }
-      const maxBytes = 250 * 1024 * 1024;
-      final declared = response.contentLength;
-      if (declared != null && declared > maxBytes) {
-        throw const StudyTextbookDownloadException(
-          'PDF слишком большой для безопасной загрузки.',
-        );
-      }
+    Object? lastError;
 
-      var received = 0;
-      final sink = partial.openWrite();
+    for (var attempt = 0; attempt < _maxAttempts; attempt++) {
       try {
-        await for (final chunk
-            in response.stream.timeout(const Duration(seconds: 45))) {
-          received += chunk.length;
-          if (received > maxBytes) {
-            throw const StudyTextbookDownloadException(
-              'PDF превысил допустимый размер.',
-            );
-          }
-          sink.add(chunk);
+        if (await partial.exists()) await partial.delete();
+        return await _downloadOnce(source, target, partial);
+      } on StudyTextbookDownloadException catch (error) {
+        lastError = error;
+        if (!error.retryable || attempt == _maxAttempts - 1) rethrow;
+      } on SocketException catch (error) {
+        lastError = error;
+        if (attempt == _maxAttempts - 1) {
+          throw const StudyTextbookDownloadException(
+            'Нет соединения. Hermes автоматически повторит загрузку, когда сеть станет стабильнее.',
+            retryable: true,
+          );
         }
+      } on TimeoutException catch (error) {
+        lastError = error;
+        if (attempt == _maxAttempts - 1) {
+          throw const StudyTextbookDownloadException(
+            'Загрузка учебника несколько раз прервалась по тайм-ауту. Hermes попробует снова позже.',
+            retryable: true,
+          );
+        }
+      } catch (error) {
+        lastError = error;
+        throw StudyTextbookDownloadException(
+          'Не удалось сохранить учебник: $error',
+        );
       } finally {
-        await sink.flush();
-        await sink.close();
+        if (await partial.exists() && !await _isValidPdf(partial)) {
+          try {
+            await partial.delete();
+          } catch (_) {
+            // Следующая попытка всё равно попробует очистить временный файл.
+          }
+        }
       }
 
-      if (!await _isValidPdf(partial)) {
-        throw const StudyTextbookDownloadException(
-          'Сервер вернул не PDF. Попробуй ещё раз позже.',
-        );
-      }
-      if (await target.exists()) await target.delete();
-      return await partial.rename(target.path);
-    } on StudyTextbookDownloadException {
-      if (await partial.exists()) await partial.delete();
-      rethrow;
-    } on SocketException {
-      if (await partial.exists()) await partial.delete();
-      throw const StudyTextbookDownloadException(
-        'Нет соединения. Один раз открой параграф с интернетом — затем весь учебник останется на телефоне.',
+      await Future<void>.delayed(
+        Duration(milliseconds: 600 * (attempt + 1)),
       );
-    } on TimeoutException {
-      if (await partial.exists()) await partial.delete();
-      throw const StudyTextbookDownloadException(
-        'Загрузка учебника прервалась по тайм-ауту. Нажми «Повторить».',
-      );
-    } catch (error) {
-      if (await partial.exists()) await partial.delete();
-      throw StudyTextbookDownloadException('Не удалось сохранить учебник: $error');
     }
+
+    throw StudyTextbookDownloadException(
+      'Не удалось загрузить учебник: $lastError',
+      retryable: true,
+    );
+  }
+
+  Future<File> _downloadOnce(
+    StudyTextbookSource source,
+    File target,
+    File partial,
+  ) async {
+    final request = http.Request('GET', source.pdfUri)
+      ..headers['User-Agent'] = 'SystemHermes/1.0 (Android; textbook cache)'
+      ..headers['Accept'] = 'application/pdf,*/*;q=0.8';
+    final response = await _client
+        .send(request)
+        .timeout(const Duration(seconds: 35));
+
+    if (response.statusCode != HttpStatus.ok) {
+      final retryable = response.statusCode == HttpStatus.requestTimeout ||
+          response.statusCode == 429 ||
+          response.statusCode >= 500;
+      await response.stream.drain<void>();
+      throw StudyTextbookDownloadException(
+        'Учебник не загрузился: сервер вернул ${response.statusCode}.',
+        retryable: retryable,
+      );
+    }
+
+    final declared = response.contentLength;
+    if (declared != null && declared > _maxBytes) {
+      await response.stream.drain<void>();
+      throw const StudyTextbookDownloadException(
+        'PDF слишком большой для безопасной загрузки.',
+      );
+    }
+
+    var received = 0;
+    final sink = partial.openWrite();
+    try {
+      await for (final chunk
+          in response.stream.timeout(const Duration(seconds: 45))) {
+        received += chunk.length;
+        if (received > _maxBytes) {
+          throw const StudyTextbookDownloadException(
+            'PDF превысил допустимый размер.',
+          );
+        }
+        sink.add(chunk);
+      }
+    } finally {
+      await sink.flush();
+      await sink.close();
+    }
+
+    if (!await _isValidPdf(partial)) {
+      throw const StudyTextbookDownloadException(
+        'Сервер вернул не PDF. Hermes попробует загрузить учебник ещё раз.',
+        retryable: true,
+      );
+    }
+    if (await target.exists()) await target.delete();
+    return partial.rename(target.path);
   }
 
   Future<bool> _isValidPdf(File file) async {
