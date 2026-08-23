@@ -99,7 +99,7 @@ class _StudyScreenState extends ConsumerState<StudyScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
           _StudyOverview(state: st),
           const SizedBox(height: 14),
@@ -328,49 +328,100 @@ class _StudyOverview extends StatelessWidget {
   Widget build(BuildContext context) {
     final subjectCount = state.subjects.where((s) => s.kind == 'subject').length;
     final learned = state.paragraphs.where((p) => p.learned).length;
+    final progress = state.paragraphs.isEmpty ? 0.0 : learned / state.paragraphs.length;
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.accent.withValues(alpha: .2),
-            AppColors.cyan.withValues(alpha: .06),
-          ],
+        gradient: const LinearGradient(
+          colors: [Color(0xFF193B34), Color(0xFF152A3B), Color(0xFF141A25)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.accent.withValues(alpha: .32)),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.accent.withValues(alpha: .3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.school_outlined, color: AppColors.accent),
-              SizedBox(width: 9),
-              Text(
-                '11 класс · локальная библиотека',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: .13),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.school_rounded, color: AppColors.accent),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Учебная база',
+                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      '11 класс · материалы на телефоне',
+                      style: TextStyle(color: AppColors.textDim, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'ЛОКАЛЬНО',
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .5,
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 16),
           const Text(
-            'Тексты учебников находятся на телефоне. Фото ГДЗ загружаются '
-            'по номеру один раз и сохраняются в кэше.',
+            'Тексты доступны без ИИ. Фото решений загружаются по номеру и после первого открытия остаются в кэше.',
             style: TextStyle(
               color: AppColors.textDim,
               fontSize: 12,
               height: 1.4,
             ),
           ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(value: progress, minHeight: 7),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '${(progress * 100).round()}%',
+                style: const TextStyle(color: AppColors.accent, fontSize: 11, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
-              _StudyMetric(value: '$subjectCount', label: 'предметов'),
+              _StudyMetric(value: '$subjectCount', label: 'предметов', color: AppColors.accent),
               const SizedBox(width: 8),
-              _StudyMetric(value: '${state.paragraphs.length}', label: 'параграфов'),
+              _StudyMetric(value: '${state.paragraphs.length}', label: 'параграфов', color: AppColors.cyan),
               const SizedBox(width: 8),
-              _StudyMetric(value: '$learned', label: 'изучено'),
+              _StudyMetric(value: '$learned', label: 'изучено', color: AppColors.violet),
             ],
           ),
         ],
@@ -382,8 +433,9 @@ class _StudyOverview extends StatelessWidget {
 class _StudyMetric extends StatelessWidget {
   final String value;
   final String label;
+  final Color color;
 
-  const _StudyMetric({required this.value, required this.label});
+  const _StudyMetric({required this.value, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) => Expanded(
@@ -392,13 +444,14 @@ class _StudyMetric extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.surface.withValues(alpha: .72),
             borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border.withValues(alpha: .7)),
           ),
           child: Column(
             children: [
               Text(
                 value,
-                style: const TextStyle(
-                  color: AppColors.accent,
+                style: TextStyle(
+                  color: color,
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
                 ),
@@ -419,15 +472,10 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(left: 4, bottom: 4),
+        padding: const EdgeInsets.only(bottom: 4),
         child: Text(
           text,
-          style: const TextStyle(
-            color: AppColors.textDim,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.6,
-          ),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
       );
 }
@@ -446,7 +494,15 @@ class _SubjectCard extends ConsumerWidget {
         .where((p) => p.subjectId == subject.id && p.learned)
         .length;
     final hasGdz = ReshebaService.jsPathFor(subject.title) != null;
+    final progress = count == 0 ? 0.0 : learned / count;
+    final color = switch (subject.category) {
+      'Точные науки' => AppColors.cyan,
+      'Языки' => AppColors.violet,
+      'Гуманитарные' => AppColors.warning,
+      _ => AppColors.accent,
+    };
     return Card(
+      margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => context.push(
@@ -455,19 +511,23 @@ class _SubjectCard extends ConsumerWidget {
         ),
         onLongPress: () => _menu(context, ref),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(15),
           child: Row(
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: [color.withValues(alpha: .2), color.withValues(alpha: .07)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
                   studyIcon(subject.icon),
-                  color: AppColors.accent,
+                  color: color,
                 ),
               ),
               const SizedBox(width: 12),
@@ -478,8 +538,8 @@ class _SubjectCard extends ConsumerWidget {
                     Text(
                       subject.title,
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                     if (subject.subtitle.isNotEmpty) ...[
@@ -495,14 +555,25 @@ class _SubjectCard extends ConsumerWidget {
                       ),
                     ],
                     if (count > 0) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '$learned/$count изучено · '
-                        '$count параграф${_plural(count)}',
-                        style: const TextStyle(
-                          color: AppColors.cyan,
-                          fontSize: 11,
-                        ),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 4,
+                                color: color,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '$learned/$count',
+                            style: TextStyle(color: color, fontSize: 9.5, fontWeight: FontWeight.w900),
+                          ),
+                        ],
                       ),
                     ],
                   ],
@@ -513,13 +584,13 @@ class _SubjectCard extends ConsumerWidget {
                   margin: const EdgeInsets.only(right: 6),
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.cyan.withValues(alpha: .1),
+                    color: color.withValues(alpha: .1),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
+                  child: Text(
                     'ФОТО ГДЗ',
                     style: TextStyle(
-                      color: AppColors.cyan,
+                      color: color,
                       fontSize: 9,
                       fontWeight: FontWeight.w900,
                     ),
@@ -649,11 +720,4 @@ class _SubjectCard extends ConsumerWidget {
         ),
       );
 
-  static String _plural(int n) {
-    final m = n % 10;
-    final h = n % 100;
-    if (m == 1 && h != 11) return '';
-    if (m >= 2 && m <= 4 && (h < 12 || h > 14)) return 'а';
-    return 'ов';
-  }
 }

@@ -107,6 +107,9 @@ class BankScreen extends ConsumerWidget {
     final ratesAsync = ref.watch(ratesProvider);
     final rates = ratesAsync.valueOrNull ?? NbrbApi.bundledRates;
     final totalByn = bank.totalByn(rates: rates);
+    final transactions = bank.transactions.take(40).toList();
+    final cardWidth =
+        (MediaQuery.sizeOf(context).width * .78).clamp(260.0, 330.0).toDouble();
 
     return Scaffold(
       key: const ValueKey('money-screen'),
@@ -127,29 +130,16 @@ class BankScreen extends ConsumerWidget {
         },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
           children: [
-            const _LocalBankNotice(),
-            const SizedBox(height: 12),
             _TotalCard(totalByn: totalByn),
-            const SizedBox(height: 12),
-            if (bank.lastEvent != null)
-              _EventCard(text: bank.lastEvent!),
-            _PensionCard(
-              amount: settings.pensionAmount,
-              day: settings.pensionDay,
-              creditedMonth: settings.lastPensionMonth,
-            ),
-            const SizedBox(height: 12),
-            if (bank.generalAccount != null)
-              _GeneralAccountCard(account: bank.generalAccount!),
             const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: () => _createCard(context, ref, bank),
-                    icon: const Icon(Icons.add_card),
+                    icon: const Icon(Icons.add_card_rounded),
                     label: const Text('Создать карту'),
                   ),
                 ),
@@ -157,57 +147,116 @@ class BankScreen extends ConsumerWidget {
                 Expanded(
                   child: FilledButton.tonalIcon(
                     onPressed: () => _transfer(context, ref, bank, rates),
-                    icon: const Icon(Icons.swap_horiz),
+                    icon: const Icon(Icons.swap_horiz_rounded),
                     label: const Text('Перевести'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'Виртуальные карты',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            if (bank.lastEvent != null) ...[
+              const SizedBox(height: 10),
+              _EventCard(text: bank.lastEvent!),
+            ],
+            const SizedBox(height: 14),
+            const _LocalBankNotice(),
+            const SizedBox(height: 26),
+            const _SectionHeading(
+              title: 'Счета',
+              subtitle: 'Пенсия поступает в локальный Общий счёт',
             ),
-            const SizedBox(height: 4),
-            const Text(
-              'Карты хранят локальный плановый баланс на этом телефоне.',
-              style: TextStyle(color: AppColors.textDim, fontSize: 12),
+            const SizedBox(height: 12),
+            _PensionCard(
+              amount: settings.pensionAmount,
+              day: settings.pensionDay,
+              creditedMonth: settings.lastPensionMonth,
             ),
             const SizedBox(height: 10),
+            if (bank.generalAccount != null)
+              _GeneralAccountCard(account: bank.generalAccount!),
+            const SizedBox(height: 26),
+            const _SectionHeading(
+              title: 'Валютные карты',
+              subtitle: 'BYN · USD · EUR · RUB — плановый баланс на телефоне',
+            ),
+            const SizedBox(height: 12),
             if (bank.cards.isEmpty)
               const _EmptyCards()
             else
-              for (final card in bank.cards) ...[
-                _VirtualCard(account: card),
-                const SizedBox(height: 12),
-              ],
-            const SizedBox(height: 12),
+              SizedBox(
+                height: 182,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: bank.cards.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  itemBuilder: (_, index) => _VirtualCard(
+                    account: bank.cards[index],
+                    width: cardWidth,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 18),
             _RatesCard(
               rates: rates,
               isLoading: ratesAsync.isLoading,
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'История операций',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            const SizedBox(height: 26),
+            const _SectionHeading(
+              title: 'История операций',
+              subtitle: 'Все локальные пополнения и переводы',
             ),
-            const SizedBox(height: 8),
-            if (bank.transactions.isEmpty)
+            const SizedBox(height: 12),
+            if (transactions.isEmpty)
               const Card(
+                margin: EdgeInsets.zero,
                 child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'Операций пока нет',
-                    style: TextStyle(color: AppColors.textDim),
+                  padding: EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long_outlined, color: AppColors.textDim),
+                      SizedBox(width: 12),
+                      Text(
+                        'Операций пока нет',
+                        style: TextStyle(color: AppColors.textDim),
+                      ),
+                    ],
                   ),
                 ),
               )
             else
-              for (final transaction in bank.transactions.take(40))
-                _TransactionTile(transaction: transaction),
+              Card(
+                margin: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    for (var i = 0; i < transactions.length; i++) ...[
+                      _TransactionTile(transaction: transactions[i]),
+                      if (i != transactions.length - 1)
+                        const Divider(indent: 56, endIndent: 14),
+                    ],
+                  ],
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _SectionHeading({required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 3),
+        Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }
@@ -218,23 +267,30 @@ class _LocalBankNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: AppColors.cyan.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.cyan.withValues(alpha: .32)),
+        color: AppColors.cyan.withValues(alpha: .07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.cyan.withValues(alpha: .2)),
       ),
       child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.shield_outlined, color: AppColors.cyan, size: 20),
+          Icon(Icons.shield_outlined, color: AppColors.cyan, size: 19),
           SizedBox(width: 10),
           Expanded(
-            child: Text(
-              'Локальный финансовый планировщик. Он повторяет нужные тебе '
-              'сценарии BSB, но не подключён к банку и не перемещает реальные '
-              'деньги.',
-              style: TextStyle(fontSize: 12, height: 1.4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Безопасный локальный режим',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Hermes планирует операции, но не подключается к BSB и не перемещает реальные деньги.',
+                  style: TextStyle(color: AppColors.textDim, fontSize: 10.5, height: 1.35),
+                ),
+              ],
             ),
           ),
         ],
@@ -251,37 +307,73 @@ class _TotalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF00E5A0), Color(0xFF00B8D4)],
+          colors: [Color(0xFF163D35), Color(0xFF123448), Color(0xFF111925)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.accent.withValues(alpha: .32)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accent.withValues(alpha: .08),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'ПЛАНОВЫЙ КАПИТАЛ',
-            style: TextStyle(
-              color: Colors.black54,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1,
-            ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'ФИНАНСОВЫЙ РЕЗЕРВ',
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .7,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              const Icon(Icons.lock_outline_rounded, color: AppColors.textDim, size: 19),
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 22),
+          const Text(
+            'Общий плановый капитал',
+            style: TextStyle(color: AppColors.textDim, fontSize: 11, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
           Text(
             '${fmt2(totalByn)} BYN',
             style: const TextStyle(
-              color: Colors.black,
-              fontSize: 30,
+              color: AppColors.textPrimary,
+              fontSize: 34,
               fontWeight: FontWeight.w900,
+              letterSpacing: -.7,
             ),
           ),
-          const Text(
-            'Эквивалент по расчётному курсу НБРБ',
-            style: TextStyle(color: Colors.black54, fontSize: 11),
+          const SizedBox(height: 12),
+          const Row(
+            children: [
+              Icon(Icons.currency_exchange_rounded, color: AppColors.cyan, size: 16),
+              SizedBox(width: 7),
+              Text(
+                'Эквивалент по расчётному курсу НБРБ',
+                style: TextStyle(color: AppColors.textDim, fontSize: 10.5),
+              ),
+            ],
           ),
         ],
       ),
@@ -296,11 +388,24 @@ class _EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        text,
-        style: const TextStyle(color: AppColors.accent, fontSize: 12),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_outline_rounded, color: AppColors.accent, size: 18),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: AppColors.accent, fontSize: 11.5, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -384,37 +489,49 @@ class _GeneralAccountCard extends StatelessWidget {
 
 class _VirtualCard extends StatelessWidget {
   final Account account;
+  final double width;
 
-  const _VirtualCard({required this.account});
+  const _VirtualCard({required this.account, required this.width});
 
   @override
   Widget build(BuildContext context) {
     final color = _currencyColor(account.currency);
     return Container(
-      height: 168,
+      width: width,
+      height: 182,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            color.withValues(alpha: .86),
-            color.withValues(alpha: .42),
-            AppColors.surfaceAlt,
+            color.withValues(alpha: .48),
+            color.withValues(alpha: .18),
+            const Color(0xFF151C27),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: .55)),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.withValues(alpha: .38)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.contactless, color: Colors.white),
+              Container(
+                width: 34,
+                height: 25,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: .22),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(color: color.withValues(alpha: .4)),
+                ),
+              ),
+              const SizedBox(width: 9),
+              const Icon(Icons.contactless_rounded, color: Colors.white70, size: 20),
               const Spacer(),
               Text(
-                'HERMES · ${account.currency}',
+                'HERMES  ${_currencySymbol(account.currency)}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -425,10 +542,20 @@ class _VirtualCard extends StatelessWidget {
           ),
           const Spacer(),
           const Text(
-            'ЛОКАЛЬНАЯ ВИРТУАЛЬНАЯ КАРТА',
+            '••••  ••••  ••••  3900',
             style: TextStyle(
               color: Colors.white70,
-              fontSize: 10,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'ПЛАНОВЫЙ БАЛАНС',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 9,
               fontWeight: FontWeight.w700,
               letterSpacing: .8,
             ),
@@ -438,7 +565,7 @@ class _VirtualCard extends StatelessWidget {
             '${fmt2(account.balance)} ${account.currency}',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 25,
+              fontSize: 23,
               fontWeight: FontWeight.w900,
             ),
           ),

@@ -68,8 +68,14 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
+          _SettingsIntro(
+            darkMode: s.themeMode == ThemeMode.dark,
+            aiReady: s.usesDirectLlm || s.usesHermesServer,
+            pension: s.pensionAmount,
+          ),
+          const SizedBox(height: 18),
           const _SectionTitle('Внешний вид'),
           SwitchListTile(
             title: const Text('Тёмная тема'),
@@ -310,6 +316,106 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
+class _SettingsIntro extends StatelessWidget {
+  final bool darkMode;
+  final bool aiReady;
+  final double pension;
+
+  const _SettingsIntro({
+    required this.darkMode,
+    required this.aiReady,
+    required this.pension,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF25223B), Color(0xFF172537), Color(0xFF141A24)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppColors.violet.withValues(alpha: .28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.tune_rounded, color: AppColors.violet),
+              SizedBox(width: 9),
+              Text(
+                'Центр управления',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Главные параметры собраны здесь. Обычные данные сохраняются автоматически.',
+            style: TextStyle(color: AppColors.textDim, fontSize: 11.5, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _SettingsPill(
+                icon: darkMode ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+                text: darkMode ? 'ТЁМНАЯ ТЕМА' : 'СВЕТЛАЯ ТЕМА',
+                color: AppColors.violet,
+              ),
+              _SettingsPill(
+                icon: aiReady ? Icons.check_circle_outline : Icons.key_outlined,
+                text: aiReady ? 'AI НАСТРОЕН' : 'НУЖЕН API-КЛЮЧ',
+                color: aiReady ? AppColors.accent : AppColors.warning,
+              ),
+              _SettingsPill(
+                icon: Icons.account_balance_wallet_outlined,
+                text: '${fmt2(pension)} BYN / МЕС',
+                color: AppColors.cyan,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsPill extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  const _SettingsPill({required this.icon, required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: TextStyle(color: color, fontSize: 8.5, fontWeight: FontWeight.w900, letterSpacing: .35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _HermesConnectionCard extends ConsumerStatefulWidget {
   const _HermesConnectionCard();
 
@@ -525,10 +631,10 @@ class _SectionTitle extends StatelessWidget {
       child: Text(
         text,
         style: const TextStyle(
-          fontSize: 12,
-          letterSpacing: 1,
-          color: AppColors.cyan,
-          fontWeight: FontWeight.w700,
+          fontSize: 16,
+          letterSpacing: -.1,
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );
