@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../services/study/resheba_service.dart';
+import 'gdz_photo_view.dart';
 
 class ReshebaScreen extends StatefulWidget {
   final String subjectTitle;
@@ -147,8 +148,10 @@ class _ReshebaScreenState extends State<ReshebaScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.photo_library_outlined,
-                            color: AppColors.cyan),
+                        const Icon(
+                          Icons.photo_library_outlined,
+                          color: AppColors.cyan,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -315,6 +318,7 @@ class _SectionCardState extends State<_SectionCard> {
 class _NumberChip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+
   const _NumberChip({required this.label, required this.onTap});
 
   @override
@@ -394,9 +398,7 @@ class _PhotoScreenState extends State<_PhotoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Задание ${widget.section.text} · №$_current',
-        ),
+        title: Text('Задание ${widget.section.text} · №$_current'),
         actions: [
           IconButton(
             tooltip: 'Предыдущее',
@@ -425,12 +427,13 @@ class _PhotoScreenState extends State<_PhotoScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.broken_image_outlined,
-                        color: AppColors.danger),
+                    const Icon(
+                      Icons.broken_image_outlined,
+                      color: AppColors.danger,
+                    ),
                     const SizedBox(height: 10),
                     Text(
-                      'Не удалось загрузить решение №$_current:\n'
-                      '${snap.error}',
+                      'Не удалось загрузить решение №$_current:\n${snap.error}',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: AppColors.danger,
@@ -448,17 +451,10 @@ class _PhotoScreenState extends State<_PhotoScreen> {
               ),
             );
           }
-          final file = snap.data!;
-          return Center(
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 6,
-              child: Image.file(
-                file,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Text('Фото повреждено'),
-              ),
-            ),
+
+          return GdzPhotoView(
+            key: ValueKey('$_current:${snap.data!.path}'),
+            file: snap.data!,
           );
         },
       ),
