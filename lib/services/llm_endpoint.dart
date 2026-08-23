@@ -61,8 +61,8 @@ String llmApiErrorMessage(int statusCode, String responseBody) {
   }
 
   if (detail != null) {
-    detail = detail!.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (detail!.length > 180) detail = '${detail!.substring(0, 180)}…';
+    detail = detail.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (detail.length > 180) detail = '${detail.substring(0, 180)}…';
   }
 
   final base = switch (statusCode) {
@@ -76,5 +76,5 @@ String llmApiErrorMessage(int statusCode, String responseBody) {
     >= 500 => 'Сервис ИИ временно недоступен (HTTP $statusCode)',
     _ => 'Ошибка API (HTTP $statusCode)',
   };
-  return detail == null || detail!.isEmpty ? base : '$base: $detail';
+  return detail == null || detail.isEmpty ? base : '$base: $detail';
 }

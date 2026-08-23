@@ -143,14 +143,14 @@ class _SubjectScreenState extends ConsumerState<SubjectScreen> {
           ],
           if (paragraphs.isEmpty)
             Padding(
-              padding: EdgeInsets.only(top: 32),
+              padding: const EdgeInsets.only(top: 32),
               child: Center(
                 child: Text(
                   allParagraphs.isEmpty
                       ? 'Параграфы ещё загружаются или отсутствуют.'
                       : 'Параграф не найден. Попробуй другой запрос.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textDim, fontSize: 13),
+                  style: const TextStyle(color: AppColors.textDim, fontSize: 13),
                 ),
               ),
             )

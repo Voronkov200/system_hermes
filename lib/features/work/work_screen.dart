@@ -44,10 +44,10 @@ class WorkScreen extends ConsumerWidget {
                   child: const Icon(Icons.trending_up, color: AppColors.accent),
                 ),
                 const SizedBox(width: 12),
-                Expanded(
+                const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text(
                         'Путь к самостоятельности',
                         style: TextStyle(fontWeight: FontWeight.w800),
