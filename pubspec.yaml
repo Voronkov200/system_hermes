@@ -28,33 +28,32 @@ dependencies:
   http: ^1.2.2
   # Markdown для заметок Obsidian
   flutter_markdown: ^0.7.4
-  # Локальные настройки и небольшие состояния
+  # Настройки
   shared_preferences: ^2.3.2
-  # PDF учебников / рендер страниц
-  pdfrx: ^1.0.94
-  # Для запуска URL/системных действий
-  url_launcher: ^6.3.0
-  # Разное
-  intl: ^0.19.0
-  uuid: ^4.5.1
-  collection: ^1.18.0
-
-  # Необязательная верификация активности
+  # Фото-верификация
+  image_picker: ^1.1.2
+  # Анимации (Lottie — для будущих ассетов)
+  lottie: ^3.1.2
+  # Health Connect (проверка тренировок)
   flutter_health_connect: ^1.2.3
+  # Генерация PDF-документации прямо на телефоне
+  pdf: ^3.11.1
+  # Извлечение текста из PDF учебников (pdfium)
+  pdfrx: ^2.4.7
+  # Запись голоса с микрофона (транскрибация)
+  record: ^7.1.1
+  # Разрешения Android (микрофон)
+  permission_handler: ^11.3.1
+  # Браузер в "Моём ПК" (встроенный WebView)
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
-
   assets:
     - assets/study/
     - assets/fonts/
-
-  fonts:
-    - family: NotoSansMath
-      fonts:
-        - asset: assets/fonts/NotoSansMath-Regular.ttf
