@@ -201,5 +201,5 @@ class StudyLearningService {
 }
 
 final studyLearningProvider = Provider<StudyLearningService>(
-  (ref) => StudyLearningService(ref),
+  StudyLearningService.new,
 );

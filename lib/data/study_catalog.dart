@@ -58,7 +58,7 @@ const List<StudyCatalogItem> studyCatalog = [
     title: 'Беларуская літаратура',
     subtitle: 'З. П. Мельнікава, Г. М. Трафімава',
     icon: 'lit_bel',
-    category: 'Языки',
+    category: 'Гуманитарные',
   ),
   StudyCatalogItem(
     title: 'Русский язык',
@@ -70,7 +70,7 @@ const List<StudyCatalogItem> studyCatalog = [
     title: 'Русская литература',
     subtitle: 'Т. В. Сенькевич и др.',
     icon: 'lit_ru',
-    category: 'Языки',
+    category: 'Гуманитарные',
   ),
   StudyCatalogItem(
     title: 'Английский язык (часть 1)',

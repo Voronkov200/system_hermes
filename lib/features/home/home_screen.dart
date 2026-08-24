@@ -1,4 +1,4 @@
-// Главный экран: сводка по всем модулям системы.
+// Главная: спокойная сводка и один понятный следующий шаг.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,9 +9,7 @@ import '../../core/utils.dart';
 import '../../data/models.dart';
 import '../../services/bank_service.dart';
 import '../../services/habits_service.dart';
-import '../../services/mining_service.dart';
 import '../../services/nbrb_api.dart';
-import '../../services/obsidian_service.dart';
 import '../../services/settings_service.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -20,173 +18,345 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bank = ref.watch(bankProvider);
-    final mining = ref.watch(miningProvider);
     final habits = ref.watch(habitsProvider);
-    final obsidian = ref.watch(obsidianProvider);
     final settings = ref.watch(settingsProvider);
     final ratesAsync = ref.watch(ratesProvider);
-    final rates = ratesAsync.valueOrNull;
-
-    final totalByn = bank.totalByn(rates: rates, assetsCurrency: settings.assetsCurrency);
-    final clean = habits.cleanStreak();
+    final rates = ratesAsync.valueOrNull ?? NbrbApi.bundledRates;
+    final totalByn = bank.totalByn(rates: rates);
+    final trainingStreak = habits.trainingStreak();
+    final completedToday = habits.habits.where((habit) => habit.doneToday()).length;
 
     return Scaffold(
+      key: const ValueKey('home-screen'),
       appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.terminal, color: AppColors.accent),
-            SizedBox(width: 8),
-            Text('SYSTEM: HERMES'),
-          ],
-        ),
+        title: const _HermesTitle(),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => context.push('/settings'),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton.filledTonal(
+              tooltip: 'Настройки',
+              icon: const Icon(Icons.tune_rounded),
+              onPressed: () => context.push('/settings'),
+            ),
           ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
-          _StatusBanner(mining: mining, clean: clean),
-          const SizedBox(height: 16),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.25,
+          _FocusCard(
+            trainingStreak: trainingStreak,
+            completed: completedToday,
+            total: habits.habits.length,
+            onTap: () => context.go('/work'),
+          ),
+          const SizedBox(height: 12),
+          Row(
             children: [
-              _ModuleCard(
-                title: 'Центральный Банк',
-                subtitle: '${fmt2(totalByn)} BYN',
-                icon: Icons.account_balance_wallet,
-                color: AppColors.accent,
-                onTap: () => context.go('/bank'),
+              Expanded(
+                child: _MetricCard(
+                  icon: Icons.savings_outlined,
+                  color: AppColors.accent,
+                  value: fmt2(totalByn),
+                  label: 'капитал BYN',
+                ),
               ),
-              _ModuleCard(
-                title: 'Майнинг-ферма',
-                subtitle: mining.locked
-                    ? 'ЗАБЛОКИРОВАНА'
-                    : mining.farm.status == 'online'
-                        ? '${fmt0(mining.hashRate)} MH/s'
-                        : 'Собери ПК',
-                icon: Icons.memory,
-                color: AppColors.cyan,
-                onTap: () => context.go('/mining'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MetricCard(
+                  icon: Icons.local_fire_department_outlined,
+                  color: AppColors.warning,
+                  value: '$trainingStreak',
+                  label: 'дней ритма',
+                ),
               ),
-              _ModuleCard(
-                title: 'Протокол',
-                subtitle: '$clean дней чистоты',
-                icon: Icons.fitness_center,
-                color: AppColors.danger,
-                onTap: () => context.go('/habits'),
-              ),
-              _ModuleCard(
-                title: 'Obsidian',
-                subtitle: obsidian.vaultPath == null
-                    ? 'Vault не выбран'
-                    : '${obsidian.notes.length} заметок',
-                icon: Icons.description_outlined,
-                color: AppColors.violet,
-                onTap: () => context.push('/obsidian'),
-              ),
-              _ModuleCard(
-                title: 'Hermes Agent',
-                subtitle: 'Чат-контроллер',
-                icon: Icons.chat_bubble_outline,
-                color: AppColors.warning,
-                onTap: () => context.go('/chat'),
-              ),
-              _ModuleCard(
-                title: 'Журнал изменений',
-                subtitle: 'Все действия и записи',
-                icon: Icons.history,
-                color: AppColors.violet,
-                onTap: () => context.push('/journal'),
-              ),
-              _ModuleCard(
-                title: 'Настройки',
-                subtitle: 'Тема, пенсия, Vault',
-                icon: Icons.settings_outlined,
-                color: AppColors.textDim,
-                onTap: () => context.push('/settings'),
-              ),
-              _ModuleCard(
-                title: 'Учёба',
-                subtitle: 'Предметы 11 класса',
-                icon: Icons.school_outlined,
-                color: AppColors.accent,
-                onTap: () => context.go('/study'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MetricCard(
+                  icon: Icons.calendar_month_outlined,
+                  color: AppColors.cyan,
+                  value: fmt2(settings.pensionAmount),
+                  label: 'пенсия / мес',
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          if (rates != null && rates.isNotEmpty) _RatesCard(rates: rates),
-          const SizedBox(height: 16),
-          _HabitStrip(habits: habits),
+          const SizedBox(height: 26),
+          const _SectionTitle(
+            title: 'Основные направления',
+            subtitle: 'То, что двигает самостоятельную жизнь',
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 158,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AreaCard(
+                    title: 'Работа',
+                    subtitle: 'Учёба, проекты и Hermes',
+                    icon: Icons.rocket_launch_outlined,
+                    color: AppColors.accent,
+                    onTap: () => context.go('/work'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _AreaCard(
+                    title: 'Деньги',
+                    subtitle: 'Резерв, карты и переводы',
+                    icon: Icons.account_balance_wallet_outlined,
+                    color: AppColors.cyan,
+                    onTap: () => context.go('/money'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _WideAreaTile(
+            title: 'Ещё',
+            subtitle: 'Протокол, журнал и управление системой',
+            icon: Icons.widgets_outlined,
+            color: AppColors.violet,
+            onTap: () => context.go('/more'),
+          ),
+          const SizedBox(height: 26),
+          _SectionTitle(
+            title: 'Сегодня',
+            subtitle: completedToday == habits.habits.length &&
+                    habits.habits.isNotEmpty
+                ? 'Ритм на сегодня сохранён'
+                : 'Достаточно одного выполненного действия',
+          ),
+          const SizedBox(height: 12),
+          _HabitPanel(habits: habits),
+          if (rates.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _RatesCard(rates: rates),
+          ],
         ],
       ),
     );
   }
 }
 
-class _StatusBanner extends StatelessWidget {
-  final MiningState mining;
-  final int clean;
-
-  const _StatusBanner({required this.mining, required this.clean});
+class _HermesTitle extends StatelessWidget {
+  const _HermesTitle();
 
   @override
   Widget build(BuildContext context) {
-    final String status;
-    final Color color;
-    if (mining.locked) {
-      status = 'СИСТЕМА В РЕЖИМЕ ОШИБКИ — ферма заблокирована';
-      color = AppColors.danger;
-    } else if (mining.farm.status == 'online') {
-      status = 'СИСТЕМА ОНЛАЙН — дисциплина активна';
-      color = AppColors.accent;
-    } else {
-      status = 'СИСТЕМА ИНИЦИАЛИЗИРУЕТСЯ — собери ферму';
-      color = AppColors.warning;
-    }
+    return const Row(
+      children: [
+        _IconBox(icon: Icons.terminal_rounded, color: AppColors.accent, size: 38),
+        SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'SYSTEM: HERMES',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+            ),
+            Text(
+              'ЛИЧНАЯ СИСТЕМА',
+              style: TextStyle(
+                color: AppColors.textDim,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _FocusCard extends StatelessWidget {
+  final int trainingStreak;
+  final int completed;
+  final int total;
+  final VoidCallback onTap;
+
+  const _FocusCard({
+    required this.trainingStreak,
+    required this.completed,
+    required this.total,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF153B35), Color(0xFF102638), Color(0xFF121A27)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.accent.withValues(alpha: .32)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accent.withValues(alpha: .08),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
-      child: Row(
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
         children: [
-          Icon(Icons.circle, size: 12, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              status,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+          Positioned(
+            right: -36,
+            top: -50,
+            child: Container(
+              width: 150,
+              height: 150,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.cyan.withValues(alpha: .07),
+              ),
             ),
           ),
-          Text('$clean дн',
-              style: const TextStyle(
-                  color: AppColors.warning, fontWeight: FontWeight.w700)),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const _StatusPill(
+                      icon: Icons.circle,
+                      text: 'СИСТЕМА ГОТОВА',
+                      color: AppColors.accent,
+                    ),
+                    const Spacer(),
+                    Text(
+                      '$completed/$total сегодня',
+                      style: const TextStyle(
+                        color: AppColors.textDim,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                const Text(
+                  'Один ясный шаг\nважнее идеального плана',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 24,
+                    height: 1.08,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -.45,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Text(
+                  trainingStreak > 0
+                      ? 'У тебя уже $trainingStreak дн. устойчивого ритма. Продолжи с небольшой задачи.'
+                      : 'Не нужно решать всё сразу. Выбери действие, которое можно закончить сегодня.',
+                  style: const TextStyle(
+                    color: AppColors.textDim,
+                    fontSize: 12,
+                    height: 1.42,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: const Color(0xFF062018),
+                  ),
+                  onPressed: onTap,
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  label: const Text('Выбрать следующий шаг'),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _ModuleCard extends StatelessWidget {
+class _MetricCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String value;
+  final String label;
+
+  const _MetricCard({
+    required this.icon,
+    required this.color,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 10, 11),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppColors.textDim, fontSize: 9.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _SectionTitle({required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 3),
+        Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+class _AreaCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
 
-  const _ModuleCard({
+  const _AreaCard({
     required this.title,
     required this.subtitle,
     required this.icon,
@@ -197,34 +367,173 @@ class _ModuleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: color),
+              _IconBox(icon: icon, color: color, size: 42),
               const Spacer(),
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  Icon(Icons.arrow_outward_rounded, color: color, size: 18),
+                ],
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: AppColors.textDim, fontSize: 11),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WideAreaTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _WideAreaTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              _IconBox(icon: icon, color: color, size: 42),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.textDim),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HabitPanel extends StatelessWidget {
+  final HabitsState habits;
+
+  const _HabitPanel({required this.habits});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push('/habits'),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Column(
+            children: [
+              for (var i = 0; i < habits.habits.length; i++) ...[
+                _HabitRow(habit: habits.habits[i]),
+                if (i != habits.habits.length - 1)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Divider(),
+                  ),
+              ],
+              if (habits.habits.isEmpty)
+                const Text(
+                  'Добавь первое действие в Протоколе',
+                  style: TextStyle(color: AppColors.textDim),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HabitRow extends StatelessWidget {
+  final HabitTracker habit;
+
+  const _HabitRow({required this.habit});
+
+  @override
+  Widget build(BuildContext context) {
+    final done = habit.doneToday();
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: (done ? AppColors.accent : AppColors.textDim)
+                .withValues(alpha: .11),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            done ? Icons.check_rounded : Icons.fitness_center_rounded,
+            color: done ? AppColors.accent : AppColors.textDim,
+            size: 19,
+          ),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(habit.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+              Text(
+                done ? 'Выполнено сегодня' : 'Небольшой шаг ещё доступен',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        Text(
+          '${habit.currentStreak} дн',
+          style: TextStyle(
+            color: done ? AppColors.accent : AppColors.textDim,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -236,73 +545,98 @@ class _RatesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Курсы Нацбанка РБ',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Row(
-              children: rates.map((r) {
-                return Expanded(
-                  child: Column(
-                    children: [
-                      Text(r.code,
-                          style: const TextStyle(color: AppColors.textDim)),
-                      Text('${r.perUnit.toStringAsFixed(2)} BYN',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.accent)),
-                    ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: .72),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.currency_exchange_rounded, color: AppColors.cyan, size: 20),
+          const SizedBox(width: 10),
+          for (var i = 0; i < rates.length; i++) ...[
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    rates[i].code,
+                    style: const TextStyle(
+                      color: AppColors.textDim,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                );
-              }).toList(),
+                  Text(
+                    rates[i].perUnit.toStringAsFixed(2),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
             ),
+            if (i != rates.length - 1)
+              const SizedBox(height: 24, child: VerticalDivider()),
           ],
-        ),
+        ],
       ),
     );
   }
 }
 
-class _HabitStrip extends StatelessWidget {
-  final HabitsState habits;
+class _IconBox extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final double size;
 
-  const _HabitStrip({required this.habits});
+  const _IconBox({required this.icon, required this.color, required this.size});
 
   @override
   Widget build(BuildContext context) {
-    final items = <Widget>[];
-    for (final h in habits.habits) {
-      final done = h.type == 'bad'
-          ? h.currentStreak > 0
-          : h.doneToday();
-      items.add(Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: done ? AppColors.accent : const Color(0xFF1E2836)),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              done ? Icons.check_circle : Icons.radio_button_unchecked,
-              color: done ? AppColors.accent : AppColors.textDim,
-              size: 18,
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(size * .32),
+      ),
+      child: Icon(icon, color: color, size: size * .5),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  const _StatusPill({required this.icon, required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: .2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 8),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              letterSpacing: .7,
             ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(h.name)),
-            Text(h.type == 'bad' ? '${h.currentStreak} дн' : 'стрик ${h.currentStreak}',
-                style: const TextStyle(color: AppColors.textDim, fontSize: 12)),
-          ],
-        ),
-      ));
-    }
-    return Column(children: items);
+          ),
+        ],
+      ),
+    );
   }
 }

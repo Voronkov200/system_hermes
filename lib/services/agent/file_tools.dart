@@ -165,7 +165,7 @@ class FileTools {
     for (final path in candidates) {
       try {
         final f = File(path);
-        if (await f.exists()) return f.readAsBytes();
+        if (await f.exists()) return await f.readAsBytes();
       } catch (_) {}
     }
     return null;

@@ -1,7 +1,9 @@
-// Каркас приложения: нижняя навигация по модулям.
+// Каркас приложения: четыре понятные области вместо списка модулей.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
+import '../core/theme.dart';
 
 class AppShell extends StatelessWidget {
   final Widget child;
@@ -9,71 +11,85 @@ class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.child});
 
   int _indexFor(String path) {
-    if (path.startsWith('/bank')) return 1;
-    if (path.startsWith('/life')) return 2;
-    if (path.startsWith('/mining')) return 3;
-    if (path.startsWith('/habits')) return 4;
-    if (path.startsWith('/chat')) return 5;
-    if (path.startsWith('/plan')) return 6;
-    if (path.startsWith('/study')) return 7;
+    if (path.startsWith('/work') ||
+        path.startsWith('/plan') ||
+        path.startsWith('/study') ||
+        path.startsWith('/chat')) {
+      return 1;
+    }
+    if (path.startsWith('/money') || path.startsWith('/bank')) return 2;
+    if (path.startsWith('/more') ||
+        path.startsWith('/habits') ||
+        path.startsWith('/obsidian') ||
+        path.startsWith('/journal') ||
+        path.startsWith('/settings')) {
+      return 3;
+    }
     return 0;
   }
 
   @override
   Widget build(BuildContext context) {
     final index = _indexFor(GoRouterState.of(context).uri.path);
+    final theme = Theme.of(context);
     return Scaffold(
       body: child,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (i) {
-          const paths = [
-            '/', '/bank', '/life', '/mining', '/habits', '/chat', '/plan', '/study',
-          ];
-          context.go(paths[i]);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Главная',
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: theme.brightness == Brightness.dark
+                ? AppColors.surfaceRaised
+                : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: theme.brightness == Brightness.dark
+                  ? AppColors.border
+                  : const Color(0xFFDCE4EA),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .22),
+                blurRadius: 28,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet),
-            label: 'Банк',
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(23),
+            child: NavigationBar(
+              key: const ValueKey('main-navigation'),
+              selectedIndex: index,
+              onDestinationSelected: (i) {
+                const paths = ['/', '/work', '/money', '/more'];
+                context.go(paths[i]);
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.space_dashboard_outlined),
+                  selectedIcon: Icon(Icons.space_dashboard_rounded),
+                  label: 'Главная',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.rocket_launch_outlined),
+                  selectedIcon: Icon(Icons.rocket_launch_rounded),
+                  label: 'Работа',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.account_balance_wallet_outlined),
+                  selectedIcon: Icon(Icons.account_balance_wallet_rounded),
+                  label: 'Деньги',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.widgets_outlined),
+                  selectedIcon: Icon(Icons.widgets_rounded),
+                  label: 'Ещё',
+                ),
+              ],
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.self_improvement_outlined),
-            selectedIcon: Icon(Icons.self_improvement),
-            label: 'Жизнь',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.memory_outlined),
-            selectedIcon: Icon(Icons.memory),
-            label: 'Майнинг',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fitness_center_outlined),
-            selectedIcon: Icon(Icons.fitness_center),
-            label: 'Протокол',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: 'Hermes',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.checklist_rtl),
-            selectedIcon: Icon(Icons.checklist),
-            label: 'План',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.school_outlined),
-            selectedIcon: Icon(Icons.school),
-            label: 'Учёба',
-          ),
-        ],
+        ),
       ),
     );
   }

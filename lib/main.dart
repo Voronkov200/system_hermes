@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdfrx/pdfrx.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
@@ -17,6 +16,7 @@ import 'services/settings_service.dart';
 import 'services/tasks_service.dart';
 import 'services/journal_service.dart';
 import 'services/plan/docs_service.dart';
+import 'services/study/study_pdf_service.dart';
 import 'services/study/study_service.dart';
 
 /// Открытие бокса с защитой от повреждённых данных:
@@ -39,19 +39,15 @@ Future<void> _openBoxSafely<T>(String name) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  pdfrxFlutterInitialize();
+  await initializeHermesPdfEngine();
 
   // Hive: инициализация, адаптеры, боксы.
   await Hive.initFlutter();
   registerHiveAdapters();
   await _openBoxSafely<Account>(BoxNames.accounts);
   await _openBoxSafely<Transaction>(BoxNames.transactions);
-  await _openBoxSafely<MiningFarm>(BoxNames.farm);
   await _openBoxSafely<HabitTracker>(BoxNames.habits);
   await _openBoxSafely<ChatMessage>(BoxNames.chat);
-  await _openBoxSafely<LifeState>(BoxNames.life);
-  await _openBoxSafely<CompanionData>(BoxNames.companion);
-  await _openBoxSafely<ChatMessage>(BoxNames.companionChat);
   await _openBoxSafely<HermesTask>(BoxNames.tasks);
   await _openBoxSafely<JournalEntry>(BoxNames.journal);
   await _openBoxSafely<SourceDoc>(BoxNames.docs);
@@ -59,11 +55,6 @@ Future<void> main() async {
   await _openBoxSafely<StudyParagraph>(BoxNames.studyParagraphs);
 
   final prefs = await SharedPreferences.getInstance();
-
-  // Дата начала протокола (якорь стрика чистоты) — устанавливается один раз.
-  if ((prefs.getString(PrefKeys.protocolStart) ?? '').isEmpty) {
-    await prefs.setString(PrefKeys.protocolStart, dateKeyLocal());
-  }
 
   runApp(
     ProviderScope(

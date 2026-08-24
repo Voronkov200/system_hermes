@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../llm_endpoint.dart';
 import 'agent_policy.dart';
 import 'hermes_tool_registry.dart';
 import 'tool_definition.dart';
@@ -58,10 +59,10 @@ Future<AgentResult> runAgentLoop({
     try {
       res = await http
           .post(
-            Uri.parse(apiUrl),
+            openAiChatCompletionsUri(apiUrl),
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer $apiKey',
+              'Authorization': 'Bearer ${normalizeApiKey(apiKey)}',
             },
             body: jsonEncode({
               'model': model,
@@ -77,13 +78,12 @@ Future<AgentResult> runAgentLoop({
     }
 
     if (res.statusCode != 200) {
-      final reason = switch (res.statusCode) {
-        401 => 'неверный API-ключ (401)',
-        404 => 'неверный URL или модель (404)',
-        429 => 'превышен лимит запросов (429)',
-        _ => 'ошибка сервера ИИ (HTTP ${res.statusCode})',
-      };
-      throw Exception(reason);
+      throw Exception(
+        llmApiErrorMessage(
+          res.statusCode,
+          utf8.decode(res.bodyBytes, allowMalformed: true),
+        ),
+      );
     }
 
     final Map<String, dynamic> data;

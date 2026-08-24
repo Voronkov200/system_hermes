@@ -11,15 +11,39 @@ import '../data/models.dart';
 class NbrbApi {
   final http.Client _client = http.Client();
 
+  /// Локальный снимок официальных курсов НБРБ на дату сборки. Он нужен,
+  /// чтобы внутренний финансовый планировщик не переставал работать без
+  /// интернета. Это не коммерческий курс БСБ Банка.
+  static final List<CurrencyRate> bundledRates = List.unmodifiable([
+    CurrencyRate(
+      code: 'USD',
+      scale: 1,
+      rate: 2.9829,
+      date: DateTime(2026, 8, 22),
+    ),
+    CurrencyRate(
+      code: 'EUR',
+      scale: 1,
+      rate: 3.4918,
+      date: DateTime(2026, 8, 22),
+    ),
+    CurrencyRate(
+      code: 'RUB',
+      scale: 100,
+      rate: 3.5784,
+      date: DateTime(2026, 8, 22),
+    ),
+  ]);
+
   /// Официальные курсы Нацбанка РБ: два зеркала (на случай блокировки одного).
   static const List<String> _urls = [
     'https://www.nbrb.by/api/exrates/rates?periodicity=0',
     'https://api.nbrb.by/exrates/rates?periodicity=0',
   ];
 
-  /// Возвращает актуальные курсы USD и EUR (столько BYN за 1 единицу).
+  /// Возвращает актуальные курсы USD, EUR и RUB. Если оба официальных
+  /// адреса недоступны, возвращает встроенный датированный снимок.
   Future<List<CurrencyRate>> fetchRates() async {
-    Object? lastError;
     for (final url in _urls) {
       try {
         final res = await _client
@@ -30,7 +54,7 @@ class NbrbApi {
           final rates = <CurrencyRate>[];
           for (final item in data) {
             final code = item['Cur_Abbreviation'] as String?;
-            if (code != 'USD' && code != 'EUR') continue;
+            if (code != 'USD' && code != 'EUR' && code != 'RUB') continue;
             final date = DateTime.tryParse(item['Date'] as String? ?? '');
             rates.add(CurrencyRate(
               code: code!,
@@ -39,23 +63,27 @@ class NbrbApi {
               date: date ?? DateTime.now(),
             ));
           }
-          return rates;
+          if (rates.length == 3) return rates;
         }
-        lastError = Exception('HTTP ${res.statusCode}');
-      } catch (e) {
-        lastError = e;
-      }
+      } catch (_) {}
     }
-    throw Exception('Курсы НБРБ недоступны: $lastError');
+    return bundledRates;
   }
 
   /// Курс конкретной валюты из списка, null если нет.
   static double? rateOf(List<CurrencyRate>? rates, String code) {
+    if (code == 'BYN') return 1;
     if (rates == null) return null;
     for (final r in rates) {
       if (r.code == code) return r.perUnit;
     }
     return null;
+  }
+
+  static bool usesBundledSnapshot(List<CurrencyRate>? rates) {
+    if (rates == null || rates.isEmpty) return false;
+    final date = rates.first.date;
+    return date.year == 2026 && date.month == 8 && date.day == 22;
   }
 }
 

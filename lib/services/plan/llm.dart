@@ -1,4 +1,4 @@
-// Вызов LLM (Groq-совместимый endpoint) для модулей «План»:
+// Вызов OpenAI-совместимой LLM для модулей «План»:
 // Поиск (ответ с цитатами) и Документы (конспекты, вопросы).
 
 import 'dart:convert';
@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/constants.dart';
+import '../llm_endpoint.dart';
 import '../settings_service.dart';
 
 /// Ошибка HTTP от LLM-провайдера с кодом ответа — retry (раздел 6,
@@ -35,24 +37,24 @@ Future<String> llmComplete(
 }) async {
   final apiKey = s.llmKey.trim();
   if (apiKey.isEmpty) {
-    throw Exception('Не задан API-ключ LLM: вставь ключ Groq '
+    throw Exception('Не задан API-ключ LLM: вставь ключ B.ai '
         'в Настройках (Hermes) и попробуй ещё раз.');
   }
-  final apiUrl = s.companionApiUrl.trim().isNotEmpty
-      ? s.companionApiUrl.trim()
-      : 'https://api.groq.com/openai/v1/chat/completions';
+  final apiUrl = s.hermesLlmUrl.trim().isNotEmpty
+      ? s.hermesLlmUrl.trim()
+      : AppConstants.hermesLlmDefaultUrl;
   final usedModel = model?.trim().isNotEmpty == true
       ? model!.trim()
-      : s.companionModel.trim().isNotEmpty
-          ? s.companionModel.trim()
-          : 'llama-3.3-70b-versatile';
+      : s.hermesLlmModel.trim().isNotEmpty
+          ? s.hermesLlmModel.trim()
+          : AppConstants.hermesLlmDefaultModel;
 
   final res = await http
       .post(
-        Uri.parse(apiUrl),
+        openAiChatCompletionsUri(apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
+          'Authorization': 'Bearer ${normalizeApiKey(apiKey)}',
         },
         body: jsonEncode({
           'model': usedModel,
@@ -67,12 +69,10 @@ Future<String> llmComplete(
       .timeout(Duration(seconds: timeoutSeconds));
 
   if (res.statusCode != 200) {
-    final reason = switch (res.statusCode) {
-      401 => 'неверный API-ключ (401)',
-      404 => 'неверный URL или модель (404)',
-      429 => 'превышен лимит запросов (429)',
-      _ => 'ошибка сервера ИИ (HTTP ${res.statusCode})',
-    };
+    final reason = llmApiErrorMessage(
+      res.statusCode,
+      utf8.decode(res.bodyBytes, allowMalformed: true),
+    );
     throw LlmHttpException(res.statusCode, reason);
   }
 

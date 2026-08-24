@@ -1,7 +1,6 @@
 // Экран настроек: тема, пенсия, Vault, Hermes Agent, GitHub, сброс.
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,51 +9,156 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
+import '../../services/app_reset_service.dart';
 import '../../services/bank_service.dart';
-import '../../services/companion_service.dart';
 import '../../services/habits_service.dart';
 import '../../services/hermes_service.dart';
 import '../../services/journal_service.dart';
-import '../../services/mining_service.dart';
+import '../../services/llm_connection_service.dart';
 import '../../services/obsidian_service.dart';
+import '../../services/plan/agent_run.dart';
+import '../../services/plan/docs_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/study/study_service.dart';
 import '../../services/tasks_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   Future<void> _resetAll(BuildContext context, WidgetRef ref) async {
+    final phraseController = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Сбросить все данные?'),
-        content: const Text(
-            'Будут удалены: счета и транзакции, ферма, привычки, история чата. '
-            'Это действие необратимо.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Абсолютный сброс'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Будут удалены локальные счета и операции, задачи, '
+                  'привычки, чат, документы, учебный прогресс, добавленные '
+                  'фото, кэш ГДЗ, настройки и API-ключи.',
+                  style: TextStyle(height: 1.45),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(11),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: .07),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(
+                      color: AppColors.accent.withValues(alpha: .22),
+                    ),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.shield_outlined,
+                        color: AppColors.accent,
+                        size: 19,
+                      ),
+                      SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'Файлы внешнего Obsidian Vault не удаляются. '
+                          'Hermes только забудет путь к нему.',
+                          style: TextStyle(fontSize: 11.5, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Для подтверждения напиши СБРОС',
+                  style: TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: phraseController,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(hintText: 'СБРОС'),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+              ],
+            ),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Сбросить'),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              style:
+                  FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: phraseController.text.trim().toUpperCase() == 'СБРОС'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: const Text('Удалить всё'),
+            ),
+          ],
+        ),
       ),
     );
+    phraseController.dispose();
     if (confirmed != true) return;
-    await ref.read(bankProvider.notifier).reset();
-    await ref.read(miningProvider.notifier).reset();
-    await ref.read(habitsProvider.notifier).reset();
-    await ref.read(chatProvider.notifier).reset();
-    await ref.read(companionProvider.notifier).reset();
-    await ref.read(tasksProvider.notifier).reset();
-    await ref.read(journalProvider.notifier).clear();
+
     if (context.mounted) {
-      toast(context, 'Все данные сброшены');
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Expanded(child: Text('Удаляю локальные данные…')),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    try {
+      await ref.read(appResetServiceProvider).resetAll();
+
+      // Возвращаем системные пустые состояния. Встроенный каталог Учёбы
+      // появится заново, но пользовательские книги и прогресс уже удалены.
+      ref.invalidate(settingsProvider);
+      await ref.read(bankProvider.notifier).reset();
+      await ref.read(habitsProvider.notifier).reset();
+      await ref.read(chatProvider.notifier).reset();
+      await ref.read(tasksProvider.notifier).reset();
+      await ref.read(journalProvider.notifier).clear();
+      ref.invalidate(docsProvider);
+      ref.invalidate(studyProvider);
+      ref.invalidate(searchRunProvider);
+      ref.invalidate(obsidianProvider);
+      PaintingBinding.instance.imageCache
+        ..clear()
+        ..clearLiveImages();
+
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        toast(context, 'Локальные данные полностью сброшены');
+      }
+    } catch (error) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        toast(context, 'Сброс не завершён: $error');
+      }
     }
   }
 
@@ -71,8 +175,14 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
+          _SettingsIntro(
+            darkMode: s.themeMode == ThemeMode.dark,
+            aiReady: s.usesDirectLlm || s.usesHermesServer,
+            pension: s.pensionAmount,
+          ),
+          const SizedBox(height: 18),
           const _SectionTitle('Внешний вид'),
           SwitchListTile(
             title: const Text('Тёмная тема'),
@@ -84,7 +194,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
 
-          const _SectionTitle('Центральный Банк'),
+          const _SectionTitle('Деньги'),
           ListTile(
             title: const Text('День получения пенсии'),
             subtitle: Text('${s.pensionDay}-е число каждого месяца'),
@@ -110,52 +220,18 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           ListTile(
-            title: const Text('Сумма пенсии (BYN)'),
-            subtitle: Text(fmt2(s.pensionAmount)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              final controller = TextEditingController(
-                  text: fmt2(s.pensionAmount));
-              final v = await showDialog<double>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: AppColors.surface,
-                  title: const Text('Сумма пенсии'),
-                  content: TextField(
-                    controller: controller,
-                    keyboardType: TextInputType.number,
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Отмена'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(
-                          ctx,
-                          double.tryParse(controller.text.replaceAll(',', '.'))),
-                      child: const Text('OK'),
-                    ),
-                  ],
-                ),
-              );
-              if (v != null && v > 0) {
-                await ref.read(settingsProvider.notifier).setPensionAmount(v);
-              }
-            },
-          ),
-          ListTile(
-            title: const Text('Валюта твердых активов'),
-            subtitle: Text(s.assetsCurrency),
-            trailing: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'USD', label: Text('USD')),
-                ButtonSegment(value: 'EUR', label: Text('EUR')),
-              ],
-              selected: {s.assetsCurrency},
-              onSelectionChanged: (sel) => ref
-                  .read(settingsProvider.notifier)
-                  .setAssetsCurrency(sel.first),
+            leading: const Icon(
+              Icons.verified_outlined,
+              color: AppColors.accent,
+            ),
+            title: const Text('Официальная пенсия'),
+            subtitle: Text('${fmt2(s.pensionAmount)} BYN в месяц'),
+            trailing: const Text(
+              '390 BYN',
+              style: TextStyle(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           const Divider(),
@@ -175,102 +251,111 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
 
-          const _SectionTitle('Hermes Agent'),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
-            child: Text(
-              'Ключ Hermes используется и Анастасией, если её собственный ключ не задан.',
-              style: TextStyle(color: AppColors.textDim, fontSize: 11),
-            ),
-          ),
-          _TextFieldSetting(
-            label: 'URL сервера Hermes',
-            initial: s.hermesUrl,
-            hint: 'https://your-server.example/api/hermes',
-            onSave: (v) =>
-                ref.read(settingsProvider.notifier).setHermesUrl(v),
-          ),
-          _TextFieldSetting(
-            label: 'API ключ Hermes',
-            initial: s.hermesApiKey,
-            hint: 'опционально',
-            obscure: true,
-            onSave: (v) =>
-                ref.read(settingsProvider.notifier).setHermesApiKey(v),
-          ),
-          const Divider(),
-
-          const _SectionTitle('Анастасия (ИИ-компаньон)'),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
-            child: Text(
-              'Без ключа чат работает в офлайн-режиме (скрипты). '
-              'Бесплатный ключ Groq: console.groq.com → API Keys.',
-              style: TextStyle(color: AppColors.textDim, fontSize: 11),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
-            child: Wrap(
-              spacing: 8,
+          const _SectionTitle('Hermes AI'),
+          const _HermesConnectionCard(),
+          const SizedBox(height: 10),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ExpansionTile(
+              leading: const Icon(Icons.tune, color: AppColors.violet),
+              title: const Text(
+                'Дополнительные настройки AI',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: const Text(
+                'Другая модель, свой сервер и голос',
+                style: TextStyle(fontSize: 11),
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
               children: [
-                _ProviderPreset(
-                  label: 'Groq',
-                  url: 'https://api.groq.com/openai/v1/chat/completions',
-                  model: 'llama-3.3-70b-versatile',
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(8, 4, 8, 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _ProviderPreset(
+                        label: 'B.ai Flash',
+                        url: 'https://api.b.ai/v1',
+                        model: 'deepseek-v4-flash',
+                      ),
+                      _ProviderPreset(
+                        label: 'Vision (эксп.)',
+                        url: 'https://api.b.ai/v1',
+                        model: 'deepseek-v4-flash-vision-exp',
+                      ),
+                    ],
+                  ),
                 ),
-                _ProviderPreset(
-                  label: 'OpenCode Zen',
-                  url: 'https://opencode.ai/zen/v1/chat/completions',
-                  model: 'deepseek-v4-flash-free',
+                _TextFieldSetting(
+                  label: 'Base URL модели',
+                  initial: s.hermesLlmUrl,
+                  hint: AppConstants.hermesLlmDefaultUrl,
+                  onSave: (v) => ref
+                      .read(settingsProvider.notifier)
+                      .setHermesLlmUrl(v),
                 ),
-                _ProviderPreset(
-                  label: 'OpenRouter',
-                  url: 'https://openrouter.ai/api/v1/chat/completions',
-                  model: 'meta-llama/llama-3.3-70b-instruct:free',
+                _TextFieldSetting(
+                  label: 'Название модели',
+                  initial: s.hermesLlmModel,
+                  hint: AppConstants.hermesLlmDefaultModel,
+                  onSave: (v) => ref
+                      .read(settingsProvider.notifier)
+                      .setHermesLlmModel(v),
+                ),
+                const Divider(height: 24),
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  secondary: const Icon(Icons.dns_outlined),
+                  title: const Text('Собственный сервер Hermes'),
+                  subtitle: Text(
+                    s.hermesMode == HermesModes.server
+                        ? 'Активен вместо B.ai'
+                        : 'Выключен — используется прямая модель',
+                  ),
+                  value: s.hermesMode == HermesModes.server,
+                  onChanged: (enabled) => ref
+                      .read(settingsProvider.notifier)
+                      .setHermesMode(
+                        enabled ? HermesModes.server : HermesModes.direct,
+                      ),
+                ),
+                _TextFieldSetting(
+                  label: 'URL собственного сервера',
+                  initial: s.hermesUrl,
+                  hint: 'https://your-server.example/api/hermes',
+                  onSave: (v) =>
+                      ref.read(settingsProvider.notifier).setHermesUrl(v),
+                ),
+                _TextFieldSetting(
+                  label: 'Ключ собственного сервера',
+                  initial: s.hermesApiKey,
+                  hint: 'необязательно',
+                  obscure: true,
+                  onSave: (v) => ref
+                      .read(settingsProvider.notifier)
+                      .setHermesApiKey(v),
+                ),
+                const Divider(height: 24),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    'Голос использует Whisper на Groq отдельно. B.ai-ключ '
+                    'никогда не отправляется в Groq.',
+                    style: TextStyle(color: AppColors.textDim, fontSize: 11),
+                  ),
+                ),
+                _TextFieldSetting(
+                  label: 'Groq API-ключ для Whisper',
+                  initial: s.whisperApiKey,
+                  hint: 'gsk_… (необязательно)',
+                  obscure: true,
+                  onSave: (v) => ref
+                      .read(settingsProvider.notifier)
+                      .setWhisperApiKey(v),
                 ),
               ],
             ),
-          ),
-          ListTile(
-            leading: _AvatarPreview(path: ref.watch(companionProvider).avatarPath),
-            title: const Text('Фото Анастасии'),
-            subtitle: const Text('Аватар и фон в чате. '
-                'По умолчанию — фото с её TikTok'),
-            trailing: FilledButton.tonal(
-              onPressed: () async {
-                final path = await ref
-                    .read(companionProvider.notifier)
-                    .pickAvatar();
-                if (context.mounted) {
-                  toast(context,
-                      path == null ? 'Фото не выбрано' : 'Фото Анастасии обновлено');
-                }
-              },
-              child: const Text('Выбрать'),
-            ),
-          ),
-          _TextFieldSetting(
-            label: 'API URL',
-            initial: s.companionApiUrl,
-            hint: AppConstants.companionDefaultUrl,
-            onSave: (v) =>
-                ref.read(settingsProvider.notifier).setCompanionApiUrl(v),
-          ),
-          _TextFieldSetting(
-            label: 'API ключ',
-            initial: s.companionApiKey,
-            hint: 'gsk_… из console.groq.com (без ключа — офлайн-режим)',
-            obscure: true,
-            onSave: (v) =>
-                ref.read(settingsProvider.notifier).setCompanionApiKey(v),
-          ),
-          _TextFieldSetting(
-            label: 'Модель',
-            initial: s.companionModel,
-            hint: AppConstants.companionDefaultModel,
-            onSave: (v) =>
-                ref.read(settingsProvider.notifier).setCompanionModel(v),
           ),
           const Divider(),
 
@@ -329,9 +414,312 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onPressed: () => _resetAll(context, ref),
             icon: const Icon(Icons.delete_forever_outlined),
-            label: const Text('Сбросить все данные'),
+            label: const Text('Абсолютный сброс данных'),
           ),
           const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsIntro extends StatelessWidget {
+  final bool darkMode;
+  final bool aiReady;
+  final double pension;
+
+  const _SettingsIntro({
+    required this.darkMode,
+    required this.aiReady,
+    required this.pension,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF25223B), Color(0xFF172537), Color(0xFF141A24)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppColors.violet.withValues(alpha: .28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.tune_rounded, color: AppColors.violet),
+              SizedBox(width: 9),
+              Text(
+                'Центр управления',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Главные параметры собраны здесь. Обычные данные сохраняются автоматически.',
+            style: TextStyle(color: AppColors.textDim, fontSize: 11.5, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _SettingsPill(
+                icon: darkMode ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+                text: darkMode ? 'ТЁМНАЯ ТЕМА' : 'СВЕТЛАЯ ТЕМА',
+                color: AppColors.violet,
+              ),
+              _SettingsPill(
+                icon: aiReady ? Icons.check_circle_outline : Icons.key_outlined,
+                text: aiReady ? 'AI НАСТРОЕН' : 'НУЖЕН API-КЛЮЧ',
+                color: aiReady ? AppColors.accent : AppColors.warning,
+              ),
+              _SettingsPill(
+                icon: Icons.account_balance_wallet_outlined,
+                text: '${fmt2(pension)} BYN / МЕС',
+                color: AppColors.cyan,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsPill extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  const _SettingsPill({required this.icon, required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: TextStyle(color: color, fontSize: 8.5, fontWeight: FontWeight.w900, letterSpacing: .35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HermesConnectionCard extends ConsumerStatefulWidget {
+  const _HermesConnectionCard();
+
+  @override
+  ConsumerState<_HermesConnectionCard> createState() =>
+      _HermesConnectionCardState();
+}
+
+class _HermesConnectionCardState
+    extends ConsumerState<_HermesConnectionCard> {
+  late final TextEditingController _keyController;
+  Timer? _debounce;
+  bool _testing = false;
+  bool _showKey = false;
+  LlmConnectionResult? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    _keyController = TextEditingController(
+      text: ref.read(settingsProvider).hermesLlmApiKey,
+    );
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    final value = _keyController.text.trim();
+    if (value != ref.read(settingsProvider).hermesLlmApiKey) {
+      ref.read(settingsProvider.notifier).setHermesLlmApiKey(value);
+    }
+    _keyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _test() async {
+    FocusScope.of(context).unfocus();
+    _debounce?.cancel();
+    setState(() {
+      _testing = true;
+      _result = null;
+    });
+    final controller = ref.read(settingsProvider.notifier);
+    await controller.setHermesLlmProvider(
+      baseUrl: AppConstants.hermesLlmDefaultUrl,
+      model: AppConstants.hermesLlmDefaultModel,
+    );
+    await controller.setHermesLlmApiKey(_keyController.text);
+    final result = await testHermesLlmConnection(ref.read(settingsProvider));
+    if (!mounted) return;
+    setState(() {
+      _testing = false;
+      _result = result;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final connected = settings.usesDirectLlm;
+    final statusColor = connected ? AppColors.accent : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.accent.withValues(alpha: .16),
+            AppColors.cyan.withValues(alpha: .06),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.accent.withValues(alpha: .35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: .14),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(Icons.auto_awesome, color: AppColors.accent),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'B.ai · DeepSeek V4 Flash',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Основной интеллект Hermes Agent',
+                      style: TextStyle(color: AppColors.textDim, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  connected ? 'ключ сохранён' : 'нужен ключ',
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _keyController,
+            obscureText: !_showKey,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: 'API-ключ B.ai',
+              hintText: 'Вставь ключ из b.ai → API',
+              prefixIcon: const Icon(Icons.key_outlined),
+              suffixIcon: IconButton(
+                tooltip: _showKey ? 'Скрыть ключ' : 'Показать ключ',
+                icon: Icon(_showKey ? Icons.visibility_off : Icons.visibility),
+                onPressed: () => setState(() => _showKey = !_showKey),
+              ),
+            ),
+            onChanged: (value) {
+              _debounce?.cancel();
+              _result = null;
+              _debounce = Timer(const Duration(milliseconds: 500), () {
+                ref
+                    .read(settingsProvider.notifier)
+                    .setHermesLlmApiKey(value);
+              });
+            },
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Можно вставить ключ и с префиксом Bearer — Hermes исправит его '
+            'сам. Ключ хранится только в настройках приложения.',
+            style: TextStyle(color: AppColors.textDim, fontSize: 11, height: 1.35),
+          ),
+          if (_result != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: (_result!.ok ? AppColors.accent : AppColors.danger)
+                    .withValues(alpha: .1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _result!.message,
+                style: TextStyle(
+                  color: _result!.ok ? AppColors.accent : AppColors.danger,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _testing ? null : _test,
+                  icon: _testing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.wifi_tethering),
+                  label: Text(_testing ? 'Проверяю…' : 'Проверить API'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                tooltip: 'Открыть b.ai',
+                onPressed: () => context.push('/web', extra: 'https://b.ai/'),
+                icon: const Icon(Icons.open_in_new),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -350,41 +738,12 @@ class _SectionTitle extends StatelessWidget {
       child: Text(
         text,
         style: const TextStyle(
-          fontSize: 12,
-          letterSpacing: 1,
-          color: AppColors.cyan,
-          fontWeight: FontWeight.w700,
+          fontSize: 16,
+          letterSpacing: -.1,
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w900,
         ),
       ),
-    );
-  }
-}
-
-/// Кружок-превью фото Анастасии (выбранное или по умолчанию).
-class _AvatarPreview extends StatelessWidget {
-  final String path;
-
-  const _AvatarPreview({required this.path});
-
-  @override
-  Widget build(BuildContext context) {
-    const size = 44.0;
-    Widget image;
-    if (path.isNotEmpty && File(path).existsSync()) {
-      image = Image.file(File(path), fit: BoxFit.cover);
-    } else {
-      image = Image.asset(
-        AppConstants.nastyaDefaultPhoto,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(
-          Icons.favorite,
-          color: AppColors.violet,
-          size: 20,
-        ),
-      );
-    }
-    return ClipOval(
-      child: SizedBox(width: size, height: size, child: image),
     );
   }
 }
@@ -429,7 +788,7 @@ class _TextFieldSettingState extends ConsumerState<_TextFieldSetting> {
     _debounce?.cancel();
     // Уход с экрана раньше debounce-паузы — сохраняем последнее значение.
     final pending = _controller.text.trim();
-    if (pending.isNotEmpty && pending != widget.initial) {
+    if (pending != widget.initial) {
       try {
         widget.onSave(pending);
       } catch (_) {}
@@ -493,7 +852,9 @@ class _ProviderPreset extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(settingsProvider);
-    final active = s.companionApiUrl == url && s.companionModel == model;
+    final active = s.hermesMode == HermesModes.direct &&
+        s.hermesLlmUrl == url &&
+        s.hermesLlmModel == model;
     return ActionChip(
       label: Text(label),
       backgroundColor:
@@ -502,10 +863,12 @@ class _ProviderPreset extends ConsumerWidget {
         color: active ? AppColors.accent : null,
         fontWeight: active ? FontWeight.w700 : null,
       ),
-      onPressed: () {
-        ref.read(settingsProvider.notifier).setCompanionApiUrl(url);
-        ref.read(settingsProvider.notifier).setCompanionModel(model);
-        if (context.mounted) toast(context, '$label: URL и модель подставлены');
+      onPressed: () async {
+        await ref.read(settingsProvider.notifier).setHermesLlmProvider(
+              baseUrl: url,
+              model: model,
+            );
+        if (context.mounted) toast(context, '$label выбран для Hermes');
       },
     );
   }

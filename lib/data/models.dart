@@ -22,7 +22,7 @@ String dateKey(DateTime d) =>
 class Account {
   final String id;
   final String name;
-  final String currency; // BYN, USD, EUR
+  final String currency; // BYN, USD, EUR, RUB
   final String type; // 'account' | 'card'
   double balance;
 
@@ -34,9 +34,13 @@ class Account {
     this.balance = 0,
   });
 
-  /// Зарезервированные id счетов.
-  static const fuelId = 'fuel';
-  static const assetsId = 'assets';
+  /// Основной локальный счёт, на который приходит пенсия.
+  static const generalId = 'general_byn';
+
+  /// Стабильный id локальной виртуальной карты для выбранной валюты.
+  static String cardId(String currency) =>
+      'virtual_${currency.trim().toLowerCase()}';
+
 }
 
 /// Финансовая операция.
@@ -81,100 +85,20 @@ class CurrencyRate {
 }
 
 // =====================================================================
-// МАЙНИНГ И PC BUILDER
-// =====================================================================
-
-/// Комплектующая для ПК/фермы.
-@HiveType(typeId: 3)
-class Component {
-  final String id;
-  final String name;
-  final String type; // CPU | GPU | RAM | Storage
-  final double power; // виртуальная мощность
-  final int price; // цена в очках
-
-  const Component({
-    required this.id,
-    required this.name,
-    required this.type,
-    required this.power,
-    this.price = 0,
-  });
-}
-
-/// Каталог доступных комплектующих.
-class ComponentCatalog {
-  static const List<Component> all = [
-    Component(id: 'cpu_celeron', name: 'Intel Celeron G5905', type: 'CPU', power: 40, price: 50),
-    Component(id: 'cpu_i5', name: 'Intel Core i5-10400F', type: 'CPU', power: 120, price: 200),
-    Component(id: 'cpu_ryzen', name: 'AMD Ryzen 5 5600X', type: 'CPU', power: 160, price: 300),
-    Component(id: 'gpu_gt710', name: 'NVIDIA GT 710', type: 'GPU', power: 30, price: 40),
-    Component(id: 'gpu_gtx1060', name: 'NVIDIA GTX 1060', type: 'GPU', power: 220, price: 350),
-    Component(id: 'gpu_rtx3060', name: 'NVIDIA RTX 3060', type: 'GPU', power: 380, price: 600),
-    Component(id: 'ram_4gb', name: 'RAM 4 ГБ DDR4', type: 'RAM', power: 20, price: 30),
-    Component(id: 'ram_8gb', name: 'RAM 8 ГБ DDR4', type: 'RAM', power: 45, price: 80),
-    Component(id: 'ram_16gb', name: 'RAM 16 ГБ DDR4', type: 'RAM', power: 80, price: 150),
-    Component(id: 'ssd_128', name: 'SSD 128 ГБ', type: 'Storage', power: 25, price: 40),
-    Component(id: 'ssd_512', name: 'SSD 512 ГБ NVMe', type: 'Storage', power: 70, price: 120),
-    Component(id: 'ssd_1tb', name: 'SSD 1 ТБ NVMe', type: 'Storage', power: 120, price: 220),
-  ];
-
-  static Component? byId(String id) {
-    for (final c in all) {
-      if (c.id == id) return c;
-    }
-    return null;
-  }
-}
-
-/// Состояние майнинг-фермы.
-@HiveType(typeId: 4)
-class MiningFarm {
-  final List<String> componentIds; // выбранные комплектующие
-  final String osInstalled; // 'none' | 'linux' | 'windows'
-  final bool driversInstalled;
-  final String status; // offline | building | online | locked
-  DateTime? lockUntil; // блокировка после срыва протокола
-  double points; // накопленные очки
-  DateTime lastTick; // последнее начисление
-
-  MiningFarm({
-    required this.componentIds,
-    this.osInstalled = 'none',
-    this.driversInstalled = false,
-    this.status = 'offline',
-    this.lockUntil,
-    this.points = 0,
-    required this.lastTick,
-  });
-
-  factory MiningFarm.empty() =>
-      MiningFarm(componentIds: [], lastTick: DateTime.now());
-
-  double get basePower {
-    double sum = 0;
-    for (final id in componentIds) {
-      final c = ComponentCatalog.byId(id);
-      if (c != null) sum += c.power;
-    }
-    return sum;
-  }
-}
-
-// =====================================================================
 // ПРОТОКОЛ ДОФАМИНОВОЙ СТАБИЛЬНОСТИ
 // =====================================================================
 
-/// Привычка (вредная 'bad' или полезная 'good').
+/// Ежедневная тренировка. Поля [type] и [lastBreakKey] сохранены только для
+/// чтения данных, созданных более ранними версиями приложения.
 @HiveType(typeId: 5)
 class HabitTracker {
   final String id;
   final String name;
-  final String type; // 'bad' | 'good'
+  final String type; // в текущей версии всегда 'good'
   final int targetReps; // для тренировок (например 20)
   int currentStreak;
   int maxStreak;
-  String? lastBreakKey; // дата последнего срыва (для 'bad')
+  String? lastBreakKey; // устаревшее поле формата Hive
   final List<String> entries; // ключи дат отметок
   final List<String> repsData; // 'дата:количество повторений' (для тренировок)
 
@@ -225,139 +149,11 @@ class ObsidianNote {
 }
 
 // =====================================================================
-// ЖИЗНЬ (RPG-механики "Богатой жизни", адаптированные под реальность)
-// =====================================================================
-
-/// Показатели и прогресс "Жизни": энергия, настроение, дисциплина, XP.
-@HiveType(typeId: 8)
-class LifeState {
-  double energy; // 0-100
-  double mood; // 0-100
-  double discipline; // 0-100
-  int xp;
-  DateTime lastTick; // момент последнего автотика
-  DateTime startedAt; // дата старта "Жизни"
-  final List<String> unlockedAchievements; // id открытых достижений
-  int currentQuestIndex; // индекс текущего квеста
-  DateTime? questCompletedAt; // когда открыт квест (для старения)
-  final Map<String, DateTime> lastActionAt; // id действия -> последний раз
-  final Map<String, int> actionCounts; // id действия -> сколько раз
-
-  LifeState({
-    this.energy = 100,
-    this.mood = 100,
-    this.discipline = 100,
-    this.xp = 0,
-    required this.lastTick,
-    required this.startedAt,
-    List<String>? unlockedAchievements,
-    this.currentQuestIndex = 0,
-    this.questCompletedAt,
-    Map<String, DateTime>? lastActionAt,
-    Map<String, int>? actionCounts,
-  })  : unlockedAchievements = unlockedAchievements ?? [],
-        lastActionAt = lastActionAt ?? {},
-        actionCounts = actionCounts ?? {};
-
-  factory LifeState.empty() =>
-      LifeState(lastTick: DateTime.now(), startedAt: DateTime.now());
-
-  /// Дней с начала "Жизни".
-  int get daysInSystem =>
-      DateTime.now().difference(startedAt).inDays + 1;
-}
-
-// =====================================================================
-// КОМПАНЬОН "АНАСТАСИЯ"
-// =====================================================================
-
-/// Состояние ИИ-компаньона "Анастасия": симпатия, память, вехи реальных
-/// действий. Affinity растёт ТОЛЬКО от позитивных событий; штрафов,
-/// блокировок и «холодных» уровней нет (спецификация «Идея ИИ-компаньон»).
-@HiveType(typeId: 9)
-class CompanionData {
-  /// 0-100, накопленная симпатия (не формула — сумма реальных событий).
-  double affinity;
-
-  /// Оставлено для совместимости со старыми данными; больше не используется.
-  DateTime? blockedUntil;
-  String? lastGreetingKey; // dateKey последнего приветствия (раз в день)
-  String? lastSeenBreakKey; // последний обработанный срыв протокола
-  int seenAchievementCount; // сколько достижений Жизни обработано
-  int totalRelapses; // всего срывов за всё время (счётчик, не штраф)
-  int seenStreakMilestone; // последний пройденный рубеж стрика
-  String avatarPath; // фото из галереи (аватар/фон чата)
-  DateTime? createdAt;
-  int messageCount; // всего сообщений от Анастасии
-
-  // ---- Память (двухуровневая: keyFacts + свежий хвост + суммаризация) ----
-
-  /// Вечные факты: никогда не сжимаются и не удаляются.
-  List<String> keyFacts;
-
-  /// Сколько сообщений из начала истории уже ушло в keyFacts.
-  int summarizedUpTo;
-
-  // ---- Вехи реальных действий (только положительные события) ----
-
-  /// Самостоятельные выходы из дома (walk/store/atm) — приоритет №1.
-  int socialOutings;
-
-  /// dateKey последнего самостоятельного выхода из дома.
-  String? lastSocialOutingKey;
-
-  /// Шаги фриланса (действие 'freelance' / коммиты).
-  int freelanceSteps;
-
-  /// Заголовки заметок Obsidian, уже учтённых в affinity.
-  List<String> processedNotes;
-
-  /// Сумма счётчиков действий walk+store+atm на момент последней проверки.
-  int seenSocialCount;
-
-  /// Счётчик действия 'freelance' на момент последней проверки.
-  int seenFreelanceCount;
-
-  /// Индекс квеста Жизни на момент последней проверки.
-  int seenQuestIndex;
-
-  /// dateKey последнего дня с бонусом за тренировку (+3).
-  String? lastWorkoutBonusKey;
-
-  /// Разовый бонус +25 за стрик 7 дней (выдаётся один раз).
-  bool weekStreakBonusGiven;
-
-  CompanionData({
-    this.affinity = 5,
-    this.blockedUntil,
-    this.lastGreetingKey,
-    this.lastSeenBreakKey,
-    this.seenAchievementCount = 0,
-    this.totalRelapses = 0,
-    this.seenStreakMilestone = 0,
-    this.avatarPath = '',
-    this.createdAt,
-    this.messageCount = 0,
-    List<String>? keyFacts,
-    this.summarizedUpTo = 0,
-    this.socialOutings = 0,
-    this.lastSocialOutingKey,
-    this.freelanceSteps = 0,
-    List<String>? processedNotes,
-    this.seenSocialCount = 0,
-    this.seenFreelanceCount = 0,
-    this.seenQuestIndex = 0,
-    this.lastWorkoutBonusKey,
-    this.weekStreakBonusGiven = false,
-  })  : keyFacts = keyFacts ?? [],
-        processedNotes = processedNotes ?? [];
-
-  factory CompanionData.empty() => CompanionData(createdAt: DateTime.now());
-}
-
-// =====================================================================
 // ЧАТ С HERMES
 // =====================================================================
+
+// Hive typeId 8 принадлежал удалённому модулю «Жизнь» и зарезервирован:
+// повторное использование повредит старые локальные базы при обновлении.
 
 /// Сообщение в чате.
 @HiveType(typeId: 7)

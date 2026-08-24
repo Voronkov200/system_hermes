@@ -1,5 +1,5 @@
 name: system_hermes
-description: "System: Hermes - цифровая ОС жизни для Android"
+description: "System Hermes — персональная Android ОС: AI, работа, учёба, финансы и локальные данные"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Иконки iOS-стиля: некоторые Flutter-компоненты ссылаются на этот шрифт.
+  cupertino_icons: ^1.0.8
   # Состояние приложения
   flutter_riverpod: ^2.6.1
   # Навигация
@@ -53,5 +55,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/nastya/
     - assets/study/
+    - assets/fonts/

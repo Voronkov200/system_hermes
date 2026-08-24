@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
+import '../../services/study/resheba_service.dart';
+import '../../services/study/study_auto_cache_service.dart';
 import '../../services/study/study_service.dart';
 
 /// Маппинг ключей иконок каталога на Material-иконки.
@@ -29,34 +31,135 @@ IconData studyIcon(String key) => switch (key) {
       _ => Icons.book,
     };
 
-class StudyScreen extends ConsumerWidget {
+class StudyScreen extends ConsumerStatefulWidget {
   const StudyScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StudyScreen> createState() => _StudyScreenState();
+}
+
+class _StudyScreenState extends ConsumerState<StudyScreen> {
+  String _query = '';
+  String _category = 'Все';
+
+  @override
+  Widget build(BuildContext context) {
     final st = ref.watch(studyProvider);
-    final subjects = st.subjects.where((s) => s.kind == 'subject').toList();
-    final guides = st.subjects.where((s) => s.kind == 'guide').toList();
+
+    // Сразу после открытия «Учёбы» ставим официальные PDF и доступные ГДЗ
+    // в фоновую очередь. Метод идемпотентный: rebuild не создаёт дубликаты.
+    ref.read(studyAutoCacheServiceProvider).warmStudy(
+          subjectTitles: st.subjects
+              .where((subject) => subject.kind == 'subject')
+              .map((subject) => subject.title),
+          paragraphChapters: st.paragraphs.map((paragraph) => paragraph.chapter),
+        );
+
+    bool matches(StudySubject subject) {
+      final query = _query.trim().toLowerCase();
+      final queryMatches = query.isEmpty ||
+          subject.title.toLowerCase().contains(query) ||
+          subject.subtitle.toLowerCase().contains(query);
+      final categoryMatches =
+          _category == 'Все' || subject.category == _category;
+      return queryMatches && categoryMatches;
+    }
+
+    final subjects = st.subjects
+        .where((s) => s.kind == 'subject' && matches(s))
+        .toList();
+    final guides = st.subjects
+        .where((s) => s.kind == 'guide' && matches(s))
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Учёба'),
         actions: [
-          IconButton(
-            tooltip: 'Импортировать готовый разбор (JSON)',
-            icon: const Icon(Icons.upload_file),
-            onPressed: () => _importJson(context, ref),
+          PopupMenuButton<String>(
+            tooltip: 'Дополнительно',
+            onSelected: (value) {
+              if (value == 'import') _importJson(context, ref);
+              if (value == 'subject') _addManualSubject(context, ref);
+              if (value == 'guide') _addGuide(context, ref);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'import',
+                child: ListTile(
+                  leading: Icon(Icons.upload_file),
+                  title: Text('Импорт JSON'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'subject',
+                child: ListTile(
+                  leading: Icon(Icons.add),
+                  title: Text('Добавить предмет'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'guide',
+                child: ListTile(
+                  leading: Icon(Icons.library_add_outlined),
+                  title: Text('Добавить пособие'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addManualSubject(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Предмет'),
-      ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
+          _StudyOverview(state: st),
+          const SizedBox(height: 14),
+          TextField(
+            onChanged: (value) => setState(() => _query = value),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Найти предмет',
+            ),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final category in const [
+                  'Все',
+                  'Точные науки',
+                  'Языки',
+                  'Гуманитарные',
+                ]) ...[
+                  ChoiceChip(
+                    label: Text(category),
+                    selected: _category == category,
+                    onSelected: (_) =>
+                        setState(() => _category = category),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ],
+            ),
+          ),
+          if (st.error != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: .1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                st.error!,
+                style: const TextStyle(
+                  color: AppColors.warning,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
           if (st.bundledTotal > 0 && st.bundledDone < st.bundledTotal) ...[
             Card(
               child: Padding(
@@ -85,46 +188,39 @@ class StudyScreen extends ConsumerWidget {
             const SizedBox(height: 12),
           ],
           if (subjects.isNotEmpty) ...[
-            const _Header('Предметы 11 класса'),
+            const SizedBox(height: 18),
+            _Header('Предметы 11 класса · ${subjects.length}'),
             const SizedBox(height: 8),
             for (final s in subjects) ...[
               _SubjectCard(subject: s),
               const SizedBox(height: 10),
             ],
           ],
-          const SizedBox(height: 8),
-          const _Header('Дополнительная литература'),
-          const SizedBox(height: 8),
-          for (final g in guides) ...[
-            _SubjectCard(subject: g),
-            const SizedBox(height: 10),
-          ],
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => _addGuide(context, ref),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(Icons.library_add, color: AppColors.warning),
-                    SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        'Добавить пособие / справочник / сборник',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    Icon(Icons.chevron_right, color: AppColors.textDim),
-                  ],
-                ),
+          if (subjects.isEmpty && guides.isEmpty) ...[
+            const SizedBox(height: 24),
+            const Center(
+              child: Column(
+                children: [
+                  Icon(Icons.search_off, color: AppColors.textDim, size: 36),
+                  SizedBox(height: 8),
+                  Text(
+                    'Ничего не найдено',
+                    style: TextStyle(color: AppColors.textDim),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 80),
+          ],
+          if (guides.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const _Header('Дополнительная литература'),
+            const SizedBox(height: 8),
+            for (final g in guides) ...[
+              _SubjectCard(subject: g),
+              const SizedBox(height: 10),
+            ],
+          ],
+          const SizedBox(height: 28),
         ],
       ),
     );
@@ -234,21 +330,163 @@ class StudyScreen extends ConsumerWidget {
   }
 }
 
+class _StudyOverview extends StatelessWidget {
+  final StudyState state;
+
+  const _StudyOverview({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final subjectCount = state.subjects.where((s) => s.kind == 'subject').length;
+    final learned = state.paragraphs.where((p) => p.learned).length;
+    final progress = state.paragraphs.isEmpty ? 0.0 : learned / state.paragraphs.length;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF193B34), Color(0xFF152A3B), Color(0xFF141A25)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.accent.withValues(alpha: .3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: .13),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.school_rounded, color: AppColors.accent),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Учебная база',
+                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      '11 класс · материалы на телефоне',
+                      style: TextStyle(color: AppColors.textDim, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'ЛОКАЛЬНО',
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Учебники и каталоги ГДЗ готовятся автоматически в фоне. Первые фото решений и соседние номера заранее остаются в кэше.',
+            style: TextStyle(
+              color: AppColors.textDim,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(value: progress, minHeight: 7),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '${(progress * 100).round()}%',
+                style: const TextStyle(color: AppColors.accent, fontSize: 11, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _StudyMetric(value: '$subjectCount', label: 'предметов', color: AppColors.accent),
+              const SizedBox(width: 8),
+              _StudyMetric(value: '${state.paragraphs.length}', label: 'параграфов', color: AppColors.cyan),
+              const SizedBox(width: 8),
+              _StudyMetric(value: '$learned', label: 'изучено', color: AppColors.violet),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StudyMetric extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color color;
+
+  const _StudyMetric({required this.value, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.surface.withValues(alpha: .72),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border.withValues(alpha: .7)),
+          ),
+          child: Column(
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(color: AppColors.textDim, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
 class _Header extends StatelessWidget {
   final String text;
   const _Header(this.text);
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(left: 4, bottom: 4),
+        padding: const EdgeInsets.only(bottom: 4),
         child: Text(
           text,
-          style: const TextStyle(
-            color: AppColors.textDim,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.6,
-          ),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
       );
 }
@@ -263,7 +501,19 @@ class _SubjectCard extends ConsumerWidget {
     final count = st.paragraphs
         .where((p) => p.subjectId == subject.id)
         .length;
+    final learned = st.paragraphs
+        .where((p) => p.subjectId == subject.id && p.learned)
+        .length;
+    final hasGdz = ReshebaService.jsPathFor(subject.title) != null;
+    final progress = count == 0 ? 0.0 : learned / count;
+    final color = switch (subject.category) {
+      'Точные науки' => AppColors.cyan,
+      'Языки' => AppColors.violet,
+      'Гуманитарные' => AppColors.warning,
+      _ => AppColors.accent,
+    };
     return Card(
+      margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => context.push(
@@ -272,19 +522,23 @@ class _SubjectCard extends ConsumerWidget {
         ),
         onLongPress: () => _menu(context, ref),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(15),
           child: Row(
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: [color.withValues(alpha: .2), color.withValues(alpha: .07)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
                   studyIcon(subject.icon),
-                  color: AppColors.accent,
+                  color: color,
                 ),
               ),
               const SizedBox(width: 12),
@@ -295,8 +549,8 @@ class _SubjectCard extends ConsumerWidget {
                     Text(
                       subject.title,
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                     if (subject.subtitle.isNotEmpty) ...[
@@ -312,22 +566,46 @@ class _SubjectCard extends ConsumerWidget {
                       ),
                     ],
                     if (count > 0) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '$count параграф${_plural(count)}',
-                        style: const TextStyle(
-                          color: AppColors.cyan,
-                          fontSize: 11,
-                        ),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 4,
+                                color: color,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '$learned/$count',
+                            style: TextStyle(color: color, fontSize: 9.5, fontWeight: FontWeight.w900),
+                          ),
+                        ],
                       ),
                     ],
                   ],
                 ),
               ),
-              if (subject.filePath != null)
-                const Padding(
-                  padding: EdgeInsets.only(right: 6),
-                  child: Icon(Icons.picture_as_pdf, size: 18, color: AppColors.danger),
+              if (hasGdz)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'ФОТО ГДЗ',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               const Icon(Icons.chevron_right, color: AppColors.textDim),
             ],
@@ -453,11 +731,4 @@ class _SubjectCard extends ConsumerWidget {
         ),
       );
 
-  static String _plural(int n) {
-    final m = n % 10;
-    final h = n % 100;
-    if (m == 1 && h != 11) return '';
-    if (m >= 2 && m <= 4 && (h < 12 || h > 14)) return 'а';
-    return 'ов';
-  }
 }

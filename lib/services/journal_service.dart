@@ -1,6 +1,6 @@
 // Журнал изменений: табличка со всеми действиями и голосовыми записями.
 //
-// Каждая запись: когда, кто (Hermes/Анастасия/пользователь), что сделано
+// Каждая запись: когда, кто (Hermes/пользователь), что сделано
 // (создан файл, PDF, задача, транскрипт голосовой записи, конспект).
 // Живёт в Hive-боксе «journal» (typeId 11).
 
@@ -19,7 +19,7 @@ class JournalEntry {
   @HiveField(2)
   final String type; // voice | file | pdf | task | note | study | system
   @HiveField(3)
-  final String source; // user | hermes | nastya | system
+  final String source; // user | hermes | system
   @HiveField(4)
   final String title;
   @HiveField(5)

@@ -2,10 +2,8 @@
 //
 // Предмет (StudySubject) — из каталога [studyCatalog] либо добавленный
 // вручную (в т.ч. дополнительная литература/пособия). К предмету
-// прикрепляется PDF-учебник; его текст извлекается, режется на параграфы
-// (StudyParagraph), каждый параграф разбирается LLM: конспект, план,
-// правила/теоремы со страницами, решения заданий, ответы на вопросы,
-// краткое содержание произведений.
+// прикрепляется PDF-учебник; его текст извлекается, режется на параграфы,
+// а затем структурируется локально на телефоне без вызова LLM.
 
 import 'dart:convert';
 import 'dart:io';
@@ -21,7 +19,9 @@ import '../../data/study_catalog.dart';
 import '../agent/file_tools.dart';
 import '../settings_service.dart';
 import '../plan/docs_service.dart' show splitSections;
-import '../plan/llm.dart';
+import 'study_content_quality.dart';
+import 'study_rule_images_service.dart';
+import 'study_textbook_catalog.dart';
 
 /// Предмет (или дополнительная литература) в «Учёбе».
 @HiveType(typeId: 12)
@@ -248,14 +248,17 @@ class StudyState {
       );
 }
 
-/// Контроллер «Учёбы»: каталог, параграфы, LLM-разбор.
+/// Контроллер «Учёбы»: каталог, локальный импорт и параграфы.
 class StudyController extends Notifier<StudyState> {
   late final Box<StudySubject> _box;
   late final Box<StudyParagraph> _pbox;
   bool _bundledStarted = false;
   bool _bundleNeedsRefresh = false;
 
-  static const int _bundleVersion = 2;
+  // v9 повторно мигрирует встроенные параграфы после добавления автоматических
+  // страниц учебников. Версия считается применённой только после полного
+  // успешного импорта, иначе следующий запуск повторит миграцию.
+  static const int _bundleVersion = 9;
 
   static const Map<String, String> _bookCatalogMap = {
     '1155': 'История (часть 1)',
@@ -307,28 +310,19 @@ class StudyController extends Notifier<StudyState> {
   /// Проверяет версию встроенного контента, но НИКОГДА не удаляет
   /// пользовательские данные. Новая версия только запускает идемпотентный
   /// импорт: существующие параграфы сохраняются, новые добавляются.
+  ///
+  /// Важно: здесь нельзя заранее записывать новую версию. Раньше приложение
+  /// помечало импорт завершённым до того, как JSON действительно загрузились.
+  /// Если Android закрывал приложение или один asset падал, следующий запуск
+  /// уже не повторял миграцию — из-за этого у старых параграфов не появлялся
+  /// bookId и карточка оригинальной страницы учебника была невидимой.
   void _checkBundleVersion() {
     final prefs = ref.read(sharedPreferencesProvider);
     final previous = prefs.getInt('study_bundle_v');
-    if (previous == _bundleVersion) return;
-    _bundleNeedsRefresh = true;
-    // В старой реализации здесь очищались обе Hive-базы. Это уничтожало
-    // импортированные книги, конспекты и флаг learned при обновлении APK.
-    // Версия теперь является только маркером контента.
-    prefs.setInt('study_bundle_v', _bundleVersion);
+    _bundleNeedsRefresh = previous != _bundleVersion;
   }
 
   void _ensureCatalog() {
-    for (final s in _box.values.toList()) {
-      if (s.title == 'Допризывная подготовка' ||
-          s.title == 'История Беларуси' ||
-          s.title == 'Всемирная история' ||
-          s.title == 'Английский язык') {
-        // Не удаляем предмет автоматически: пользователь мог добавить в него
-        // собственный PDF/конспект. Оставляем его как пользовательские данные.
-        continue;
-      }
-    }
     for (final item in studyCatalog) {
       StudySubject? existing;
       for (final s in _box.values) {
@@ -354,13 +348,15 @@ class StudyController extends Notifier<StudyState> {
         );
       } else if (existing.subtitle != item.subtitle ||
           existing.icon != item.icon ||
-          existing.category != item.category) {
+          existing.category != item.category ||
+          existing.analysis != _analysisFor(item.title)) {
         _box.put(
           existing.id,
           existing.copyWith(
             subtitle: item.subtitle,
             icon: item.icon,
             category: item.category,
+            analysis: _analysisFor(item.title),
           ),
         );
       }
@@ -368,12 +364,25 @@ class StudyController extends Notifier<StudyState> {
   }
 
   static String _analysisFor(String title) {
+    final lower = title.toLowerCase();
     const lit = ['литератур', 'літаратур'];
-    if (lit.any(title.toLowerCase().contains)) return 'literature';
-    const exact = ['алгебра', 'геометрия', 'физика', 'химия', 'биология', 'информатика', 'астрономия', 'математика'];
-    if (exact.any(title.toLowerCase().contains)) return 'exact';
-    const langs = ['язык', 'мова', 'английский', 'белорусский', 'русский'];
-    if (langs.any(title.toLowerCase().contains)) return 'languages';
+    if (lit.any(lower.contains)) return 'literature';
+    const langs = [
+      'язык',
+      'мова',
+      'английский',
+      'белорусский',
+      'русский',
+    ];
+    if (langs.any(lower.contains)) return 'languages';
+    // Физика, химия, биология и астрономия изучаются как теоретические
+    // предметы: для них нужны конспект, термины, законы и формулы. Режим
+    // exact оставляем только там, где повреждённый OCR выражений опаснее
+    // текстового разбора.
+    const science = ['физик', 'хими', 'биолог', 'астроном'];
+    if (science.any(lower.contains)) return 'science';
+    const exact = ['алгебр', 'геометр', 'математик', 'информатик'];
+    if (exact.any(lower.contains)) return 'exact';
     return 'humanities';
   }
 
@@ -406,6 +415,39 @@ class StudyController extends Notifier<StudyState> {
     return list;
   }
 
+  StudyParagraph? _paragraphById(String id) {
+    final direct = _pbox.get(id);
+    if (direct != null) return direct;
+    for (final paragraph in _pbox.values) {
+      if (paragraph.id == id) return paragraph;
+    }
+    return null;
+  }
+
+  /// Сохраняет запись по её id и заодно удаляет старый ошибочный Hive-ключ.
+  /// В ранней версии импорта ключ и `StudyParagraph.id` создавались двумя
+  /// разными вызовами `genId()`, поэтому обычный `_pbox.get(id)` не работал.
+  Future<void> _putParagraph(StudyParagraph paragraph) async {
+    final staleKeys = _pbox.keys
+        .where(
+          (key) => key != paragraph.id && _pbox.get(key)?.id == paragraph.id,
+        )
+        .toList();
+    await _pbox.put(paragraph.id, paragraph);
+    for (final key in staleKeys) {
+      await _pbox.delete(key);
+    }
+  }
+
+  Future<void> _deleteParagraphById(String id) async {
+    final keys = _pbox.keys
+        .where((key) => key == id || _pbox.get(key)?.id == id)
+        .toList();
+    for (final key in keys) {
+      await _pbox.delete(key);
+    }
+  }
+
   Future<StudySubject> addSubject({
     required String title,
     String icon = 'book',
@@ -435,8 +477,15 @@ class StudyController extends Notifier<StudyState> {
 
   Future<void> removeSubject(String id) async {
     await _box.delete(id);
-    for (final p in _pbox.values.where((p) => p.subjectId == id)) {
-      await _pbox.delete(p.id);
+    final paragraphIds = _pbox.values
+        .where((paragraph) => paragraph.subjectId == id)
+        .map((paragraph) => paragraph.id)
+        .toSet();
+    for (final paragraphId in paragraphIds) {
+      await ref
+          .read(studyRuleImagesServiceProvider)
+          .removeAll(paragraphId);
+      await _deleteParagraphById(paragraphId);
     }
     _emit();
   }
@@ -477,20 +526,98 @@ class StudyController extends Notifier<StudyState> {
     return p;
   }
 
+  StudyParagraph? _findImportedParagraph(
+    String subjectId,
+    String title, {
+    String? sourceBookId,
+  }) {
+    final identity = StudyContentQuality.paragraphIdentity(
+      subjectId: subjectId,
+      title: title,
+    );
+    StudyParagraph? legacy;
+    for (final paragraph in _pbox.values) {
+      final candidate = StudyContentQuality.paragraphIdentity(
+        subjectId: paragraph.subjectId,
+        title: paragraph.title,
+      );
+      if (candidate != identity) continue;
+      if (sourceBookId == null) return paragraph;
+      final candidateBook =
+          StudyTextbookCatalog.bookIdFromChapter(paragraph.chapter);
+      if (candidateBook == sourceBookId) return paragraph;
+      // Старая версия не сохраняла id книги. Используем такую запись один
+      // раз как миграцию, а не создаём дубликат параграфа.
+      if (candidateBook == null) legacy ??= paragraph;
+    }
+    return legacy;
+  }
+
+  /// Идемпотентно обновляет распознанный источник, сохраняя пользовательский
+  /// конспект, флаг изучения и стабильный id параграфа.
+  Future<bool> _upsertImportedParagraph({
+    required StudySubject subject,
+    required String title,
+    required String chapter,
+    required String pages,
+    required String sourceText,
+    required int order,
+    String? sourceBookId,
+  }) async {
+    final existing = _findImportedParagraph(
+      subject.id,
+      title,
+      sourceBookId: sourceBookId,
+    );
+    final storedChapter = StudyTextbookCatalog.chapterWithBook(
+      chapter,
+      sourceBookId,
+    );
+    if (existing != null) {
+      final updated = existing.copyWith(
+        chapter: storedChapter.isEmpty ? existing.chapter : storedChapter,
+        pages: pages.isEmpty ? existing.pages : pages,
+        sourceText: sourceText.isEmpty ? existing.sourceText : sourceText,
+        updatedAt: DateTime.now(),
+      );
+      await _putParagraph(updated);
+      return false;
+    }
+
+    final id = genId();
+    await _pbox.put(
+      id,
+      StudyParagraph(
+        id: id,
+        subjectId: subject.id,
+        title: title,
+        chapter: storedChapter,
+        pages: pages,
+        sourceText: sourceText,
+        updatedAt: DateTime.now(),
+        order: order,
+      ),
+    );
+    return true;
+  }
+
   Future<void> updateParagraph(StudyParagraph p) async {
-    await _pbox.put(p.id, p);
+    await _putParagraph(p);
     _emit();
   }
 
   Future<void> toggleLearned(String id) async {
-    final p = _pbox.get(id);
+    final p = _paragraphById(id);
     if (p == null) return;
-    await _pbox.put(id, p.copyWith(learned: !p.learned, updatedAt: DateTime.now()));
+    await _putParagraph(
+      p.copyWith(learned: !p.learned, updatedAt: DateTime.now()),
+    );
     _emit();
   }
 
   Future<void> removeParagraph(String id) async {
-    await _pbox.delete(id);
+    await ref.read(studyRuleImagesServiceProvider).removeAll(id);
+    await _deleteParagraphById(id);
     _emit();
   }
 
@@ -509,7 +636,12 @@ class StudyController extends Notifier<StudyState> {
   }
 
   static const _excludedSubjects = [
-    'немецкий', 'нямецкая', 'французский', 'французская', 'испанский', 'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский', 'польский', 'польская', 'иностранный язык', 'допризывн', 'дапрызыўн', 'медицинск', 'медыцынск', 'великая отечественная', 'айчынная вайна',
+    'немецкий', 'нямецкая', 'французский', 'французская', 'испанский',
+    'іспанская', 'испанская', 'китайский', 'кітайская', 'итальянский',
+    'польский', 'польская', 'иностранный язык', 'допризывн', 'дапрызыўн',
+    'медицинск', 'медыцынск', 'великая отечественная', 'айчынная вайна',
+    'сборник', 'зборнік', 'хрестоматия', 'хрэстаматыя', 'справочник',
+    'даведнік',
   ];
 
   static String? _bookIdOf(String pdfName) {
@@ -528,7 +660,7 @@ class StudyController extends Notifier<StudyState> {
       if (bookId == null || _excludedBookIds.contains(bookId) || !_bookCatalogMap.containsKey(bookId)) return null;
       final catalogTitle = _bookCatalogMap[bookId]!;
       final catalogItem = studyCatalog.firstWhere((i) => i.title == catalogTitle);
-      return _importBook(catalogItem, paragraphList, method);
+      return _importBook(catalogItem, paragraphList, method, bookId: bookId);
     }
 
     for (final marker in _excludedSubjects) {
@@ -540,28 +672,39 @@ class StudyController extends Notifier<StudyState> {
     final catalogTitle = bookId == null ? null : _bookCatalogMap[bookId];
     if (catalogTitle != null) {
       final catalogItem = studyCatalog.firstWhere((i) => i.title == catalogTitle);
-      return _importBook(catalogItem, paragraphList, method);
+      return _importBook(catalogItem, paragraphList, method, bookId: bookId!);
     }
 
     final catalogItem = _matchCatalog(pdfLower);
     final subject = await _subjectForPdf(pdfName, pdfLower, catalogItem, method);
-    final now = DateTime.now();
     var order = _nextOrder(subject.id);
     for (final item in paragraphList) {
-      final m = item as Map<String, dynamic>;
+      if (item is! Map) continue;
+      final m = Map<String, dynamic>.from(item);
       final title = (m['title'] as String? ?? '').trim();
       if (title.isEmpty) continue;
-      final exists = _pbox.values.any((p) => p.subjectId == subject.id && p.title == title);
-      if (exists) continue;
-      final pid = genId();
-      await _pbox.put(pid, StudyParagraph(id: pid, subjectId: subject.id, title: title, chapter: (m['chapter'] as String? ?? '').trim(), pages: (m['pages'] as String? ?? '').trim(), sourceText: (m['text'] as String? ?? '').trim(), updatedAt: now, order: order++));
+      final created = await _upsertImportedParagraph(
+        subject: subject,
+        title: title,
+        chapter: (m['chapter'] as String? ?? '').trim(),
+        pages: (m['pages'] as String? ?? '').trim(),
+        sourceText: (m['text'] as String? ?? '').trim(),
+        order: order,
+        sourceBookId: bookId,
+      );
+      if (created) order++;
     }
     state = state.copyWith(busy: false, clearError: true);
     _emit();
     return subject;
   }
 
-  Future<StudySubject> _importBook(StudyCatalogItem item, List<dynamic> paragraphList, String method) async {
+  Future<StudySubject> _importBook(
+    StudyCatalogItem item,
+    List<dynamic> paragraphList,
+    String method, {
+    required String bookId,
+  }) async {
     StudySubject? subject;
     for (final s in _box.values) {
       if (s.title == item.title) {
@@ -571,16 +714,22 @@ class StudyController extends Notifier<StudyState> {
     }
     subject ??= await addSubject(title: item.title, icon: item.icon, kind: item.kind, category: item.category, subtitle: item.subtitle);
     final s = subject;
-    final now = DateTime.now();
     var order = _nextOrder(s.id);
     for (final raw in paragraphList) {
-      final m = raw as Map<String, dynamic>;
+      if (raw is! Map) continue;
+      final m = Map<String, dynamic>.from(raw);
       final title = (m['title'] as String? ?? '').trim();
       if (title.isEmpty) continue;
-      final exists = _pbox.values.any((p) => p.subjectId == s.id && p.title == title);
-      if (exists) continue;
-      final pid = genId();
-      await _pbox.put(pid, StudyParagraph(id: pid, subjectId: s.id, title: title, chapter: (m['chapter'] as String? ?? '').trim(), pages: (m['pages'] as String? ?? '').trim(), sourceText: (m['text'] as String? ?? '').trim(), updatedAt: now, order: order++));
+      final created = await _upsertImportedParagraph(
+        subject: s,
+        title: title,
+        chapter: (m['chapter'] as String? ?? '').trim(),
+        pages: (m['pages'] as String? ?? '').trim(),
+        sourceText: (m['text'] as String? ?? '').trim(),
+        order: order,
+        sourceBookId: bookId,
+      );
+      if (created) order++;
     }
     _emit();
     return s;
@@ -596,7 +745,8 @@ class StudyController extends Notifier<StudyState> {
 
   Future<void> importBundledBooks() async {
     try {
-      final manifest = await rootBundle.loadString('assets/study/manifest.txt');
+      final manifest = (await rootBundle.loadString('assets/study/manifest.txt'))
+          .replaceFirst('\uFEFF', '');
       final names = manifest.split('\n').map((s) => s.trim()).where((s) => s.endsWith('.json')).toList()..sort((a, b) {
         final ai = int.tryParse(a.split('_').first) ?? 0;
         final bi = int.tryParse(b.split('_').first) ?? 0;
@@ -618,10 +768,18 @@ class StudyController extends Notifier<StudyState> {
       }
       state = state.copyWith(busy: false, clearError: true);
       _emit();
-      if (skipped.isNotEmpty) {
+      if (skipped.isEmpty) {
+        await ref
+            .read(sharedPreferencesProvider)
+            .setInt('study_bundle_v', _bundleVersion);
+      } else {
+        // Версию не фиксируем: следующий запуск снова попробует импортировать
+        // недостающие книги и восстановить bookId для автоматических страниц.
+        _bundleNeedsRefresh = true;
         state = state.copyWith(error: 'Пропущено разборов: ${skipped.length} (${skipped.take(2).join('; ')})');
       }
     } catch (e) {
+      _bundleNeedsRefresh = true;
       state = state.copyWith(busy: false, error: 'Автоимпорт: $e');
     }
   }
@@ -654,8 +812,12 @@ class StudyController extends Notifier<StudyState> {
     for (final s in _box.values) {
       if (s.title == clean) return s;
     }
-    final isGuide = pdfLower.contains('сборник') || pdfLower.contains('зборнік') || pdfLower.contains('хрестоматия') || pdfLower.contains('хрэстаматыя') || pdfLower.contains('справочник') || pdfLower.contains('даведнік') || pdfLower.contains('пособие') || pdfLower.contains('дапаможнік');
-    return addSubject(title: clean, icon: 'book', kind: isGuide ? 'guide' : 'subject', category: isGuide ? 'Дополнительная литература' : 'Импортированные', subtitle: method.isEmpty ? '' : 'готовый разбор · $method');
+    return addSubject(
+      title: clean,
+      icon: 'book',
+      category: 'Импортированные',
+      subtitle: method.isEmpty ? '' : 'локальный источник · $method',
+    );
   }
 
   static String _cleanPdfTitle(String pdfName, String pdfLower) {
@@ -740,14 +902,22 @@ class StudyController extends Notifier<StudyState> {
       final parts = splitPdfToParagraphs(text);
       if (parts.isEmpty) throw Exception('Не удалось распознать текст учебника на параграфы. Возможно, это скан без OCR-слоя.');
       var order = _nextOrder(subject.id);
+      var processed = 0;
       for (final part in parts) {
-        final duplicate = _pbox.values.any((p) => p.subjectId == subject.id && p.title == part.title && p.pages == part.pages);
-        if (duplicate) continue;
-        await _pbox.put(genId(), StudyParagraph(id: genId(), subjectId: subject.id, title: part.title, chapter: part.chapter, pages: part.pages, sourceText: part.text, updatedAt: DateTime.now(), order: order++));
+        final created = await _upsertImportedParagraph(
+          subject: subject,
+          title: part.title,
+          chapter: part.chapter,
+          pages: part.pages,
+          sourceText: part.text,
+          order: order,
+        );
+        if (created) order++;
+        processed++;
       }
       state = state.copyWith(busy: false, clearError: true);
       _emit();
-      return parts.length;
+      return processed;
     } catch (e) {
       state = state.copyWith(busy: false, error: '$e');
       rethrow;
@@ -755,64 +925,17 @@ class StudyController extends Notifier<StudyState> {
   }
 
   Future<int> reparsePdf(StudySubject subject) async {
-    for (final p in _pbox.values.where((p) => p.subjectId == subject.id)) {
-      await _pbox.delete(p.id);
-    }
+    // Повторный разбор обновляет источник идемпотентно. Удаление здесь
+    // уничтожало конспекты, прогресс и стабильные ссылки на параграфы.
     return parsePdf(subject);
   }
 
-  static int _pageCount(String text) {
-    final re = RegExp(r'---\s*стр\.\s*(\d+)\s*---');
-    final nums = re.allMatches(text).map((m) => int.parse(m.group(1)!));
-    return nums.isEmpty ? 0 : nums.reduce((a, b) => a > b ? a : b);
-  }
-
-  static const modeConspectus = 'conspectus';
-  static const modeRules = 'rules';
-  static const modeTasks = 'tasks';
-  static const modeAnswers = 'answers';
-  static const modeSummary = 'summary';
-
-  Future<String> analyzeParagraph(StudyParagraph p, {String mode = modeConspectus}) async {
-    final subject = subjectOf(p.subjectId);
-    if (subject == null) throw Exception('Предмет не найден.');
-    final s = ref.read(settingsProvider);
-    final source = p.sourceText.trim().isEmpty ? (p.content.trim().isEmpty ? 'Параграф: ${p.title}' : p.content) : p.sourceText;
-    final sys = _systemPrompt(subject, mode);
-    final user = 'Учебник: ${subject.title}${subject.subtitle.isEmpty ? '' : ' (${subject.subtitle})'}\nГлава: ${p.chapter.isEmpty ? '—' : p.chapter}\nПараграф: ${p.title}${p.pages.isEmpty ? '' : ' · ${p.pages}'}\n\nТекст параграфа:\n$source';
-    state = state.copyWith(busy: true, error: null, workingId: p.id);
-    try {
-      final answer = await llmComplete(s, system: sys, user: user, maxTokens: 3000, timeoutSeconds: 180, temperature: 0.3);
-      await _pbox.put(p.id, p.copyWith(content: answer, updatedAt: DateTime.now()));
-      state = state.copyWith(busy: false, clearError: true, clearWorking: true);
-      return answer;
-    } catch (e) {
-      state = state.copyWith(busy: false, error: '$e', clearWorking: true);
-      rethrow;
-    }
-  }
-
-  String _systemPrompt(StudySubject subject, String mode) {
-    final base = 'Ты — репетитор по предмету «${subject.title}» за 11 класс белорусской школы. Отвечай по-русски, по существу, только по приведённому тексту учебника, ничего не выдумывай. Оформляй markdown: заголовки, списки, таблицы. Указывай страницы учебника, если они видны в тексте (маркеры «--- стр. N ---»). Не переписывай исходник дословно.\n\n';
-    switch (mode) {
-      case modeRules:
-        return '$base Собери правила, определения, теоремы, формулы и выводы. Для каждого укажи страницу, если она известна, и пример только если он есть в источнике.';
-      case modeTasks:
-        return '$base Разбери задания/упражнения по шагам. Не придумывай номера. Для каждого пункта: условие → решение → ответ.';
-      case modeAnswers:
-        return '$base Дай ответы на вопросы в конце параграфа. Если вопросов нет, сформулируй несколько проверочных вопросов по материалу.';
-      case modeSummary:
-        return '$base Для литературы дай краткое содержание, героев, тему, идею и ключевые моменты без выдуманных деталей.';
-      case modeConspectus:
-      default:
-        return '$base Составь короткий конспект для тетради 11 класса: план, главное по пунктам, определения/правила/даты/формулы, вопросы с краткими ответами и вывод.';
-    }
-  }
-
   Future<void> clearParagraphContent(String id) async {
-    final p = _pbox.get(id);
+    final p = _paragraphById(id);
     if (p == null) return;
-    await _pbox.put(id, p.copyWith(content: '', updatedAt: DateTime.now()));
+    await _putParagraph(
+      p.copyWith(content: '', updatedAt: DateTime.now()),
+    );
     _emit();
   }
 }

@@ -6,23 +6,11 @@ class AppConstants {
 
   static const String appName = 'System: Hermes';
 
-  /// Ежемесячная "пенсия" в BYN.
-  static const double defaultPension = 450;
-
-  /// Часть на "Топливо разработки".
-  static const double defaultFuelShare = 50;
+  /// Официальная ежемесячная пенсия в BYN.
+  static const double defaultPension = 390;
 
   /// День месяца получения пенсии (по умолчанию 5-е число).
   static const int defaultPensionDay = 5;
-
-  /// Валюта "Твердых активов" по умолчанию.
-  static const String defaultAssetsCurrency = 'USD';
-
-  /// Штраф за срыв протокола (BYN).
-  static const double habitFine = 25;
-
-  /// Длительность блокировки майнинг-фермы после срыва.
-  static const Duration farmLockDuration = Duration(hours: 24);
 
   /// URL API курсов Нацбанка РБ.
   static const String nbrbRatesUrl =
@@ -34,17 +22,11 @@ class AppConstants {
   /// Максимум секунд начисляемых за один "тик" (защита от читов по времени).
   static const Duration maxTickGap = Duration(hours: 12);
 
-  /// URL по умолчанию для LLM Анастасии и Hermes (Groq, OpenAI-совместимый).
-  /// Бесплатный ключ: https://console.groq.com/keys
-  static const String companionDefaultUrl =
-      'https://api.groq.com/openai/v1/chat/completions';
+  /// Base URL B.ai — OpenAI-совместимого провайдера Hermes.
+  static const String hermesLlmDefaultUrl = 'https://api.b.ai/v1';
 
-  /// Модель по умолчанию (бесплатная на Groq, хорошо знает русский).
-  static const String companionDefaultModel = 'llama-3.3-70b-versatile';
-
-  /// Фото Анастасии по умолчанию.
-  /// Используется как аватар и фон чата, пока не выбрано своё фото.
-  static const String nastyaDefaultPhoto = 'assets/nastya/avatar.webp';
+  /// Основная текстовая модель Hermes на B.ai.
+  static const String hermesLlmDefaultModel = 'deepseek-v4-flash';
 
   // ===================================================================
   // Поиск и исследования (спецификация, разделы 3.3, 6)
@@ -66,7 +48,7 @@ class AppConstants {
   /// (Tavily/SearXNG/HTML-провайдеры) выполняется параллельно.
   static const int maxConcurrentSearches = 4;
 
-  /// Пул конкурентности (задача 2): сколько вызовов LLM (OpenCode/Groq)
+  /// Пул конкурентности (задача 2): сколько вызовов LLM
   /// выполняется параллельно.
   static const int maxConcurrentLlm = 2;
 
@@ -83,12 +65,8 @@ class BoxNames {
 
   static const String accounts = 'accounts';
   static const String transactions = 'transactions';
-  static const String farm = 'farm';
   static const String habits = 'habits';
   static const String chat = 'chat';
-  static const String life = 'life';
-  static const String companion = 'companion';
-  static const String companionChat = 'companion_chat';
   static const String tasks = 'tasks';
   static const String journal = 'journal';
   static const String docs = 'docs';
@@ -103,19 +81,20 @@ class PrefKeys {
   static const String themeMode = 'theme_mode'; // dark | light
   static const String pensionDay = 'pension_day';
   static const String pensionAmount = 'pension_amount';
-  static const String fuelShare = 'fuel_share';
-  static const String assetsCurrency = 'assets_currency';
   static const String vaultPath = 'vault_path';
   static const String hermesUrl = 'hermes_url';
   static const String hermesApiKey = 'hermes_api_key';
   static const String githubOwner = 'github_owner';
   static const String githubRepo = 'github_repo';
   static const String lastPensionMonth = 'last_pension_month';
-  static const String protocolStart = 'protocol_start';
+  /// Месяц полного сброса: не начислять пенсию повторно сразу после очистки.
+  static const String pensionResetMonth = 'pension_reset_month';
   static const String workoutBonusDay = 'workout_bonus_day';
-  static const String companionApiUrl = 'companion_api_url';
-  static const String companionApiKey = 'companion_api_key';
-  static const String companionModel = 'companion_model';
+  static const String hermesLlmUrl = 'hermes_llm_url';
+  static const String hermesLlmApiKey = 'hermes_llm_api_key';
+  static const String hermesLlmModel = 'hermes_llm_model';
+  static const String hermesMode = 'hermes_mode';
+  static const String whisperApiKey = 'whisper_api_key';
   static const String searchSearxngUrl = 'search_searxng_url';
   static const String searchOffline = 'search_offline';
 }
