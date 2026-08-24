@@ -162,6 +162,36 @@ class ParagraphScreen extends ConsumerWidget {
             ],
             const SizedBox(height: 12),
             _SourceQualityCard(report: sourceReport, pages: paragraph.pages),
+            const SizedBox(height: 18),
+            const Text(
+              'Формулы и определения',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Выделено из учебника: правила, формулы, термины. '
+              'Оригиналы табличек — фото из PDF.',
+              style: TextStyle(
+                color: AppColors.textDim,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (local.isEmpty)
+              const _MissingSourceCard()
+            else
+              for (final section in local.sections) ...[
+                _LocalSectionCard(
+                  section: section,
+                  bookId: textbookRange?.source.bookId,
+                  pdfPages: cropPages,
+                ),
+                const SizedBox(height: 10),
+              ],
           ] else ...[
             _OfflineNotice(sectionCount: local.sections.length),
             const SizedBox(height: 12),

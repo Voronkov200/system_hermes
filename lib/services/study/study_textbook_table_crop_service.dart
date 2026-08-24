@@ -5,13 +5,15 @@
 // оставалась на странице учебника отдельно. Здесь мы находим в PDF-тексте
 // (у него есть координаты каждого символа) тот фрагмент, который соответствует
 // правилу/термину, берём его ограничивающий прямоугольник и вырезаем его из
-// уже отрендеренной страницы (2200px PNG). Полученную картинку можно вставить
-// прямо под правило в конспекте.
+// уже отрендеренной страницы (2200px PNG).
 //
-// Это детерминированная эвристика: она не использует ИИ и работает целиком на
-// телефоне. Она может резать неточно (например, если правило разбито переносом
-// или таблица визуально не совпадает с текстом). В этом случае вырезка просто
-// не находится, и приложение тихо пропускает её — конспект остаётся корректным.
+// Это детерминированная эвристика без ИИ, целиком на телефоне. Она может
+// резать неточно, поэтому:
+//   * если текст правило не найден в PDF-слое — вырезка тихо пропускается;
+//   * ориентация Y у pdfrx `PdfRect.bounds` неоднозначна (PDF — «Y вверх»,
+//     а картинка — «Y вниз»), поэтому мы автоматически выбираем ориентацию
+//     с наибольшим числом тёмных «чернил» — так в конспект всегда попадает
+//     область с реальным текстом/рамкой, а не пустой белый угол страницы.
 
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -37,14 +39,15 @@ typedef StudyTextbookCropRequest = ({
 class StudyTextbookTableCropService {
   static const _cacheVersion = 1;
   static const _minTextLength = 12;
+  static const _inkThreshold = 200; // luminance < 200 считается «чернилами»
 
   final StudyTextbookService _textbooks;
   final StudyTextbookPageImageService _pageImages;
 
   StudyTextbookTableCropService(this._textbooks, this._pageImages);
 
-  /// Ищет правило/термин [ruleText] на странице [pdfPage] и возвращает вырезанную
-  /// картинку, либо `null`, если её не удалось локализовать.
+  /// Ищет правило/термин [ruleText] на странице [pdfPage] и возвращает
+  /// вырезанную картинку, либо `null`, если локализовать не удалось.
   Future<File?> ensureTableCrop(String bookId, int pdfPage, String ruleText) async {
     final trimmed = ruleText.trim();
     if (trimmed.length < _minTextLength) return null;
@@ -65,7 +68,6 @@ class StudyTextbookTableCropService {
       } catch (_) {}
     }
 
-    // Открываем PDF и вытягиваем структурированный текст страницы.
     final pdf = await _textbooks.ensureLocal(bookId);
     final document = await pdfrx.PdfDocument.openFile(pdf.path);
     try {
@@ -75,9 +77,8 @@ class StudyTextbookTableCropService {
       final regex = _buildRegex(trimmed);
       final range = await _firstMatch(pageText, regex);
       if (range == null) return null;
-      final bounds = range.bounds; // PdfRect в координатах страницы (top > bottom)
+      final bounds = range.bounds; // PdfRect, координаты страницы (top > bottom)
 
-      // Берём уже отрендеренное изображение страницы (реальные пиксели).
       final pageImage = await _pageImages.ensurePageImage(bookId, actualPage);
       final bytes = await pageImage.readAsBytes();
       final source = await _decodeImage(bytes);
@@ -86,15 +87,19 @@ class StudyTextbookTableCropService {
       try {
         final scaleX = source.width / page.width;
         final scaleY = source.height / page.height;
-        // PDF-координаты: Y растёт вверх. PNG: Y растёт вниз -> переворачиваем.
-        final left = bounds.left * scaleX;
-        final right = bounds.right * scaleX;
-        final top = (page.height - bounds.top) * scaleY;
-        final bottom = (page.height - bounds.bottom) * scaleY;
-        final pad = page.width * scaleX * 0.035;
-        final cropRect = _expand(Rect.fromLTRB(left, top, right, bottom), pad);
+        final pad = page.width * scaleX * 0.045;
 
-        final cropped = await _cropImage(source, cropRect);
+        // Два варианта ориентации Y (pdfrx отдаёт верх/низ неоднозначно).
+        // Один из них обрезает пустой угол страницы, второй — реальную рамку.
+        final flipRect = _expand(_rectFlipY(bounds, scaleX, scaleY, page.height), pad);
+        final directRect = _expand(_rectDirect(bounds, scaleX, scaleY), pad);
+
+        // Определяем, где больше «чернил» — туда и режем.
+        final pixelData =
+            await source.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final chosen = _pickInkRect(source, pixelData, flipRect, directRect);
+
+        final cropped = await _cropImage(source, chosen);
         if (cropped == null) return null;
         final png = await cropped.toByteData(format: ui.ImageByteFormat.png);
         cropped.dispose();
@@ -117,7 +122,68 @@ class StudyTextbookTableCropService {
     }
   }
 
-  /// Собирает regex из слов правило, устойчивый к любым пробелам/переносам.
+  // Ориентация «Y вверх» (PDF-координаты) -> переворачиваем в «Y вниз».
+  Rect _rectFlipY(pdfrx.PdfRect b, double sx, double sy, double pageHeight) {
+    return Rect.fromLTRB(
+      b.left * sx,
+      (pageHeight - b.top) * sy,
+      b.right * sx,
+      (pageHeight - b.bottom) * sy,
+    );
+  }
+
+  // Ориентация «Y вниз» (положение уже совпадает с картинкой).
+  Rect _rectDirect(pdfrx.PdfRect b, double sx, double sy) {
+    return Rect.fromLTRB(
+      b.left * sx,
+      b.bottom * sy,
+      b.right * sx,
+      b.top * sy,
+    );
+  }
+
+  Rect _expand(Rect r, double pad) => Rect.fromLTRB(
+        r.left - pad,
+        r.top - pad,
+        r.right + pad,
+        r.bottom + pad,
+      );
+
+  /// Выбирает прямоугольник с наибольшей долей тёмных пикселей.
+  Rect _pickInkRect(
+    ui.Image image,
+    ByteData? pixelData,
+    Rect flip,
+    Rect direct,
+  ) {
+    if (pixelData == null) return flip;
+    final a = _darkRatio(image, pixelData, flip);
+    final b = _darkRatio(image, pixelData, direct);
+    return b > a ? direct : flip;
+  }
+
+  double _darkRatio(ui.Image image, ByteData data, Rect rect) {
+    final x0 = rect.left.floor().clamp(0, image.width - 1);
+    final y0 = rect.top.floor().clamp(0, image.height - 1);
+    final x1 = rect.right.ceil().clamp(x0 + 1, image.width);
+    final y1 = rect.bottom.ceil().clamp(y0 + 1, image.height);
+    if (x1 <= x0 || y1 <= y0) return 0;
+    var dark = 0;
+    var total = 0;
+    for (var y = y0; y < y1; y += 2) {
+      for (var x = x0; x < x1; x += 2) {
+        final i = (y * image.width + x) * 4;
+        final r = data.getUint8(i);
+        final g = data.getUint8(i + 1);
+        final b = data.getUint8(i + 2);
+        final lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (lum < _inkThreshold) dark++;
+        total++;
+      }
+    }
+    return total == 0 ? 0 : dark / total;
+  }
+
   RegExp _buildRegex(String text) {
     final words = text.trim().split(RegExp(r'\s+'));
     return RegExp(
@@ -135,13 +201,6 @@ class StudyTextbookTableCropService {
     }
     return null;
   }
-
-  Rect _expand(Rect r, double pad) => Rect.fromLTRB(
-        r.left - pad,
-        r.top - pad,
-        r.right + pad,
-        r.bottom + pad,
-      );
 
   Future<ui.Image?> _decodeImage(Uint8List bytes) async {
     try {
