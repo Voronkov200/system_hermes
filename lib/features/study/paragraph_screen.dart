@@ -1,5 +1,7 @@
 // Экран параграфа: полностью локальный разбор вложенного текста учебника.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +15,7 @@ import '../../services/study/study_service.dart';
 import '../../services/study/study_pdf_service.dart';
 import '../../services/study/study_textbook_catalog.dart';
 import '../../services/study/study_textbook_service.dart';
+import '../../services/study/study_textbook_table_crop_service.dart';
 import 'resheba_screen.dart';
 
 class ParagraphScreen extends ConsumerWidget {
@@ -69,6 +72,16 @@ class ParagraphScreen extends ConsumerWidget {
     );
     final visibleChapter =
         StudyTextbookCatalog.visibleChapter(paragraph.chapter);
+
+    // Страницы параграфа в PDF нужны для вырезки табличек из учебника.
+    final cropPages = textbookRange == null
+        ? const <int>[]
+        : <int>[
+            for (var p = textbookRange.pdfStart;
+                p <= textbookRange.pdfEnd;
+                p++)
+              p.clamp(1, 100000),
+          ];
 
     return Scaffold(
       appBar: AppBar(
@@ -178,7 +191,11 @@ class ParagraphScreen extends ConsumerWidget {
               const _MissingSourceCard()
             else
               for (final section in local.sections) ...[
-                _LocalSectionCard(section: section),
+                _LocalSectionCard(
+                  section: section,
+                  bookId: textbookRange?.source.bookId,
+                  pdfPages: cropPages,
+                ),
                 const SizedBox(height: 10),
               ],
           ],
@@ -708,10 +725,16 @@ class _OfflineNotice extends StatelessWidget {
   }
 }
 
-class _LocalSectionCard extends StatelessWidget {
+class _LocalSectionCard extends ConsumerWidget {
   final LocalStudySection section;
+  final String? bookId;
+  final List<int> pdfPages;
 
-  const _LocalSectionCard({required this.section});
+  const _LocalSectionCard({
+    required this.section,
+    this.bookId,
+    this.pdfPages = const <int>[],
+  });
 
   IconData get icon {
     switch (section.type) {
@@ -751,8 +774,14 @@ class _LocalSectionCard extends StatelessWidget {
     }
   }
 
+  bool get _canCropRule =>
+      bookId != null &&
+      pdfPages.isNotEmpty &&
+      (section.type == LocalStudySectionType.rules ||
+          section.type == LocalStudySectionType.terms);
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
@@ -771,21 +800,130 @@ class _LocalSectionCard extends StatelessWidget {
           for (var i = 0; i < section.items.length; i++)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: color.withValues(alpha: .20)),
-                ),
-                child: SelectableText(
-                  section.items[i],
-                  style: const TextStyle(fontSize: 13, height: 1.5),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: color.withValues(alpha: .20),
+                      ),
+                    ),
+                    child: SelectableText(
+                      section.items[i],
+                      style: const TextStyle(fontSize: 13, height: 1.5),
+                    ),
+                  ),
+                  if (_canCropRule) ...[
+                    const SizedBox(height: 8),
+                    _RuleCropThumb(
+                      bookId: bookId!,
+                      pdfPages: pdfPages,
+                      text: section.items[i],
+                    ),
+                  ],
+                ],
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _RuleCropThumb extends ConsumerWidget {
+  final String bookId;
+  final List<int> pdfPages;
+  final String text;
+
+  const _RuleCropThumb({
+    required this.bookId,
+    required this.pdfPages,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final crop = ref.watch(
+      studyTextbookCropProvider(
+        (bookId: bookId, pdfPages: pdfPages, text: text),
+      ),
+    );
+    return crop.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (file) =>
+          file == null ? const SizedBox.shrink() : _CropImageCard(file: file),
+    );
+  }
+}
+
+class _CropImageCard extends StatelessWidget {
+  final File file;
+
+  const _CropImageCard({required this.file});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surfaceAlt,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => _CropViewerScreen(path: file.path),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              file,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              filterQuality: FilterQuality.medium,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CropViewerScreen extends StatelessWidget {
+  final String path;
+
+  const _CropViewerScreen({required this.path});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Из учебника'),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          maxScale: 6,
+          child: Image.file(File(path)),
+        ),
       ),
     );
   }
