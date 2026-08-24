@@ -67,4 +67,13 @@ subprojects {
 EOF
 fi
 
+# 6. flutter_health_connect 1.2.3 ставит Java target 1.8, а Kotlin берёт JDK-дефолт
+#    (напр. 21) — несоответствие JVM-таргетов роняет release-сборку.
+#    Включаем мягкую валидацию таргета (общая для локальной сборки и CI).
+GRADLE_PROPS="android/gradle.properties"
+if [ -f "$GRADLE_PROPS" ]; then
+  grep -q "kotlin.jvm.target.validation.mode" "$GRADLE_PROPS" || \
+    printf '\n# flutter_health_connect 1.2.3: Java target 1.8 vs Kotlin target от JDK-дефолта (21).\n# Мягкая валидация JVM-таргета — иначе release-сборка падает.\nkotlin.jvm.target.validation.mode=warning\n' >> "$GRADLE_PROPS"
+fi
+
 echo "OK: Android-конфигурация пропатчена."
