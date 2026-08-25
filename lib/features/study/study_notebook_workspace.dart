@@ -17,6 +17,7 @@ import '../../services/study/study_service.dart';
 import '../../services/study/study_textbook_catalog.dart';
 import '../../services/study/study_textbook_page_image_service.dart';
 import 'resheba_screen.dart';
+import 'study_rule_crop.dart';
 
 class StudyNotebookScreen extends ConsumerWidget {
   final String paragraphId;
@@ -107,6 +108,7 @@ class StudyNotebookScreen extends ConsumerWidget {
               paragraph: paragraph,
               subjectTitle: title,
               note: note,
+              range: range,
               quality: StudyContentQuality.inspect(paragraph.sourceText),
               prefs: prefs,
             ),
@@ -128,6 +130,7 @@ class _NotesView extends StatelessWidget {
   final StudyParagraph paragraph;
   final String subjectTitle;
   final StudyNoteTemplate note;
+  final StudyTextbookPageRange? range;
   final StudySourceReport quality;
   final SharedPreferences prefs;
 
@@ -135,6 +138,7 @@ class _NotesView extends StatelessWidget {
     required this.paragraph,
     required this.subjectTitle,
     required this.note,
+    required this.range,
     required this.quality,
     required this.prefs,
   });
@@ -158,7 +162,7 @@ class _NotesView extends StatelessWidget {
         _Quality(report: quality),
         SizedBox(height: 10),
         for (final section in note.sections) ...[
-          _Section(section: section),
+          _Section(section: section, range: range),
           SizedBox(height: 9),
         ],
         if (note.methodSteps.isNotEmpty) ...[
@@ -274,8 +278,22 @@ class _Quality extends StatelessWidget {
 
 class _Section extends StatelessWidget {
   final StudyNoteSection section;
+  final StudyTextbookPageRange? range;
 
-  const _Section({required this.section});
+  const _Section({required this.section, this.range});
+
+  /// Рамку/формулу режем только для правил ('П') и формул ('Ф') — это как раз
+  /// правила/теоремы/формулы, ради которых пользователь просил таблички.
+  bool get _canCrop =>
+      range != null &&
+      (section.marker.contains('Ф') || section.marker.contains('П')) &&
+      section.items.isNotEmpty;
+
+  List<int> get _cropPages {
+    final r = range;
+    if (r == null) return const <int>[];
+    return [for (var p = r.pdfStart; p <= r.pdfEnd; p++) p];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -318,6 +336,14 @@ class _Section extends StatelessWidget {
                     style: TextStyle(fontSize: 12.5, height: 1.42),
                   ),
                 ),
+            if (_canCrop)
+              for (final item in section.items)
+                if (item.trim().length >= 12)
+                  StudyRuleCrop(
+                    bookId: range!.source.bookId,
+                    pdfPages: _cropPages,
+                    text: item,
+                  ),
           ],
         ),
       ),
