@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
+import '../../core/animations.dart';
 import '../../services/habits_service.dart';
 
 class MoreScreen extends ConsumerWidget {
@@ -20,7 +21,7 @@ class MoreScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Ещё')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-        children: [
+        children: staggerChildren([
           _StabilityHero(
             done: done,
             total: total,
@@ -33,29 +34,35 @@ class MoreScreen extends ConsumerWidget {
             subtitle: 'Наблюдай прогресс без лишнего давления',
           ),
           const SizedBox(height: 12),
-          _MoreTile(
-            icon: Icons.fitness_center_rounded,
-            color: AppColors.accent,
-            title: 'Протокол',
-            subtitle: 'Отжимания, приседания и серии выполнения',
-            badge: total == 0 ? 'НЕТ ДЕЙСТВИЙ' : '$done/$total СЕГОДНЯ',
-            onTap: () => context.push('/habits'),
+          TappableScale(
+            child: _MoreTile(
+              icon: Icons.fitness_center_rounded,
+              color: AppColors.accent,
+              title: 'Протокол',
+              subtitle: 'Отжимания, приседания и серии выполнения',
+              badge: total == 0 ? 'НЕТ ДЕЙСТВИЙ' : '$done/$total СЕГОДНЯ',
+              onTap: () => context.push('/habits'),
+            ),
           ),
-          _MoreTile(
-            icon: Icons.history_rounded,
-            color: AppColors.violet,
-            title: 'Журнал изменений',
-            subtitle: 'Действия, важные события и история системы',
-            badge: 'ХРОНОЛОГИЯ',
-            onTap: () => context.push('/journal'),
+          TappableScale(
+            child: _MoreTile(
+              icon: Icons.history_rounded,
+              color: AppColors.violet,
+              title: 'Журнал изменений',
+              subtitle: 'Действия, важные события и история системы',
+              badge: 'ХРОНОЛОГИЯ',
+              onTap: () => context.push('/journal'),
+            ),
           ),
-          _MoreTile(
-            icon: Icons.insights_rounded,
-            color: AppColors.accent,
-            title: 'Аналитика',
-            subtitle: 'ТГК за ~1.5 года · психпортрет TikTok',
-            badge: 'ИИ-ОТЧЁТЫ',
-            onTap: () => context.push('/analytics'),
+          TappableScale(
+            child: _MoreTile(
+              icon: Icons.insights_rounded,
+              color: AppColors.accent,
+              title: 'Аналитика',
+              subtitle: 'ТГК за ~1.5 года · психпортрет TikTok',
+              badge: 'ИИ-ОТЧЁТЫ',
+              onTap: () => context.push('/analytics'),
+            ),
           ),
           const SizedBox(height: 16),
           const _SectionHeading(
@@ -63,8 +70,8 @@ class MoreScreen extends ConsumerWidget {
             subtitle: 'Все технические параметры находятся в одном месте',
           ),
           const SizedBox(height: 12),
-          _SettingsCard(onTap: () => context.push('/settings')),
-        ],
+          TappableScale(child: _SettingsCard(onTap: () => context.push('/settings'))),
+        ], intervalMs: 80),
       ),
     );
   }
@@ -135,16 +142,36 @@ class _StabilityHero extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(
-                '$done/$total',
-                style: TextStyle(color: color, fontSize: 21, fontWeight: FontWeight.w900),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  AnimatedCountText(
+                    target: done.toDouble(),
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    '/$total',
+                    style: TextStyle(color: color, fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 18),
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(value: progress, minHeight: 7, color: color),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 950),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) =>
+                  LinearProgressIndicator(value: value, minHeight: 7, color: color),
+            ),
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(

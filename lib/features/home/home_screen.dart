@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
-import '../../core/utils.dart';
+import '../../core/animations.dart';
 import '../../data/models.dart';
 import '../../services/bank_service.dart';
 import '../../services/habits_service.dart';
@@ -43,12 +43,14 @@ class HomeScreen extends ConsumerWidget {
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-        children: [
-          _FocusCard(
-            trainingStreak: trainingStreak,
-            completed: completedToday,
-            total: habits.habits.length,
-            onTap: () => context.go('/work'),
+        children: staggerChildren([
+          TappableScale(
+            child: _FocusCard(
+              trainingStreak: trainingStreak,
+              completed: completedToday,
+              total: habits.habits.length,
+              onTap: () => context.go('/work'),
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -57,7 +59,8 @@ class HomeScreen extends ConsumerWidget {
                 child: _MetricCard(
                   icon: Icons.savings_outlined,
                   color: AppColors.accent,
-                  value: fmt2(totalByn),
+                  value: totalByn,
+                  decimals: 2,
                   label: 'капитал BYN',
                 ),
               ),
@@ -66,7 +69,8 @@ class HomeScreen extends ConsumerWidget {
                 child: _MetricCard(
                   icon: Icons.local_fire_department_outlined,
                   color: AppColors.warning,
-                  value: '$trainingStreak',
+                  value: trainingStreak.toDouble(),
+                  decimals: 0,
                   label: 'дней ритма',
                 ),
               ),
@@ -75,7 +79,8 @@ class HomeScreen extends ConsumerWidget {
                 child: _MetricCard(
                   icon: Icons.calendar_month_outlined,
                   color: AppColors.cyan,
-                  value: fmt2(settings.pensionAmount),
+                  value: settings.pensionAmount,
+                  decimals: 2,
                   label: 'пенсия / мес',
                 ),
               ),
@@ -92,34 +97,40 @@ class HomeScreen extends ConsumerWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: _AreaCard(
-                    title: 'Работа',
-                    subtitle: 'Учёба, проекты и Hermes',
-                    icon: Icons.rocket_launch_outlined,
-                    color: AppColors.accent,
-                    onTap: () => context.go('/work'),
+                  child: TappableScale(
+                    child: _AreaCard(
+                      title: 'Работа',
+                      subtitle: 'Учёба, проекты и Hermes',
+                      icon: Icons.rocket_launch_outlined,
+                      color: AppColors.accent,
+                      onTap: () => context.go('/work'),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _AreaCard(
-                    title: 'Деньги',
-                    subtitle: 'Резерв, карты и переводы',
-                    icon: Icons.account_balance_wallet_outlined,
-                    color: AppColors.cyan,
-                    onTap: () => context.go('/money'),
+                  child: TappableScale(
+                    child: _AreaCard(
+                      title: 'Деньги',
+                      subtitle: 'Резерв, карты и переводы',
+                      icon: Icons.account_balance_wallet_outlined,
+                      color: AppColors.cyan,
+                      onTap: () => context.go('/money'),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 10),
-          _WideAreaTile(
-            title: 'Ещё',
-            subtitle: 'Протокол, журнал и управление системой',
-            icon: Icons.widgets_outlined,
-            color: AppColors.violet,
-            onTap: () => context.go('/more'),
+          TappableScale(
+            child: _WideAreaTile(
+              title: 'Ещё',
+              subtitle: 'Протокол, журнал и управление системой',
+              icon: Icons.widgets_outlined,
+              color: AppColors.violet,
+              onTap: () => context.go('/more'),
+            ),
           ),
           const SizedBox(height: 26),
           _SectionTitle(
@@ -130,12 +141,12 @@ class HomeScreen extends ConsumerWidget {
                 : 'Достаточно одного выполненного действия',
           ),
           const SizedBox(height: 12),
-          _HabitPanel(habits: habits),
+          TappableScale(child: _HabitPanel(habits: habits)),
           if (rates.isNotEmpty) ...[
             const SizedBox(height: 14),
             _RatesCard(rates: rates),
           ],
-        ],
+        ], intervalMs: 90),
       ),
     );
   }
@@ -287,7 +298,8 @@ class _FocusCard extends StatelessWidget {
 class _MetricCard extends StatelessWidget {
   final IconData icon;
   final Color color;
-  final String value;
+  final double value;
+  final int decimals;
   final String label;
 
   const _MetricCard({
@@ -295,6 +307,7 @@ class _MetricCard extends StatelessWidget {
     required this.color,
     required this.value,
     required this.label,
+    this.decimals = 0,
   });
 
   @override
@@ -311,10 +324,9 @@ class _MetricCard extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 18),
           const SizedBox(height: 10),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          AnimatedCounter(
+            value: value,
+            decimals: decimals,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 2),

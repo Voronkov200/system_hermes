@@ -1,5 +1,6 @@
 // Маршрутизация приложения (go_router).
 
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/analytics/analytics_screen.dart';
@@ -25,10 +26,38 @@ import 'features/study/subject_screen.dart';
 import 'features/work/work_screen.dart';
 import 'services/study/study_service.dart';
 
+/// Плавный переход для полноэкранных маршрутов: fade + лёгкий подъём вверх.
+CustomTransitionPage<void> _page(
+  BuildContext context,
+  GoRouterState state,
+  Widget child,
+) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    transitionDuration: const Duration(milliseconds: 340),
+    reverseTransitionDuration: const Duration(milliseconds: 260),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved =
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.045),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      );
+    },
+    child: child,
+  );
+}
+
 final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
-    // Основные вкладки (нижняя навигация).
+    // Основные вкладки (нижняя навигация) — переключение без анимации.
     ShellRoute(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
@@ -43,38 +72,76 @@ final appRouter = GoRouter(
         GoRoute(path: '/study', builder: (context, state) => const StudyScreen()),
       ],
     ),
-    // Полноэкранные экраны.
+    // Полноэкранные экраны (с плавным переходом).
     GoRoute(
       path: '/study_subject/:id',
-      builder: (context, state) => SubjectScreen(
-        subjectId: state.pathParameters['id'] ?? '',
-        initial: state.extra as StudySubject?,
+      pageBuilder: (context, state) => _page(
+        context,
+        state,
+        SubjectScreen(
+          subjectId: state.pathParameters['id'] ?? '',
+          initial: state.extra as StudySubject?,
+        ),
       ),
     ),
     GoRoute(
       path: '/study_paragraph/:id',
-      builder: (context, state) => StudyNotebookScreen(
-        paragraphId: state.pathParameters['id'] ?? '',
-        initial: state.extra as StudyParagraph?,
+      pageBuilder: (context, state) => _page(
+        context,
+        state,
+        StudyNotebookScreen(
+          paragraphId: state.pathParameters['id'] ?? '',
+          initial: state.extra as StudyParagraph?,
+        ),
       ),
     ),
-    GoRoute(path: '/plan_tasks', builder: (context, state) => const TasksScreen()),
-    GoRoute(path: '/plan_search', builder: (context, state) => const SearchScreen()),
-    GoRoute(path: '/plan_docs', builder: (context, state) => const DocsScreen()),
-    GoRoute(path: '/plan_record', builder: (context, state) => const RecordScreen()),
+    GoRoute(
+      path: '/plan_tasks',
+      pageBuilder: (context, state) => _page(context, state, const TasksScreen()),
+    ),
+    GoRoute(
+      path: '/plan_search',
+      pageBuilder: (context, state) => _page(context, state, const SearchScreen()),
+    ),
+    GoRoute(
+      path: '/plan_docs',
+      pageBuilder: (context, state) => _page(context, state, const DocsScreen()),
+    ),
+    GoRoute(
+      path: '/plan_record',
+      pageBuilder: (context, state) => _page(context, state, const RecordScreen()),
+    ),
     GoRoute(
       path: '/web',
-      builder: (context, state) =>
-          WebViewScreen(url: state.extra as String? ?? 'https://example.com'),
+      pageBuilder: (context, state) => _page(
+        context,
+        state,
+        WebViewScreen(url: state.extra as String? ?? 'https://example.com'),
+      ),
     ),
-    GoRoute(path: '/obsidian', builder: (context, state) => const ObsidianScreen()),
-    GoRoute(path: '/journal', builder: (context, state) => const JournalScreen()),
+    GoRoute(
+      path: '/obsidian',
+      pageBuilder: (context, state) => _page(context, state, const ObsidianScreen()),
+    ),
+    GoRoute(
+      path: '/journal',
+      pageBuilder: (context, state) => _page(context, state, const JournalScreen()),
+    ),
     GoRoute(
       path: '/note',
-      builder: (context, state) =>
-          NoteScreen(notePath: state.extra as String? ?? ''),
+      pageBuilder: (context, state) => _page(
+        context,
+        state,
+        NoteScreen(notePath: state.extra as String? ?? ''),
+      ),
     ),
-    GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
-    GoRoute(path: '/analytics', builder: (context, state) => const AnalyticsScreen()),
+    GoRoute(
+      path: '/settings',
+      pageBuilder: (context, state) => _page(context, state, const SettingsScreen()),
+    ),
+    GoRoute(
+      path: '/analytics',
+      pageBuilder: (context, state) => _page(context, state, const AnalyticsScreen()),
+    ),
   ],
 );

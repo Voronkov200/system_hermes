@@ -2,12 +2,13 @@
 // "растущие" графики (вертикальный и горизонтальный) с stagger-анимацией,
 // анимированный счётчик. Без внешних пакетов — чистые Flutter-анимации.
 
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+
+export '../../core/animations.dart' show FadeSlideIn, AnimatedCountText;
 
 /// Элемент графика: подпись + значение.
 class BarDatum {
@@ -17,66 +18,6 @@ class BarDatum {
 }
 
 double _easeOut(double t) => Curves.easeOutCubic.transform(t);
-
-/// Плавное появление (fade + slide up) с задержкой [delayMs] для ступенчатости.
-class FadeSlideIn extends StatefulWidget {
-  final Widget child;
-  final int delayMs;
-  final double slide;
-  final Duration duration;
-
-  const FadeSlideIn({
-    super.key,
-    required this.child,
-    this.delayMs = 0,
-    this.slide = 24,
-    this.duration = const Duration(milliseconds: 500),
-  });
-
-  @override
-  State<FadeSlideIn> createState() => _FadeSlideInState();
-}
-
-class _FadeSlideInState extends State<FadeSlideIn>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  late final Animation<double> _op;
-  late final Animation<Offset> _pos;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: widget.duration);
-    _op = CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
-    _pos = Tween<Offset>(
-      begin: Offset(0, widget.slide / 100),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
-    if (widget.delayMs <= 0) {
-      _c.forward();
-    } else {
-      _timer = Timer(Duration(milliseconds: widget.delayMs), () {
-        if (mounted) _c.forward();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _op,
-      child: SlideTransition(position: _pos, child: widget.child),
-    );
-  }
-}
 
 /// Вертикальный растущий бар-график со stagger-анимацией.
 class GrowingBarChart extends StatefulWidget {
@@ -328,35 +269,3 @@ class _GrowingHBarChartState extends State<GrowingHBarChart>
   }
 }
 
-/// Анимированный счётчик (count-up) до [target].
-class AnimatedCountText extends StatelessWidget {
-  final double target;
-  final int decimals;
-  final String suffix;
-  final TextStyle? style;
-
-  const AnimatedCountText({
-    super.key,
-    required this.target,
-    this.decimals = 0,
-    this.suffix = '',
-    this.style,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final fmt = decimals == 0
-        ? (v) => v.toStringAsFixed(0)
-        : (v) => v.toStringAsFixed(decimals);
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0, end: target),
-      duration: const Duration(milliseconds: 900),
-      curve: Curves.easeOutCubic,
-      builder: (context, v, _) =>
-          Text('${fmt(v)}$suffix',
-              style: style ??
-                  const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.w900)),
-    );
-  }
-}

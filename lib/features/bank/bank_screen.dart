@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../core/utils.dart';
+import '../../core/animations.dart';
 import '../../data/models.dart';
 import '../../services/bank_math.dart';
 import '../../services/bank_service.dart';
@@ -212,7 +213,7 @@ class BankScreen extends ConsumerWidget {
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          children: [
+          children: staggerChildren([
             _TotalCard(totalByn: totalByn),
             const SizedBox(height: 14),
             Row(
@@ -341,7 +342,7 @@ class BankScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-          ],
+          ], intervalMs: 60),
         ),
       ),
     );
@@ -363,30 +364,32 @@ class _MoneyAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: color.withValues(alpha: .09),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: color.withValues(alpha: .26)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 5),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 23),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                maxLines: 1,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+    return TappableScale(
+      child: Material(
+        color: color.withValues(alpha: .09),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: color.withValues(alpha: .26)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 5),
+            child: Column(
+              children: [
+                Icon(icon, color: color, size: 23),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -507,8 +510,10 @@ class _TotalCard extends StatelessWidget {
             style: TextStyle(color: AppColors.textDim, fontSize: 11, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
-          Text(
-            '${fmt2(totalByn)} BYN',
+          AnimatedCounter(
+            value: totalByn,
+            formatter: fmt2,
+            suffix: ' BYN',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontSize: 34,
