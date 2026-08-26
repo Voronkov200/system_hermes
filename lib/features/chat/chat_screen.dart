@@ -160,6 +160,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final hermes = ref.watch(chatProvider);
     final settings = ref.watch(settingsProvider);
     final offline = !settings.usesHermesServer && !settings.usesDirectLlm;
+    final showQuick =
+        hermes.messages.where((m) => m.role != 'system').length <= 3;
 
     return Scaffold(
       appBar: AppBar(
@@ -274,6 +276,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
             ),
+          if (showQuick)
+            _CapabilityChips(
+              onPick: (template) {
+                _input.text = template;
+                _input.selection = TextSelection.collapsed(
+                  offset: template.length,
+                );
+              },
+            ),
           Expanded(
             child: ListView.builder(
               controller: _scroll,
@@ -344,6 +355,62 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CapabilityChips extends StatelessWidget {
+  final ValueChanged<String> onPick;
+
+  const _CapabilityChips({required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    const items = <(String, IconData, String)>[
+      ('Учебник', Icons.menu_book_rounded, 'Разбери параграф из учебника по теме: '),
+      ('Поиск', Icons.travel_explore_rounded, 'Найди информацию о: '),
+      ('Задачи в Плане', Icons.checklist_rounded, 'Составь задачи по теме: '),
+      ('Конспект', Icons.description_rounded, 'Сделай конспект по: '),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Чем помочь?',
+            style: TextStyle(
+              color: AppColors.textDim,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (label, icon, template) in items)
+                ActionChip(
+                  avatar: Icon(icon, size: 16, color: AppColors.accent),
+                  label: Text(label),
+                  labelStyle: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 12,
+                  ),
+                  side: BorderSide(
+                    color: AppColors.accent.withValues(alpha: .35),
+                  ),
+                  backgroundColor: AppColors.accent.withValues(alpha: .10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  onPressed: () => onPick(template),
+                ),
+            ],
           ),
         ],
       ),

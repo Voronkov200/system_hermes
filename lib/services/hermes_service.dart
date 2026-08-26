@@ -60,9 +60,11 @@ class ChatController extends Notifier<ChatState> {
       _box.put(welcomeId, ChatMessage(
         id: welcomeId,
         role: 'hermes',
-        text: 'Система HERMES онлайн. Я контроллер твоей системы.\n'
-            'Доступные команды: «создай заметку …», «курс валют», «коммиты», '
-            '«статус системы», «отметить тренировку», «фото-верификация».',
+        text: 'HERMES на связи. Я твой ассистент и учебный наставник.\n'
+            'Помогаю: разбирать учебники и делать конспекты, искать информацию, '
+            'составлять задачи в модуле «План», искать и создавать документы.\n'
+            'Примеры: «разбери параграф по истории», «найди информацию о …», '
+            '«составь задачи на неделю по математике», «сделай конспект по физике».',
         date: DateTime.now(),
       ));
     }
@@ -262,7 +264,7 @@ class ChatController extends Notifier<ChatState> {
       history: history,
       tools: hermesAgentTools,
       executeTool: executeTool,
-      maxTokens: 1024,
+      maxTokens: 2048,
     );
 
     for (final step in result.steps) {

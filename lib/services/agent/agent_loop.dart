@@ -10,6 +10,12 @@ import 'agent_policy.dart';
 import 'hermes_tool_registry.dart';
 import 'tool_definition.dart';
 
+/// User-Agent, совместимый с защитой некоторых провайдеров (b.ai/CDP), которые
+/// режут дефолтный агент dart:io (иначе — HTTP 403, как с python-urllib).
+const String _llmUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+
 class AgentToolCall extends AgentPolicyCall {
   const AgentToolCall(super.name, super.arguments);
 }
@@ -63,6 +69,7 @@ Future<AgentResult> runAgentLoop({
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer ${normalizeApiKey(apiKey)}',
+              'User-Agent': _llmUserAgent,
             },
             body: jsonEncode({
               'model': model,
