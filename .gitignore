@@ -21,3 +21,6 @@ build/
 # macOS / Windows / Linux
 .DS_Store
 Thumbs.db
+
+# Сгенерированная Android-платформа (создаётся при сборке, CI генерирует заново)
+android/

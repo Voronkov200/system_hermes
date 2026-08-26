@@ -61,3 +61,5 @@ flutter:
   assets:
     - assets/study/
     - assets/fonts/
+    - assets/data/checks/
+    - assets/data/prices/

@@ -9,6 +9,7 @@
 
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
 
@@ -112,6 +113,54 @@ class ReceiptImportService {
     return report;
   }
 
+  /// Импорт чеков из встроенных assets (для одномоментного сида реальных
+  /// данных в приложение без ручного выбора папки). При
+  /// [createTransactions] == false чеки сохраняются, но операция `withdrawal`
+  /// в банке НЕ создаётся (баланс не меняется).
+  Future<ImportReport> importChecksFromAssets(
+    AssetBundle bundle,
+    List<String> assetPaths, {
+    String accountId = Account.generalId,
+    bool createTransactions = true,
+  }) async {
+    final keys = _existingReceiptKeys();
+    var report = const ImportReport();
+    for (final path in assetPaths) {
+      final lower = path.toLowerCase();
+      try {
+        if (lower.endsWith('.txt')) {
+          final rec = parseTxtReceipt(await bundle.loadString(path), path);
+          if (rec == null) {
+            report = report + const ImportReport(errors: 1);
+            continue;
+          }
+          report = report + await _storeReceipt(rec, keys, accountId,
+              createTransaction: createTransactions);
+        } else if (lower.endsWith('.xlsx')) {
+          final data = await bundle.load(path);
+          final bytes =
+              data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+          final recs = parseXlsxReceipts(bytes, path);
+          if (recs.isEmpty) {
+            report = report + const ImportReport(errors: 1);
+            continue;
+          }
+          for (final rec in recs) {
+            report = report + await _storeReceipt(rec, keys, accountId,
+                createTransaction: createTransactions);
+          }
+        } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+          final rec = _ocrReceiptFromPath(path);
+          report = report + await _storeReceipt(rec, keys, accountId,
+              createTransaction: createTransactions);
+        }
+      } catch (_) {
+        report = report + const ImportReport(errors: 1);
+      }
+    }
+    return report;
+  }
+
   Future<ImportReport> _importSingleFile(
     File file,
     Set<String> keys,
@@ -151,11 +200,14 @@ class ReceiptImportService {
 
   /// Сохраняет чек идемпотентно. При успехе создаёт одну операцию `withdrawal`
   /// (для сканов и чеков без суммы — только помечает, операцию не создаёт).
+  /// Если [createTransaction] == false, операция не создаётся вовсе (сид
+  /// исторических данных без изменения баланса).
   Future<ImportReport> _storeReceipt(
     Receipt rec,
     Set<String> keys,
-    String accountId,
-  ) async {
+    String accountId, {
+    bool createTransaction = true,
+  }) async {
     if (keys.contains(rec.dedupKey)) return const ImportReport(skipped: 1);
     keys.add(rec.dedupKey);
 
@@ -164,6 +216,9 @@ class ReceiptImportService {
 
     if (rec.needsOcr || rec.total <= 0) {
       return ImportReport(added: 1, pendingOcr: rec.needsOcr ? 1 : 0);
+    }
+    if (!createTransaction) {
+      return const ImportReport(added: 1);
     }
 
     final txn = await _record(rec, accountId);
