@@ -73,8 +73,10 @@ class BankState {
 
 /// Управляет общим BYN-счётом, виртуальными картами и внутренними переводами.
 class BankController extends Notifier<BankState> {
-  late final Box<Account> _accounts;
-  late final Box<Transaction> _transactions;
+  // late (не final): build() может перезапуститься (например, при
+  // ref.invalidate(bankProvider)) и обязан корректно переинициализировать боксы.
+  late Box<Account> _accounts;
+  late Box<Transaction> _transactions;
 
   @override
   BankState build() {

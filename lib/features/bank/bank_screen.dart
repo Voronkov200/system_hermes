@@ -160,8 +160,9 @@ class BankScreen extends ConsumerWidget {
         await ref.read(dataSyncServiceProvider).syncFromSettings(settings);
     if (!context.mounted) return;
     toast(context, 'Синк: ${result.summary}');
-    ref.invalidate(bankProvider);
-    ref.invalidate(receiptsProvider);
+    // Баланс/счета синк не меняет (без операций), а «Покупки» обновляются сами
+    // через box.watch() (receiptsProvider). Инвалидировать провайдеры не нужно —
+    // это перезапускает BankController.build() и может дать краш.
   }
 
   void _openReceipt(BuildContext context, Receipt receipt) {
