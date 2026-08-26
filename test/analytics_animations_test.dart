@@ -12,7 +12,7 @@ import 'package:system_hermes/services/analytics_service.dart';
 
 void main() {
   AnalyticsData sample() {
-    final tgk = AnalyticsReport(
+    const tgk = AnalyticsReport(
       kind: 'tgk',
       title: 'Аналитика канала',
       subtitle: 'за ~1.5 года',
@@ -32,7 +32,7 @@ void main() {
         ],
       },
     );
-    final psych = AnalyticsReport(
+    const psych = AnalyticsReport(
       kind: 'psych',
       title: 'Психпортрет',
       subtitle: 'по TikTok',
@@ -49,7 +49,7 @@ void main() {
         'categories': {'Животные': 20, 'Музыка': 22, 'Быт': 21},
       },
     );
-    return AnalyticsData(tgk: tgk, psych: psych);
+    return const AnalyticsData(tgk: tgk, psych: psych);
   }
 
   testWidgets('Графики рендерятся и карточка раскрывается без исключений',
