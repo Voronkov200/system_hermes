@@ -139,8 +139,13 @@ class ChatController extends Notifier<ChatState> {
       }
     } catch (e) {
       debugPrint('[Hermes] LLM error: $e');
-      reply = 'Ошибка соединения: $e\n\n'
-          'Проверь API-ключ/URL в настройках (или работай в офлайн-режиме).';
+      final msg = e.toString();
+      final low = msg.toLowerCase();
+      reply = (msg.contains('401') || msg.contains('403') || low.contains('ключ') || low.contains('api key'))
+          ? 'Ошибка API-ключа: проверь его в Настройках → подключение модели '
+              '(кнопка «Проверить»). Ключ должен быть от b.ai, а не от Groq.'
+          : 'Ошибка соединения: $msg\n\n'
+              'Проверь интернет и URL модели в настройках (или выбери «офлайн»).';
     }
 
     _setState(thinking: false);
@@ -234,6 +239,11 @@ class ChatController extends Notifier<ChatState> {
 
   /// Ответ через OpenAI-совместимый LLM с агентным циклом (function calling).
   Future<String> _llmRequest(String text, SettingsState s) async {
+    final apiKey = s.llmKey;
+    if (apiKey.isEmpty) {
+      return 'API-ключ B.ai не вставлен. Открой Настройки → подключение модели, '
+          'вставь ключ и нажми «Проверить».';
+    }
     final bank = ref.read(bankProvider);
     final habits = ref.read(habitsProvider);
     final general = bank.generalAccount?.balance ?? 0;
@@ -258,7 +268,7 @@ class ChatController extends Notifier<ChatState> {
 
     final result = await runAgentLoop(
       apiUrl: s.hermesLlmUrl,
-      apiKey: s.llmKey,
+      apiKey: apiKey,
       model: s.hermesLlmModel,
       systemPrompt: system,
       history: history,

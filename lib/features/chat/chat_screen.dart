@@ -223,16 +223,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: AppColors.warning),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.cloud_off, color: AppColors.warning, size: 18),
-                  SizedBox(width: 8),
+                  const Icon(Icons.cloud_off, color: AppColors.warning, size: 18),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Модель не подключена: Hermes отвечает локальными '
-                      'командами. API-ключ можно добавить в настройках.',
-                      style: TextStyle(fontSize: 12),
+                      offline && settings.llmKey.isEmpty
+                          ? 'Нет API-ключа B.ai — Hermes отвечает локальными '
+                              'командами. Добавь ключ в настройках.'
+                          : 'Модель не подключена: Hermes отвечает локальными '
+                              'командами. API-ключ можно добавить в настройках.',
+                      style: const TextStyle(fontSize: 12),
                     ),
+                  ),
+                  TextButton(
+                    onPressed: () => context.push('/settings'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.warning,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const Text('Настроить'),
                   ),
                 ],
               ),
