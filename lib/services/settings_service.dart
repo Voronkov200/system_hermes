@@ -40,6 +40,8 @@ class SettingsState {
   String whisperApiKey; // отдельный ключ Groq только для Whisper
   String searchSearxngUrl; // свой SearXNG-инстанс для модуля «Поиск»
   bool searchOffline; // «Не искать в интернете» (3.12, 5.1.9): пропускать поиск
+  bool syncEnabled; // авто-синк чеков/цен из GitHub-каталога данных
+  String dataRepoBaseUrl; // база URL для data/receipts.json, data/prices.json
 
   SettingsState({
     this.themeMode = ThemeMode.dark,
@@ -59,6 +61,8 @@ class SettingsState {
     this.whisperApiKey = '',
     this.searchSearxngUrl = '',
     this.searchOffline = false,
+    this.syncEnabled = true,
+    this.dataRepoBaseUrl = '',
   });
 
   String get llmKey => normalizeApiKey(hermesLlmApiKey);
@@ -66,6 +70,19 @@ class SettingsState {
       hermesMode == HermesModes.server && hermesUrl.trim().isNotEmpty;
   bool get usesDirectLlm =>
       hermesMode == HermesModes.direct && llmKey.isNotEmpty;
+
+  /// База GitHub-каталога данных. Приоритет: явная ссылка → вывод из
+  /// githubOwner/githubRepo → значение по умолчанию. Всегда с завершающим «/».
+  String get syncDataBaseUrl {
+    final base = dataRepoBaseUrl.trim();
+    if (base.isNotEmpty) return base.endsWith('/') ? base : '$base/';
+    final owner = githubOwner.trim();
+    final repo = githubRepo.trim();
+    if (owner.isNotEmpty && repo.isNotEmpty) {
+      return 'https://raw.githubusercontent.com/$owner/$repo/main/data/';
+    }
+    return AppConstants.defaultDataRepoBaseUrl;
+  }
 
   SettingsState copyWith({
     ThemeMode? themeMode,
@@ -85,6 +102,8 @@ class SettingsState {
     String? whisperApiKey,
     String? searchSearxngUrl,
     bool? searchOffline,
+    bool? syncEnabled,
+    String? dataRepoBaseUrl,
   }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
@@ -104,6 +123,8 @@ class SettingsState {
       whisperApiKey: whisperApiKey ?? this.whisperApiKey,
       searchSearxngUrl: searchSearxngUrl ?? this.searchSearxngUrl,
       searchOffline: searchOffline ?? this.searchOffline,
+      syncEnabled: syncEnabled ?? this.syncEnabled,
+      dataRepoBaseUrl: dataRepoBaseUrl ?? this.dataRepoBaseUrl,
     );
   }
 }
@@ -193,6 +214,8 @@ class SettingsController extends Notifier<SettingsState> {
       whisperApiKey: whisperApiKey,
       searchSearxngUrl: prefs.getString(PrefKeys.searchSearxngUrl) ?? '',
       searchOffline: prefs.getBool(PrefKeys.searchOffline) ?? false,
+      syncEnabled: prefs.getBool(PrefKeys.syncEnabled) ?? true,
+      dataRepoBaseUrl: prefs.getString(PrefKeys.dataRepoBaseUrl) ?? '',
     );
   }
 
@@ -218,6 +241,8 @@ class SettingsController extends Notifier<SettingsState> {
       whisperApiKey: s.whisperApiKey,
       searchSearxngUrl: s.searchSearxngUrl,
       searchOffline: s.searchOffline,
+      syncEnabled: s.syncEnabled,
+      dataRepoBaseUrl: s.dataRepoBaseUrl,
     );
     apply(next);
     state = next;
@@ -239,6 +264,8 @@ class SettingsController extends Notifier<SettingsState> {
     await prefs.setString(PrefKeys.whisperApiKey, next.whisperApiKey);
     await prefs.setString(PrefKeys.searchSearxngUrl, next.searchSearxngUrl);
     await prefs.setBool(PrefKeys.searchOffline, next.searchOffline);
+    await prefs.setBool(PrefKeys.syncEnabled, next.syncEnabled);
+    await prefs.setString(PrefKeys.dataRepoBaseUrl, next.dataRepoBaseUrl);
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
@@ -332,6 +359,17 @@ class SettingsController extends Notifier<SettingsState> {
   /// «Поиск» пропускает веб-поиск и сразу идёт в LLM-диалог.
   Future<void> setSearchOffline(bool value) async {
     await _save((n) => n.searchOffline = value);
+  }
+
+  /// Вкл/выкл авто-синк чеков и цен из GitHub-каталога данных.
+  Future<void> setSyncEnabled(bool value) async {
+    await _save((n) => n.syncEnabled = value);
+  }
+
+  /// Явная база URL для data/receipts.json, data/prices.json (если задана —
+  /// приоритетнее вывода из githubOwner/githubRepo).
+  Future<void> setDataRepoBaseUrl(String url) async {
+    await _save((n) => n.dataRepoBaseUrl = url.trim());
   }
 
 }

@@ -1,5 +1,6 @@
 // Точка входа: инициализация Hive, адаптеров и SharedPreferences.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'app.dart';
 import 'core/constants.dart';
 import 'data/adapters.dart';
 import 'data/models.dart';
+import 'services/data_sync_service.dart';
 import 'services/receipt_import_service.dart';
 import 'services/settings_service.dart';
 import 'services/tasks_service.dart';
@@ -98,6 +100,23 @@ Future<void> main() async {
   // Одноразовый сид реальных чеков/цен из assets в боксы (без изменения баланса).
   await _seedBundledPurchases(prefs);
 
+  // Контейнер для фоновой синхронизации данных из GitHub-каталога (без UI).
+  final rootContainer = ProviderContainer(
+    overrides: [
+      sharedPreferencesProvider.overrideWithValue(prefs),
+    ],
+  );
+
+  // Авто-синк при запуске: подтягивает data/receipts.json и data/prices.json,
+  // если в настройках не выключен. Не блокирует старт интерфейса.
+  unawaited(_runDataSync(rootContainer));
+  // Таймер 24ч: новые чеки, опубликованные агентом, попадают в «Покупки»
+  // автоматически, без перезапуска приложения.
+  Timer.periodic(
+    const Duration(hours: 24),
+    (_) => unawaited(_runDataSync(rootContainer)),
+  );
+
   runApp(
     ProviderScope(
       overrides: [
@@ -106,4 +125,16 @@ Future<void> main() async {
       child: const SystemHermesApp(),
     ),
   );
+}
+
+/// Фоновая синхронизация чеков/цен из GitHub-каталога данных.
+Future<void> _runDataSync(ProviderContainer container) async {
+  try {
+    final settings = container.read(settingsProvider);
+    final result =
+        await container.read(dataSyncServiceProvider).syncFromSettings(settings);
+    debugPrint('Синк данных: ${result.summary}');
+  } catch (e) {
+    debugPrint('Синк данных не выполнен: $e');
+  }
 }

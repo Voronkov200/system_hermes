@@ -7,6 +7,7 @@
 //  - идемпотентность: повторный запуск того же файла не плодит дубли и не
 //    уменьшает баланс повторно (ключ = sourcePath + store + dateTime + total).
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -247,6 +248,118 @@ class ReceiptImportService {
       if (s.isNotEmpty && !s.contains('.')) store = s;
     }
     return markOcrReceipt(store: store, date: date, sourcePath: path, now: now);
+  }
+
+  // ------------------------------------------------------------------
+  // СИНК (GitHub-мост): канонический JSON от агента
+  // ------------------------------------------------------------------
+
+  /// Импорт каталога чеков из канонического JSON (data/receipts.json),
+  /// который агент (PCLite) публикует в GitHub, а приложение подтягивает.
+  ///
+  /// Формат записи (обязательно для издателя):
+  /// {"store":"ТРОЙКА","address":"ул. Крупской, 119","dateTime":"21.07.2026 12:52",
+  ///  "total":11.58,"discount":0,"paymentMethod":"карта","sourceType":"ocr",
+  ///  "confidence":0.93,
+  ///  "items":[{"name":"Пакет майка","qty":1,"unitPrice":0.29,"amount":0.29}]}
+  ///
+  /// Честность OCR: если [confidence] отсутствует или < 0.8 — чек помечается
+  /// [Receipt.needsOcr] = true, и в приложении показывается «требует проверки»,
+  /// а не выдумываются данные при низкой уверенности распознавания.
+  ///
+  /// Дедупликация — по (store, dateTime, total): не плодит дубли при повторном
+  /// пулле и не конфликтует с чеками, добавленными из assets (другой sourcePath).
+  /// Операции в банке НЕ создаются (синк только наполняет «Покупки»,
+  /// баланс не меняется).
+  Future<ImportReport> importReceiptsFromJsonString(String content) async {
+    final decoded = jsonDecode(content);
+    if (decoded is! List) return const ImportReport(errors: 1);
+
+    // Существующие отпечатки (store|isoDate|total) из бокса — чтобы не
+    // дублировать чеки, уже добавленные сидом из assets (у них другой sourcePath).
+    final seen = <String, Receipt>{
+      for (final r in _receipts.values)
+        '${r.store}||${r.dateTime.toIso8601String()}||${r.total}': r,
+    };
+
+    final nowActual = DateTime.now();
+    var report = const ImportReport();
+
+    for (final raw in decoded) {
+      if (raw is! Map) continue;
+      try {
+        final store = (raw['store'] as String?)?.trim() ?? 'Скан чека';
+        final dateTime = parseDate(raw['dateTime'] ?? raw['date']) ?? nowActual;
+        final total = num.tryParse('${raw['total']}')?.toDouble() ?? 0;
+        final discount =
+            num.tryParse('${raw['discount'] ?? 0}')?.toDouble() ?? 0;
+        final payment = (raw['paymentMethod'] as String?)?.trim();
+        final confidence = num.tryParse('${raw['confidence']}')?.toDouble();
+        // Низкая уверенность / нет данных → «требует проверки».
+        final needsOcr = confidence == null || confidence < 0.8;
+
+        final fingerprint = '$store||${dateTime.toIso8601String()}||$total';
+        if (seen.containsKey(fingerprint)) {
+          report = report + const ImportReport(skipped: 1);
+          continue;
+        }
+
+        final items = <ReceiptItem>[];
+        final rawItems = raw['items'];
+        if (rawItems is List) {
+          var order = 0;
+          for (final it in rawItems) {
+            if (it is! Map) continue;
+            final name = (it['name'] as String?)?.trim() ?? '';
+            if (name.isEmpty) continue;
+            order++;
+            final qty = num.tryParse('${it['qty'] ?? it['quantity'] ?? 1}')
+                    ?.toDouble() ??
+                1;
+            final unitPrice =
+                num.tryParse('${it['unitPrice'] ?? 0}')?.toDouble() ?? 0;
+            final amount = num.tryParse('${it['amount'] ?? qty * unitPrice}')
+                    ?.toDouble() ??
+                0;
+            items.add(ReceiptItem(
+              order: order,
+              name: name,
+              quantity: qty,
+              unitPrice: unitPrice,
+              amount: amount,
+            ));
+          }
+        }
+
+        final receipt = Receipt(
+          id: 'sync-receipt::$fingerprint',
+          store: store,
+          address: (raw['address'] as String?)?.trim(),
+          dateTime: dateTime,
+          total: total,
+          discount: discount,
+          paymentMethod: payment,
+          items: items,
+          sourcePath: 'github-receipts',
+          sourceType: (raw['sourceType'] as String?) ?? 'ocr',
+          needsOcr: needsOcr,
+          importedAt: nowActual,
+        );
+
+        await _receipts.put(receipt.id, receipt);
+        seen[fingerprint] = receipt;
+        if (receipt.needsOcr || receipt.total <= 0) {
+          report = report +
+              ImportReport(added: 1, pendingOcr: receipt.needsOcr ? 1 : 0);
+        } else {
+          report = report + const ImportReport(added: 1);
+        }
+      } catch (_) {
+        report = report + const ImportReport(errors: 1);
+      }
+    }
+    await _receipts.flush();
+    return report;
   }
 
   // ------------------------------------------------------------------

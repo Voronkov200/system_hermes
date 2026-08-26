@@ -9,6 +9,7 @@ import '../../core/utils.dart';
 import '../../data/models.dart';
 import '../../services/bank_math.dart';
 import '../../services/bank_service.dart';
+import '../../services/data_sync_service.dart';
 import '../../services/nbrb_api.dart';
 import '../../services/receipt_import_service.dart';
 import '../../services/settings_service.dart';
@@ -148,6 +149,21 @@ class BankScreen extends ConsumerWidget {
     toast(context, 'Цены: ${report.summary}');
   }
 
+  /// Авто-синк чеков и цен из GitHub-каталога данных (кнопка и pull-to-refresh).
+  Future<void> _syncData(BuildContext context, WidgetRef ref) async {
+    final settings = ref.read(settingsProvider);
+    if (!settings.syncEnabled) {
+      toast(context, 'Авто-синк выключен в настройках');
+      return;
+    }
+    final result =
+        await ref.read(dataSyncServiceProvider).syncFromSettings(settings);
+    if (!context.mounted) return;
+    toast(context, 'Синк: ${result.summary}');
+    ref.invalidate(bankProvider);
+    ref.invalidate(receiptsProvider);
+  }
+
   void _openReceipt(BuildContext context, Receipt receipt) {
     showModalBottomSheet<void>(
       context: context,
@@ -190,6 +206,7 @@ class BankScreen extends ConsumerWidget {
         onRefresh: () async {
           ref.invalidate(ratesProvider);
           await ref.read(bankProvider.notifier).checkPension();
+          if (context.mounted) await _syncData(context, ref);
         },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -278,6 +295,7 @@ class BankScreen extends ConsumerWidget {
               receipts: receipts,
               onImportChecks: () => _importReceipts(context, ref),
               onImportPrices: () => _importPrices(context, ref),
+              onSync: () => _syncData(context, ref),
               onOpen: (r) => _openReceipt(context, r),
             ),
             const SizedBox(height: 26),
@@ -1227,12 +1245,14 @@ class _PurchasesSection extends StatelessWidget {
   final List<Receipt> receipts;
   final Future<void> Function() onImportChecks;
   final Future<void> Function() onImportPrices;
+  final Future<void> Function() onSync;
   final void Function(Receipt) onOpen;
 
   const _PurchasesSection({
     required this.receipts,
     required this.onImportChecks,
     required this.onImportPrices,
+    required this.onSync,
     required this.onOpen,
   });
 
@@ -1269,6 +1289,25 @@ class _PurchasesSection extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: onSync,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.violet,
+              side: BorderSide(
+                color: AppColors.violet.withValues(alpha: .5),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            icon: const Icon(Icons.cloud_sync_outlined, size: 18),
+            label: const Text(
+              'Синхронизировать с GitHub',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -1464,16 +1503,18 @@ class _ReceiptSheet extends StatelessWidget {
             Card(
               margin: EdgeInsets.zero,
               color: AppColors.warning.withValues(alpha: .1),
-              child: const Padding(
-                padding: EdgeInsets.all(12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    Icon(Icons.image_search, color: AppColors.warning),
-                    SizedBox(width: 10),
+                    const Icon(Icons.image_search, color: AppColors.warning),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Это скан чека. Товары не извлечены — требуется распознавание (OCR).',
-                        style: TextStyle(fontSize: 12.5),
+                        receipt.items.isEmpty
+                            ? 'Это скан чека. Товары не извлечены — требуется распознавание (OCR).'
+                            : 'Этот чек распознан автоматически (низкая уверенность) — проверь точность данных.',
+                        style: const TextStyle(fontSize: 12.5),
                       ),
                     ),
                   ],

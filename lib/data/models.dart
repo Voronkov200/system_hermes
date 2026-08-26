@@ -6,8 +6,16 @@
 
 import 'package:hive_ce/hive.dart';
 
-/// Генератор простого уникального id (на базе времени).
-String genId() => '${DateTime.now().microsecondsSinceEpoch}';
+/// Генератор простого уникального id (на базе времени + монотонный счётчик).
+///
+/// Счётчик гарантирует уникальность при массовой вставке за один микросекундный
+/// тик (иначе `microsecondsSinceEpoch` коллизирует и `put` перезаписывает
+/// записи — чек/операция теряются).
+int _genIdSeq = 0;
+String genId() {
+  _genIdSeq = (_genIdSeq + 1) & 0xFFFFF;
+  return '${DateTime.now().microsecondsSinceEpoch}-$_genIdSeq';
+}
 
 /// Ключ даты вида 2026-08-05 (для стриков и отметок).
 String dateKey(DateTime d) =>

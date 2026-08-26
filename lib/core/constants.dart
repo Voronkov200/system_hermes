@@ -19,6 +19,12 @@ class AppConstants {
   /// URL GitHub API.
   static const String githubApiUrl = 'https://api.github.com';
 
+  /// База GitHub-каталога данных (data/receipts.json, data/prices.json),
+  /// откуда приложение подтягивает синхронизированные чеки и цены.
+  /// Агент (PCLite) публикует сюда новые чеки — приложение само забирает.
+  static const String defaultDataRepoBaseUrl =
+      'https://raw.githubusercontent.com/Voronkov200/system_hermes/main/data/';
+
   /// Максимум секунд начисляемых за один "тик" (защита от читов по времени).
   static const Duration maxTickGap = Duration(hours: 12);
 
@@ -99,4 +105,6 @@ class PrefKeys {
   static const String whisperApiKey = 'whisper_api_key';
   static const String searchSearxngUrl = 'search_searxng_url';
   static const String searchOffline = 'search_offline';
+  static const String syncEnabled = 'sync_enabled'; // авто-синк чеков/цен из GitHub
+  static const String dataRepoBaseUrl = 'data_repo_base_url'; // база для data/*.json
 }
