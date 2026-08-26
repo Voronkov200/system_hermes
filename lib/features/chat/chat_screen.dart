@@ -1,6 +1,10 @@
 // Чат с единственным системным агентом Hermes.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -40,8 +44,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (!_scroll.hasClients) return;
       _scroll.animateTo(
         _scroll.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
       );
     });
   }
@@ -155,6 +159,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _copy(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    _snack('Скопировано');
+  }
+
+  String _statusSubtitle(SettingsState s, bool offline) {
+    if (offline) {
+      return s.llmKey.isEmpty
+          ? 'офлайн · нужен API-ключ'
+          : 'офлайн · локальные команды';
+    }
+    if (s.usesHermesServer) return 'собственный сервер';
+    return 'b.ai · ${s.hermesLlmModel}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final hermes = ref.watch(chatProvider);
@@ -162,14 +181,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final offline = !settings.usesHermesServer && !settings.usesDirectLlm;
     final showQuick =
         hermes.messages.where((m) => m.role != 'system').length <= 3;
+    final showTyping = hermes.thinking;
+
+    ref.listen(chatProvider.select((s) => s.thinking), (prev, next) {
+      if (next == true) _scrollDown();
+    });
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
+        titleSpacing: 12,
+        title: Row(
           children: [
-            Icon(Icons.terminal, color: AppColors.accent, size: 20),
-            SizedBox(width: 8),
-            Text('Hermes Agent'),
+            const _ChatAvatar(role: 'hermes'),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'Hermes Agent',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  _statusSubtitle(settings, offline),
+                  style: const TextStyle(
+                    color: AppColors.textDim,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
         actions: [
@@ -183,109 +226,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           if (hermes.pendingPhotoTask != null)
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.warning),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.camera_alt_outlined,
-                    color: AppColors.warning,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      hermes.pendingPhotoDescription ??
-                          'Требуется фото-подтверждение',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () =>
-                        ref.read(chatProvider.notifier).pickAndSendPhoto(),
-                    child: const Text('Отправить фото'),
-                  ),
-                ],
-              ),
+            _StatusBanner(
+              icon: Icons.camera_alt_outlined,
+              color: AppColors.warning,
+              text: hermes.pendingPhotoDescription ??
+                  'Требуется фото-подтверждение',
+              actionLabel: 'Отправить фото',
+              onAction: ref.read(chatProvider.notifier).pickAndSendPhoto,
             ),
           if (offline)
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.warning),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.cloud_off, color: AppColors.warning, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      offline && settings.llmKey.isEmpty
-                          ? 'Нет API-ключа B.ai — Hermes отвечает локальными '
-                              'командами. Добавь ключ в настройках.'
-                          : 'Модель не подключена: Hermes отвечает локальными '
-                              'командами. API-ключ можно добавить в настройках.',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => context.push('/settings'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.warning,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    child: const Text('Настроить'),
-                  ),
-                ],
-              ),
-            ),
-          if (!offline)
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-              decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: .10),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: AppColors.accent.withValues(alpha: .45),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.cloud_outlined,
-                    color: AppColors.accent,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      settings.usesHermesServer
-                          ? 'Hermes подключён к собственному серверу'
-                          : 'B.ai подключён · ${settings.hermesLlmModel}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Настройки подключения',
-                    onPressed: () => context.push('/settings'),
-                    icon: const Icon(Icons.tune, size: 18),
-                  ),
-                ],
-              ),
+            _StatusBanner(
+              icon: Icons.cloud_off,
+              color: AppColors.warning,
+              text: offline && settings.llmKey.isEmpty
+                  ? 'Нет API-ключа B.ai — Hermes отвечает локальными '
+                      'командами. Добавь ключ, чтобы включить модель.'
+                  : 'Модель не подключена: Hermes отвечает локальными '
+                      'командами. API-ключ можно добавить в настройках.',
+              actionLabel: 'Настроить',
+              onAction: () => context.push('/settings'),
             ),
           if (showQuick)
             _CapabilityChips(
@@ -299,11 +258,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: ListView.builder(
               controller: _scroll,
-              padding: const EdgeInsets.all(16),
-              itemCount: hermes.messages.length,
-              itemBuilder: (context, index) => _MessageBubble(
-                message: hermes.messages[index],
-              ),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+              itemCount: hermes.messages.length + (showTyping ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= hermes.messages.length) {
+                  return const _TypingBubble();
+                }
+                return _MessageBubble(
+                  message: hermes.messages[index],
+                  onCopy: _copy,
+                );
+              },
             ),
           ),
           SafeArea(
@@ -373,6 +338,95 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
+// =====================================================================
+// Аватары и баннеры
+// =====================================================================
+
+class _ChatAvatar extends StatelessWidget {
+  final String role;
+
+  const _ChatAvatar({required this.role});
+
+  @override
+  Widget build(BuildContext context) {
+    final isUser = role == 'user';
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: isUser
+              ? const [Color(0xFF1F7A5C), AppColors.accent]
+              : const [Color(0xFF1E5F86), AppColors.cyan],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(
+          color: isUser
+              ? AppColors.accent.withValues(alpha: .5)
+              : AppColors.cyan.withValues(alpha: .5),
+          width: 1.2,
+        ),
+      ),
+      child: Icon(
+        isUser ? Icons.person_rounded : Icons.smart_toy_rounded,
+        size: 18,
+        color: Colors.white,
+      ),
+    );
+  }
+}
+
+class _StatusBanner extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String text;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  const _StatusBanner({
+    required this.icon,
+    required this.color,
+    required this.text,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: .45)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 17),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12, height: 1.35),
+            ),
+          ),
+          TextButton(
+            onPressed: onAction,
+            style: TextButton.styleFrom(
+              foregroundColor: color,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: Text(actionLabel),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CapabilityChips extends StatelessWidget {
   final ValueChanged<String> onPick;
 
@@ -429,74 +483,402 @@ class _CapabilityChips extends StatelessWidget {
   }
 }
 
+// =====================================================================
+// Пузырь сообщения
+// =====================================================================
+
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
+  final ValueChanged<String> onCopy;
 
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, required this.onCopy});
+
+  @override
+  Widget build(BuildContext context) {
+    if (message.role == 'system') {
+      return message.toolName != null
+          ? _ToolCard(message: message)
+          : _SystemNote(text: message.text, date: message.date);
+    }
+    return _ChatBubble(message: message, onCopy: onCopy);
+  }
+}
+
+/// Обычный пузырь (пользователь слева/справа, Hermes слева).
+class _ChatBubble extends StatelessWidget {
+  final ChatMessage message;
+  final ValueChanged<String> onCopy;
+
+  const _ChatBubble({required this.message, required this.onCopy});
 
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == 'user';
-    final isTool = message.role == 'system';
-    final background = isTool
-        ? const Color(0xFF10151D)
-        : isUser
-            ? const Color(0xFF0D2B22)
-            : AppColors.surface;
-    final border = isTool
-        ? AppColors.cyan.withValues(alpha: .4)
-        : isUser
-            ? AppColors.accent.withValues(alpha: .4)
-            : const Color(0xFF1E2836);
-    final label = isUser
-        ? 'ТЫ'
-        : isTool
-            ? 'TOOL'
-            : 'HERMES';
 
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * .85,
-        ),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(12),
-            topRight: const Radius.circular(12),
-            bottomLeft: Radius.circular(isUser ? 12 : 2),
-            bottomRight: Radius.circular(isUser ? 2 : 12),
-          ),
-          border: Border.all(color: border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (message.imagePath != null)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Icon(Icons.image, color: AppColors.warning, size: 40),
-              ),
-            Text(
-              message.text,
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 14,
-                fontFamily: isTool ? 'monospace' : null,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '$label • ${fmtTime(message.date)}',
-              style: const TextStyle(color: AppColors.textDim, fontSize: 10),
-            ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        mainAxisAlignment:
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isUser) ...[
+            const _ChatAvatar(role: 'hermes'),
+            const SizedBox(width: 10),
           ],
+          Flexible(
+            child: GestureDetector(
+              onLongPress: () => onCopy(message.text),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * .78,
+                ),
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 7),
+                decoration: BoxDecoration(
+                  gradient: isUser
+                      ? LinearGradient(
+                          colors: [
+                            AppColors.accent.withValues(alpha: .16),
+                            AppColors.accent.withValues(alpha: .05),
+                          ],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        )
+                      : null,
+                  color: isUser ? null : AppColors.surfaceRaised,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(isUser ? 18 : 4),
+                    bottomRight: Radius.circular(isUser ? 4 : 18),
+                  ),
+                  border: Border.all(
+                    color: isUser
+                        ? AppColors.accent.withValues(alpha: .35)
+                        : AppColors.border,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (message.imagePath != null) ...[
+                      const Icon(
+                        Icons.image_outlined,
+                        color: AppColors.warning,
+                        size: 34,
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    MarkdownBody(
+                      data: message.text,
+                      selectable: true,
+                      styleSheet: _markdownStyle(context),
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          isUser ? 'ТЫ' : 'HERMES',
+                          style: TextStyle(
+                            color: isUser
+                                ? AppColors.accent.withValues(alpha: .8)
+                                : AppColors.cyan.withValues(alpha: .8),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: .6,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          fmtTime(message.date),
+                          style: const TextStyle(
+                            color: AppColors.textDim,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (isUser) ...[
+            const SizedBox(width: 10),
+            const _ChatAvatar(role: 'user'),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Карточка вызова инструмента (tool call), по центру.
+class _ToolCard extends StatelessWidget {
+  final ChatMessage message;
+
+  const _ToolCard({required this.message});
+
+  Color get _color => switch (message.toolStatus) {
+        'error' => AppColors.danger,
+        'pending' => AppColors.warning,
+        _ => AppColors.accent,
+      };
+
+  IconData get _icon => switch (message.toolStatus) {
+        'error' => Icons.error_outline,
+        'pending' => Icons.sync,
+        _ => Icons.check_circle_outline,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Center(
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * .92,
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0C1219),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _color.withValues(alpha: .35)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(_icon, size: 15, color: _color),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Инструмент · ${message.toolName}',
+                      style: TextStyle(
+                        color: _color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    message.toolStatus == 'pending' ? '…' : fmtTime(message.date),
+                    style: const TextStyle(color: AppColors.textDim, fontSize: 10),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Text(
+                message.text,
+                style: const TextStyle(
+                  color: AppColors.textDim,
+                  fontSize: 11.5,
+                  fontFamily: 'monospace',
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+/// Обычная системная заметка по центру.
+class _SystemNote extends StatelessWidget {
+  final String text;
+  final DateTime date;
+
+  const _SystemNote({required this.text, required this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Center(
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * .85,
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceAlt.withValues(alpha: .5),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            text.truncate(160),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Анимация «Hermes думает…».
+class _TypingBubble extends StatefulWidget {
+  const _TypingBubble();
+
+  @override
+  State<_TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<_TypingBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 44, right: 44, bottom: 14),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceRaised,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(18),
+              topRight: Radius.circular(18),
+              bottomLeft: Radius.circular(4),
+              bottomRight: Radius.circular(18),
+            ),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: _c,
+                builder: (context, _) {
+                  final t = _c.value;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < 3; i++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                          child: Opacity(
+                            opacity: _dotOpacity(t, i),
+                            child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: AppColors.accent,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(width: 9),
+              const Text(
+                'Hermes думает…',
+                style: TextStyle(color: AppColors.textDim, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  double _dotOpacity(double t, int i) {
+    final wave = (math.sin(t * 2 * math.pi - i * 0.9) + 1) / 2;
+    return 0.25 + 0.75 * wave;
+  }
+}
+
+// =====================================================================
+// Markdown-стиль
+// =====================================================================
+
+MarkdownStyleSheet _markdownStyle(BuildContext context) {
+  final base = MarkdownStyleSheet.fromTheme(Theme.of(context));
+  return base.copyWith(
+    p: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.45),
+    strong: const TextStyle(
+      color: AppColors.textPrimary,
+      fontSize: 14,
+      height: 1.45,
+      fontWeight: FontWeight.w800,
+    ),
+    em: const TextStyle(
+      color: AppColors.textPrimary,
+      fontSize: 15,
+      height: 1.45,
+      fontStyle: FontStyle.italic,
+    ),
+    h1: const TextStyle(
+      color: AppColors.textPrimary,
+      fontSize: 18,
+      fontWeight: FontWeight.w900,
+    ),
+    h2: const TextStyle(
+      color: AppColors.textPrimary,
+      fontSize: 16,
+      fontWeight: FontWeight.w800,
+    ),
+    h3: const TextStyle(
+      color: AppColors.cyan,
+      fontSize: 15,
+      fontWeight: FontWeight.w800,
+    ),
+    listBullet: const TextStyle(
+      color: AppColors.textPrimary,
+      fontSize: 14,
+      height: 1.45,
+    ),
+    blockquote: const TextStyle(color: AppColors.textDim, fontSize: 13, height: 1.4),
+    blockquoteDecoration: const BoxDecoration(
+      color: AppColors.surfaceAlt,
+      borderRadius: BorderRadius.all(Radius.circular(8)),
+      border: Border(left: BorderSide(color: AppColors.cyan, width: 3)),
+    ),
+    blockquotePadding: const EdgeInsets.all(10),
+    code: const TextStyle(
+      color: AppColors.cyan,
+      fontFamily: 'monospace',
+      fontSize: 13,
+      backgroundColor: AppColors.surfaceAlt,
+    ),
+    codeblockDecoration: const BoxDecoration(
+      color: AppColors.surfaceAlt,
+      borderRadius: BorderRadius.all(Radius.circular(8)),
+      border: Border.fromBorderSide(BorderSide(color: AppColors.border)),
+    ),
+    codeblockPadding: const EdgeInsets.all(10),
+    a: const TextStyle(color: AppColors.cyan, fontSize: 14),
+    horizontalRuleDecoration: const BoxDecoration(
+      border: Border(top: BorderSide(color: AppColors.border)),
+    ),
+  );
+}
+
+// =====================================================================
+// Утилиты
+// =====================================================================
+
+extension _Truncate on String {
+  String truncate(int max) {
+    if (length <= max) return this;
+    return '${substring(0, max)}…';
   }
 }
