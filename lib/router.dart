@@ -2,6 +2,7 @@
 
 import 'package:go_router/go_router.dart';
 
+import 'features/analytics/analytics_screen.dart';
 import 'features/bank/bank_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/habits/habits_screen.dart';
@@ -74,5 +75,6 @@ final appRouter = GoRouter(
           NoteScreen(notePath: state.extra as String? ?? ''),
     ),
     GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
+    GoRoute(path: '/analytics', builder: (context, state) => const AnalyticsScreen()),
   ],
 );

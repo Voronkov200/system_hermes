@@ -406,6 +406,40 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
 
+          const _SectionTitle('Аналитика (модули-источники)'),
+          const ListTile(
+            leading: Icon(Icons.chat_bubble_outline_rounded,
+                color: AppColors.accent),
+            title: Text('ТГК-источник'),
+            subtitle:
+                Text('D:\\тг · канал «Повседневная жизнь с Chat GPT»', maxLines: 2),
+          ),
+          const ListTile(
+            leading: Icon(Icons.online_prediction_rounded,
+                color: AppColors.violet),
+            title: Text('TikTok-источник'),
+            subtitle: Text(
+                'D:\\акк 1 → data/Favorites/videos · психпортрет', maxLines: 2),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(left: 16, right: 16),
+            child: Text(
+              'Исходники живут на ПК. Телефон тянет готовые ИИ-отчёты из GitHub '
+              'и обновляет их по расписанию.',
+              style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: OutlinedButton.icon(
+              onPressed: () => context.push('/analytics'),
+              icon: const Icon(Icons.insights_rounded),
+              label: const Text('Открыть отчёты'),
+            ),
+          ),
+          const Divider(),
+
           const SizedBox(height: 16),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(

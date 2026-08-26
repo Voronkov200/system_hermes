@@ -84,6 +84,10 @@ class SettingsState {
     return AppConstants.defaultDataRepoBaseUrl;
   }
 
+  /// База каталога аналитических отчётов (`data/analytics/`) — откуда приложение
+  /// тянет готовые отчёты «Аналитика» (ТГК-аналитика + психпортрет).
+  String get syncAnalyticsBaseUrl => '${syncDataBaseUrl}analytics/';
+
   SettingsState copyWith({
     ThemeMode? themeMode,
     int? pensionDay,

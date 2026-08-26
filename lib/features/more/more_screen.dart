@@ -49,6 +49,14 @@ class MoreScreen extends ConsumerWidget {
             badge: 'ХРОНОЛОГИЯ',
             onTap: () => context.push('/journal'),
           ),
+          _MoreTile(
+            icon: Icons.insights_rounded,
+            color: AppColors.accent,
+            title: 'Аналитика',
+            subtitle: 'ТГК за ~1.5 года · психпортрет TikTok',
+            badge: 'ИИ-ОТЧЁТЫ',
+            onTap: () => context.push('/analytics'),
+          ),
           const SizedBox(height: 16),
           const _SectionHeading(
             title: 'Управление',
