@@ -191,3 +191,112 @@ class ToolCall {
 
   Map<String, dynamic> toJson() => {'name': name, 'arguments': arguments};
 }
+
+// =====================================================================
+// ПОКУПКИ И ЦЕНЫ (импорт чеков и каталога цен)
+// =====================================================================
+//
+// Hive typeId: 3 Receipt, 4 ReceiptItem, 9 PriceEntry.
+// typeId 8 зарезервирован под удалённый модуль «Жизнь» — не занимать.
+
+/// Чек покупки, импортированный из TXT / XLSX либо помеченный под OCR (JPG).
+@HiveType(typeId: 3)
+class Receipt {
+  final String id;
+  final String store; // магазин
+  final String? address;
+  final DateTime dateTime;
+  final double total; // итоговая сумма чека (BYN)
+  final double discount; // сумма скидки (положительное число)
+  final String? paymentMethod; // 'карта' | 'картой' | 'Наличные' ...
+  final List<ReceiptItem> items;
+  final String sourcePath; // путь к исходному файлу
+  final String sourceType; // 'txt' | 'xlsx' | 'jpg'
+  final bool needsOcr; // true — скан, требующий распознавания
+  final String? transactionId; // обратная ссылка на операцию в банке
+  final DateTime importedAt;
+
+  Receipt({
+    required this.id,
+    required this.store,
+    this.address,
+    required this.dateTime,
+    required this.total,
+    this.discount = 0,
+    this.paymentMethod,
+    this.items = const [],
+    required this.sourcePath,
+    required this.sourceType,
+    this.needsOcr = false,
+    this.transactionId,
+    required this.importedAt,
+  });
+
+  /// Ключ идемпотентности: повторный запуск того же файла не плодит дубли.
+  /// = sourcePath + store + dateTime (+ total).
+  String get dedupKey =>
+      '$sourcePath␟$store␟${dateTime.toIso8601String()}␟$total';
+
+  /// Копия с другим [transactionId] (модель неизменяемая).
+  Receipt copyWith({String? transactionId}) => Receipt(
+        id: id,
+        store: store,
+        address: address,
+        dateTime: dateTime,
+        total: total,
+        discount: discount,
+        paymentMethod: paymentMethod,
+        items: items,
+        sourcePath: sourcePath,
+        sourceType: sourceType,
+        needsOcr: needsOcr,
+        transactionId: transactionId ?? this.transactionId,
+        importedAt: importedAt,
+      );
+}
+
+/// Позиция чека (товар).
+@HiveType(typeId: 4)
+class ReceiptItem {
+  final int order; // порядковый номер в чеке
+  final String name;
+  final String? barcode;
+  final double quantity; // число (может быть дробным — вес в кг)
+  final double unitPrice;
+  final double amount; // итог по позиции
+  final double? discount; // скидка по позиции
+
+  ReceiptItem({
+    required this.order,
+    required this.name,
+    this.barcode,
+    this.quantity = 1,
+    this.unitPrice = 0,
+    required this.amount,
+    this.discount,
+  });
+}
+
+/// Запись каталога цен (справочник: сравнение цен и история).
+@HiveType(typeId: 9)
+class PriceEntry {
+  final String id;
+  final String shop;
+  final String name;
+  final double price;
+  final double? oldPrice;
+  final String? discount; // строка вида '-10%' (или null)
+  final DateTime date; // дата актуальности цены
+  final DateTime updatedAt; // когда запись обновлена
+
+  PriceEntry({
+    required this.id,
+    required this.shop,
+    required this.name,
+    required this.price,
+    this.oldPrice,
+    this.discount,
+    required this.date,
+    required this.updatedAt,
+  });
+}

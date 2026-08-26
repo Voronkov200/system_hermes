@@ -174,6 +174,115 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
   }
 }
 
+class ReceiptItemAdapter extends TypeAdapter<ReceiptItem> {
+  @override
+  final int typeId = 4;
+
+  @override
+  ReceiptItem read(BinaryReader reader) => ReceiptItem(
+        order: reader.readInt(),
+        name: reader.readString(),
+        barcode: reader.readBool() ? reader.readString() : null,
+        quantity: reader.readDouble(),
+        unitPrice: reader.readDouble(),
+        amount: reader.readDouble(),
+        discount: reader.readBool() ? reader.readDouble() : null,
+      );
+
+  @override
+  void write(BinaryWriter writer, ReceiptItem obj) {
+    writer
+      ..writeInt(obj.order)
+      ..writeString(obj.name)
+      ..writeBool(obj.barcode != null);
+    if (obj.barcode != null) writer.writeString(obj.barcode!);
+    writer
+      ..writeDouble(obj.quantity)
+      ..writeDouble(obj.unitPrice)
+      ..writeDouble(obj.amount)
+      ..writeBool(obj.discount != null);
+    if (obj.discount != null) writer.writeDouble(obj.discount!);
+  }
+}
+
+class ReceiptAdapter extends TypeAdapter<Receipt> {
+  @override
+  final int typeId = 3;
+
+  @override
+  Receipt read(BinaryReader reader) => Receipt(
+        id: reader.readString(),
+        store: reader.readString(),
+        address: reader.readBool() ? reader.readString() : null,
+        dateTime: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
+        total: reader.readDouble(),
+        discount: reader.readDouble(),
+        paymentMethod: reader.readBool() ? reader.readString() : null,
+        items: reader.readList().cast<ReceiptItem>(),
+        sourcePath: reader.readString(),
+        sourceType: reader.readString(),
+        needsOcr: reader.readBool(),
+        transactionId: reader.readBool() ? reader.readString() : null,
+        importedAt: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
+      );
+
+  @override
+  void write(BinaryWriter writer, Receipt obj) {
+    writer
+      ..writeString(obj.id)
+      ..writeString(obj.store)
+      ..writeBool(obj.address != null);
+    if (obj.address != null) writer.writeString(obj.address!);
+    writer
+      ..writeInt(obj.dateTime.millisecondsSinceEpoch)
+      ..writeDouble(obj.total)
+      ..writeDouble(obj.discount)
+      ..writeBool(obj.paymentMethod != null);
+    if (obj.paymentMethod != null) writer.writeString(obj.paymentMethod!);
+    writer
+      ..writeList(obj.items)
+      ..writeString(obj.sourcePath)
+      ..writeString(obj.sourceType)
+      ..writeBool(obj.needsOcr)
+      ..writeBool(obj.transactionId != null);
+    if (obj.transactionId != null) writer.writeString(obj.transactionId!);
+    writer.writeInt(obj.importedAt.millisecondsSinceEpoch);
+  }
+}
+
+class PriceEntryAdapter extends TypeAdapter<PriceEntry> {
+  @override
+  final int typeId = 9;
+
+  @override
+  PriceEntry read(BinaryReader reader) => PriceEntry(
+        id: reader.readString(),
+        shop: reader.readString(),
+        name: reader.readString(),
+        price: reader.readDouble(),
+        oldPrice: reader.readBool() ? reader.readDouble() : null,
+        discount: reader.readBool() ? reader.readString() : null,
+        date: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
+      );
+
+  @override
+  void write(BinaryWriter writer, PriceEntry obj) {
+    writer
+      ..writeString(obj.id)
+      ..writeString(obj.shop)
+      ..writeString(obj.name)
+      ..writeDouble(obj.price)
+      ..writeBool(obj.oldPrice != null);
+    if (obj.oldPrice != null) writer.writeDouble(obj.oldPrice!);
+    writer.writeBool(obj.discount != null);
+    if (obj.discount != null) writer.writeString(obj.discount!);
+    writer
+      ..writeInt(obj.date.millisecondsSinceEpoch)
+      ..writeInt(obj.updatedAt.millisecondsSinceEpoch);
+  }
+}
+
 /// Регистрация всех адаптеров (вызывается до открытия боксов).
 void registerHiveAdapters() {
   Hive
@@ -187,5 +296,8 @@ void registerHiveAdapters() {
     ..registerAdapter(JournalEntryAdapter())
     ..registerAdapter(SourceDocAdapter())
     ..registerAdapter(StudySubjectAdapter())
-    ..registerAdapter(StudyParagraphAdapter());
+    ..registerAdapter(StudyParagraphAdapter())
+    ..registerAdapter(ReceiptAdapter())
+    ..registerAdapter(ReceiptItemAdapter())
+    ..registerAdapter(PriceEntryAdapter());
 }

@@ -1,5 +1,6 @@
 // Экран «Деньги»: локальный общий счёт, виртуальные карты и переводы.
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +10,7 @@ import '../../data/models.dart';
 import '../../services/bank_math.dart';
 import '../../services/bank_service.dart';
 import '../../services/nbrb_api.dart';
+import '../../services/receipt_import_service.dart';
 import '../../services/settings_service.dart';
 
 class BankScreen extends ConsumerWidget {
@@ -123,6 +125,38 @@ class BankScreen extends ConsumerWidget {
     toast(context, error ?? 'Плановый баланс пополнен');
   }
 
+  Future<void> _importReceipts(BuildContext context, WidgetRef ref) async {
+    final dir = await FilePicker.getDirectoryPath();
+    if (dir == null) return;
+    final service = ref.read(receiptImportServiceProvider);
+    final report = await service.importChecksFromFolder(dir);
+    if (!context.mounted) return;
+    toast(context, 'Чеки: ${report.summary}');
+    ref.invalidate(bankProvider);
+  }
+
+  Future<void> _importPrices(BuildContext context, WidgetRef ref) async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    final path = result?.files.single.path;
+    if (result == null || path == null) return;
+    final service = ref.read(receiptImportServiceProvider);
+    final report = await service.importPricesFromJson(path);
+    if (!context.mounted) return;
+    toast(context, 'Цены: ${report.summary}');
+  }
+
+  void _openReceipt(BuildContext context, Receipt receipt) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _ReceiptSheet(receipt: receipt),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bank = ref.watch(bankProvider);
@@ -133,6 +167,12 @@ class BankScreen extends ConsumerWidget {
     final transactions = bank.transactions.take(40).toList();
     final cardWidth =
         (MediaQuery.sizeOf(context).width * .78).clamp(260.0, 330.0).toDouble();
+    final receiptsAsync = ref.watch(receiptsProvider);
+    final receipts = receiptsAsync.valueOrNull ?? const <Receipt>[];
+    final receiptByTxn = <String, Receipt>{
+      for (final r in receipts)
+        if (r.transactionId != null) r.transactionId!: r,
+    };
 
     return Scaffold(
       key: const ValueKey('money-screen'),
@@ -234,6 +274,13 @@ class BankScreen extends ConsumerWidget {
               isLoading: ratesAsync.isLoading,
             ),
             const SizedBox(height: 26),
+            _PurchasesSection(
+              receipts: receipts,
+              onImportChecks: () => _importReceipts(context, ref),
+              onImportPrices: () => _importPrices(context, ref),
+              onOpen: (r) => _openReceipt(context, r),
+            ),
+            const SizedBox(height: 26),
             const _SectionHeading(
               title: 'История операций',
               subtitle: 'Все локальные пополнения и переводы',
@@ -262,7 +309,13 @@ class BankScreen extends ConsumerWidget {
                 child: Column(
                   children: [
                     for (var i = 0; i < transactions.length; i++) ...[
-                      _TransactionTile(transaction: transactions[i]),
+                      _TransactionTile(
+                        transaction: transactions[i],
+                        onTap: receiptByTxn[transactions[i].id] == null
+                            ? null
+                            : () => _openReceipt(
+                                context, receiptByTxn[transactions[i].id]!),
+                      ),
                       if (i != transactions.length - 1)
                         const Divider(indent: 56, endIndent: 14),
                     ],
@@ -751,8 +804,9 @@ class _RatesCard extends StatelessWidget {
 
 class _TransactionTile extends StatelessWidget {
   final Transaction transaction;
+  final VoidCallback? onTap;
 
-  const _TransactionTile({required this.transaction});
+  const _TransactionTile({required this.transaction, this.onTap});
 
   String get _label {
     switch (transaction.type) {
@@ -788,14 +842,25 @@ class _TransactionTile extends StatelessWidget {
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      onTap: onTap,
       leading: Icon(
         positive ? Icons.south_west : Icons.north_east,
         color: color,
         size: 18,
       ),
-      title: Text(
-        _label,
-        style: const TextStyle(fontWeight: FontWeight.w700),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              _label,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: 6),
+            const Icon(Icons.receipt_outlined, size: 15, color: AppColors.textDim),
+          ],
+        ],
       ),
       subtitle: Text(
         '${transaction.description ?? ''} · ${fmtDate(transaction.date)}',
@@ -1156,4 +1221,322 @@ String _currencyName(String code) {
     default:
       return 'белорусский рубль';
   }
+}
+
+class _PurchasesSection extends StatelessWidget {
+  final List<Receipt> receipts;
+  final Future<void> Function() onImportChecks;
+  final Future<void> Function() onImportPrices;
+  final void Function(Receipt) onOpen;
+
+  const _PurchasesSection({
+    required this.receipts,
+    required this.onImportChecks,
+    required this.onImportPrices,
+    required this.onOpen,
+  });
+
+  int get _itemsCount => receipts.fold(0, (sum, r) => sum + r.items.length);
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = receipts.take(5).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeading(
+          title: 'Покупки',
+          subtitle: 'Импорт чеков и каталога цен — часть локального учёта',
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _ImportButton(
+                icon: Icons.receipt_long_outlined,
+                label: 'Импорт чеков',
+                color: AppColors.accent,
+                onTap: onImportChecks,
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: _ImportButton(
+                icon: Icons.sell_outlined,
+                label: 'Импорт цен',
+                color: AppColors.cyan,
+                onTap: onImportPrices,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          receipts.isEmpty
+              ? 'Чеков нет — выбери папку с чеками'
+              : 'Чеков: ${receipts.length} · позиций: $_itemsCount',
+          style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+        ),
+        if (recent.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (var i = 0; i < recent.length; i++) ...[
+                  ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(
+                      Icons.receipt_outlined,
+                      color: AppColors.textDim,
+                      size: 18,
+                    ),
+                    title: Text(
+                      recent[i].store,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(fmtDate(recent[i].dateTime)),
+                    trailing: Text(
+                      '${fmtAmount(recent[i].total)} BYN',
+                      style: const TextStyle(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    onTap: () => onOpen(recent[i]),
+                  ),
+                  if (i != recent.length - 1)
+                    const Divider(indent: 56, endIndent: 14),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ImportButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Future<void> Function() onTap;
+
+  const _ImportButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color.withValues(alpha: .5)),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+      ),
+      icon: Icon(icon, size: 18),
+      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+class _ReceiptSheet extends StatelessWidget {
+  final Receipt receipt;
+
+  const _ReceiptSheet({required this.receipt});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = receipt.items;
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.72,
+      minChildSize: 0.4,
+      maxChildSize: 0.96,
+      builder: (context, scrollController) => ListView(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  receipt.store,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (receipt.address?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                const Icon(Icons.place_outlined,
+                    size: 14, color: AppColors.textDim),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    receipt.address!,
+                    style: const TextStyle(
+                      color: AppColors.textDim,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.schedule, size: 14, color: AppColors.textDim),
+              const SizedBox(width: 4),
+              Text(
+                fmtDateTime(receipt.dateTime),
+                style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+              ),
+            ],
+          ),
+          if (receipt.paymentMethod?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                const Icon(Icons.payment, size: 14, color: AppColors.textDim),
+                const SizedBox(width: 4),
+                Text(
+                  receipt.paymentMethod!,
+                  style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text(
+                'Итого',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              Text(
+                '${fmtAmount(receipt.total)} BYN',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.accent,
+                ),
+              ),
+            ],
+          ),
+          if (receipt.discount > 0) ...[
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                const Text(
+                  'Скидка',
+                  style: TextStyle(
+                    color: AppColors.textDim,
+                    fontSize: 12,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '−${fmtAmount(receipt.discount)} BYN',
+                  style: const TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (receipt.needsOcr) ...[
+            const SizedBox(height: 14),
+            Card(
+              margin: EdgeInsets.zero,
+              color: AppColors.warning.withValues(alpha: .1),
+              child: const Padding(
+                padding: EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(Icons.image_search, color: AppColors.warning),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Это скан чека. Товары не извлечены — требуется распознавание (OCR).',
+                        style: TextStyle(fontSize: 12.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Divider(),
+          if (items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Позиции не загружены',
+                style: TextStyle(color: AppColors.textDim),
+              ),
+            )
+          else
+            for (final item in items)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 26,
+                      child: Text(
+                        '${item.order}',
+                        style: const TextStyle(
+                          color: AppColors.textDim,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.name),
+                          if (item.quantity != 1)
+                            Text(
+                              '${_qty(item.quantity)} × ${fmt2(item.unitPrice)}',
+                              style: const TextStyle(
+                                color: AppColors.textDim,
+                                fontSize: 11,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${fmt2(item.amount)} BYN',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  String _qty(double qty) =>
+      qty == qty.roundToDouble() ? qty.round().toString() : qty.toString();
 }

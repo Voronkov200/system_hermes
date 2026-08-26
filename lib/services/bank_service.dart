@@ -319,6 +319,34 @@ class BankController extends Notifier<BankState> {
     return null;
   }
 
+  /// Списывает покупку с выбранного счёта и логирует операцию `withdrawal`.
+  /// Вызывается импортом чеков. Возвращает созданную операцию или null,
+  /// если счёт не найден или сумма чека не положительна.
+  Future<Transaction?> recordPurchase({
+    required Receipt receipt,
+    String accountId = Account.generalId,
+  }) async {
+    final account = _storedById(accountId);
+    if (account == null || !receipt.total.isFinite || receipt.total <= 0) {
+      return null;
+    }
+    final txn = Transaction(
+      id: genId(),
+      type: 'withdrawal',
+      amount: receipt.total,
+      currency: 'BYN',
+      date: receipt.dateTime,
+      description: '${receipt.store}, ${_fmtReceiptTime(receipt.dateTime)}',
+    );
+    account.balance -= receipt.total;
+    await _accounts.put(account.id, account);
+    await _transactions.add(txn);
+    state = _readState(
+      lastEvent: 'Покупка: ${receipt.store} — ${fmtAmount(receipt.total)} BYN',
+    );
+    return txn;
+  }
+
   /// Внутренний перевод. При разных валютах используется расчётный курс
   /// НБРБ; реальные деньги и реквизиты банка не затрагиваются.
   Future<String?> transfer({
@@ -391,6 +419,11 @@ class BankController extends Notifier<BankState> {
 }
 
 String fmtAmount(double value) => value.toStringAsFixed(2);
+
+/// Формат времени чека: «21.07.2026 12:52».
+String _fmtReceiptTime(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year} '
+    '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
 final bankProvider =
     NotifierProvider<BankController, BankState>(BankController.new);

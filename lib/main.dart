@@ -53,6 +53,8 @@ Future<void> main() async {
   await _openBoxSafely<SourceDoc>(BoxNames.docs);
   await _openBoxSafely<StudySubject>(BoxNames.study);
   await _openBoxSafely<StudyParagraph>(BoxNames.studyParagraphs);
+  await _openBoxSafely<Receipt>(BoxNames.receipts);
+  await _openBoxSafely<PriceEntry>(BoxNames.prices);
 
   final prefs = await SharedPreferences.getInstance();
 

@@ -72,6 +72,8 @@ class BoxNames {
   static const String docs = 'docs';
   static const String study = 'study';
   static const String studyParagraphs = 'study_paragraphs';
+  static const String receipts = 'receipts';
+  static const String prices = 'prices';
 }
 
 /// Ключи настроек в SharedPreferences.
