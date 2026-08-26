@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../services/analytics_service.dart';
 import 'analytics_report.dart';
+import 'animated_charts.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -67,7 +68,7 @@ class _AnalyticsBody extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
-          const _IntroCard(),
+          const FadeSlideIn(child: _IntroCard()),
           const SizedBox(height: 6),
           if (data.error != null)
             _ErrorBanner(message: data.error!, onRetry: onRetry),
@@ -78,16 +79,22 @@ class _AnalyticsBody extends StatelessWidget {
             )
           else ...[
             if (tgk != null)
-              _ModuleCard(
-                report: tgk,
-                color: AppColors.accent,
-                icon: Icons.chat_bubble_outline_rounded,
+              FadeSlideIn(
+                delayMs: 120,
+                child: _ModuleCard(
+                  report: tgk,
+                  color: AppColors.accent,
+                  icon: Icons.chat_bubble_outline_rounded,
+                ),
               ),
             if (psych != null)
-              _ModuleCard(
-                report: psych,
-                color: AppColors.violet,
-                icon: Icons.person_outline_rounded,
+              FadeSlideIn(
+                delayMs: 260,
+                child: _ModuleCard(
+                  report: psych,
+                  color: AppColors.violet,
+                  icon: Icons.person_outline_rounded,
+                ),
               ),
           ],
           const SizedBox(height: 8),
@@ -166,8 +173,6 @@ class _ModuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chips = _summaryChips(report);
-
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       clipBehavior: Clip.antiAlias,
@@ -199,13 +204,15 @@ class _ModuleCard extends StatelessWidget {
           ),
         ),
         children: [
+          if (report.kind == 'tgk') ..._tgkCharts(),
+          if (report.kind == 'psych') ..._psychCharts(),
           Align(
             alignment: Alignment.centerLeft,
             child: Wrap(
               spacing: 6,
               runSpacing: 6,
               children: [
-                for (final c in chips) Chip(label: Text(c)),
+                for (final c in _summaryChips(report)) Chip(label: Text(c)),
               ],
             ),
           ),
@@ -258,7 +265,110 @@ class _ModuleCard extends StatelessWidget {
     );
   }
 
-  /// Чипы из структурированных данных отчёта.
+  /// Графики и статы для ТГК-отчёта.
+  List<Widget> _tgkCharts() {
+    final w = <Widget>[
+      const SizedBox(height: 6),
+      _StatRow(report: report, color: color),
+      const SizedBox(height: 12),
+    ];
+
+    final monthly = _monthBars(report.monthlyActivity());
+    if (monthly != null) {
+      w.add(_ChartCard(
+        title: 'Активность по месяцам',
+        subtitle: 'Сообщений в канале',
+        color: color,
+        child: GrowingBarChart(
+          data: monthly,
+          color: color,
+          height: 150,
+          labelEvery: 2,
+        ),
+      ));
+      const gap = SizedBox(height: 12);
+      w.add(gap);
+    }
+
+    final themes = _themeBars(report.structuredMap('theme_weights'));
+    if (themes != null) {
+      w.add(_ChartCard(
+        title: 'Вес тем',
+        subtitle: 'Доля в общем объёме',
+        color: color,
+        child: GrowingHBarChart(
+          data: themes,
+          color: color,
+          itemHeight: 26,
+          valueFormatter: (v) => '${v.round()}%',
+        ),
+      ));
+      const gap = SizedBox(height: 12);
+      w.add(gap);
+    }
+
+    return w;
+  }
+
+  /// Графики и статы для психпортрета.
+  List<Widget> _psychCharts() {
+    final w = <Widget>[];
+    final cats = _categoryBars(report.meta['categories']);
+    if (cats != null) {
+      w.add(const SizedBox(height: 6));
+      w.add(_ChartCard(
+        title: 'Категории контента',
+        subtitle: 'Сохранённые видео',
+        color: color,
+        child: GrowingHBarChart(
+          data: cats,
+          color: color,
+          itemHeight: 24,
+          valueFormatter: (v) => '${v.round()}',
+        ),
+      ));
+      w.add(const SizedBox(height: 12));
+    }
+    return w;
+  }
+
+  List<BarDatum>? _monthBars(List<Map<String, dynamic>> months) {
+    if (months.isEmpty) return null;
+    final bars = <BarDatum>[];
+    for (final m in months) {
+      final month = (m['month'] as String? ?? '');
+      // '2025-04' -> '04'
+      final label = month.length >= 7 ? month.substring(5, 7) : month;
+      final msgs = (m['messages'] as num?)?.toDouble() ?? 0;
+      bars.add(BarDatum(label, msgs));
+    }
+    return bars;
+  }
+
+  List<BarDatum>? _themeBars(Map<String, dynamic> weights) {
+    if (weights.isEmpty) return null;
+    final sorted = weights.entries.toList()
+      ..sort((a, b) => _num(b.value).compareTo(_num(a.value)));
+    return sorted
+        .take(8)
+        .map((e) => BarDatum(e.key, _num(e.value) * 100))
+        .toList();
+  }
+
+  List<BarDatum>? _categoryBars(dynamic raw) {
+    if (raw is Map) {
+      final map = raw.map((k, v) => MapEntry(k.toString(), v));
+      final sorted = map.entries.toList()
+        ..sort((a, b) => _num(b.value).compareTo(_num(a.value)));
+      if (sorted.isEmpty) return null;
+      return sorted
+          .take(10)
+          .map((e) => BarDatum(e.key, _num(e.value)))
+          .toList();
+    }
+    return null;
+  }
+
   List<String> _summaryChips(AnalyticsReport report) {
     if (report.kind == 'tgk') {
       final weights = report.structuredMap('theme_weights');
@@ -266,7 +376,6 @@ class _ModuleCard extends StatelessWidget {
         ..sort((a, b) => _num(b.value).compareTo(_num(a.value)));
       return top.take(6).map((e) => '${e.key} ${(_num(e.value) * 100).round()}%').toList();
     }
-    // psych
     final interests = report.structuredList('interests');
     final traits = report.structuredList('personality_traits');
     return [
@@ -276,6 +385,100 @@ class _ModuleCard extends StatelessWidget {
   }
 
   double _num(dynamic v) => v is num ? v.toDouble() : 0;
+}
+
+/// Строка ключевых статов (count-up) для ТГК-отчёта.
+class _StatRow extends StatelessWidget {
+  final AnalyticsReport report;
+  final Color color;
+
+  const _StatRow({required this.report, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final meta = report.meta;
+    final total = _num(meta['total_messages']);
+    final months = report.monthlyActivity();
+    var peakLabel = '—';
+    var peakVal = 0.0;
+    for (final m in months) {
+      final v = _num(m['messages']);
+      if (v > peakVal) {
+        peakVal = v;
+        peakLabel = '${m['month'] ?? ''} · $peakVal';
+      }
+    }
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _statBox(color, 'Сообщений', AnimatedCountText(target: total)),
+        _statBox(color, 'Пик месяца', Text(peakLabel, maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 14))),
+      ],
+    );
+  }
+
+  double _num(dynamic v) => v is num ? v.toDouble() : 0;
+
+  Widget _statBox(Color color, String label, Widget value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt.withValues(alpha: .5),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 10.5, color: AppColors.textDim)),
+          const SizedBox(height: 3),
+          value,
+        ],
+      ),
+    );
+  }
+}
+
+/// Карточка с заголовком под график.
+class _ChartCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Color color;
+  final Widget child;
+
+  const _ChartCard({
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt.withValues(alpha: .4),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: .16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+          const SizedBox(height: 2),
+          Text(subtitle,
+              style: const TextStyle(fontSize: 11, color: AppColors.textDim)),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
 }
 
 class _ErrorView extends StatelessWidget {

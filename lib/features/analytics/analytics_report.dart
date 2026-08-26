@@ -11,6 +11,7 @@ class AnalyticsReport {
   final String bodyText; // читаемый plain-text (для отображения)
   final String bodyMarkdown; // исходный markdown (для богатого рендера)
   final Map<String, dynamic> structured; // структурированные данные (темы, черты и т.п.)
+  final Map<String, dynamic> meta; // служебные данные (monthly_activity, период и т.д.)
 
   const AnalyticsReport({
     required this.kind,
@@ -21,6 +22,7 @@ class AnalyticsReport {
     required this.bodyText,
     required this.bodyMarkdown,
     required this.structured,
+    this.meta = const {},
   });
 
   factory AnalyticsReport.fromJson(Map<String, dynamic> json) {
@@ -33,7 +35,17 @@ class AnalyticsReport {
       bodyText: json['body_text'] as String? ?? '',
       bodyMarkdown: json['body_markdown'] as String? ?? '',
       structured: (json['structured'] as Map<String, dynamic>?) ?? <String, dynamic>{},
+      meta: (json['meta'] as Map<String, dynamic>?) ?? <String, dynamic>{},
     );
+  }
+
+  /// Помесячная активность из meta (массив {month, messages, chars, active_days}).
+  List<Map<String, dynamic>> monthlyActivity() {
+    final raw = meta['monthly_activity'];
+    if (raw is List) {
+      return raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return const [];
   }
 
   /// Первая строка структурированного поля для быстрой сводки.
